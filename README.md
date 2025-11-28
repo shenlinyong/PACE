@@ -65,12 +65,20 @@ bash setup.sh
 conda activate pace-env
 ```
 
-### Try with Example Data (Recommended)
+### Try with Example Data (Recommended for First-Time Users)
 
 ```bash
 # Run the example pipeline (~2-5 minutes)
 bash example/run_example.sh
 ```
+This will:
+
+1. Generate synthetic test data (5 Mb genome, 50 genes)
+2. Prepare reference files
+3. Run the complete PACE pipeline
+4. Show prediction results
+
+See [example/README.md](example/README.md) for a detailed step-by-step tutorial.
 
 ### Basic Usage
 
