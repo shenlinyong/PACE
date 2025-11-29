@@ -1,0 +1,45 @@
+name: pace-env
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  # Core Python
+  - python>=3.8
+  - pip
+  
+  # Data processing
+  - numpy
+  - pandas
+  - scipy
+  - pyarrow
+  
+  # Visualization
+  - matplotlib
+  - seaborn
+  
+  # Bioinformatics tools
+  - bedtools>=2.26.0
+  - samtools>=1.9
+  - macs2
+  - pybigwig
+  - pysam
+  - pyranges
+  - tabix
+  
+  # Workflow management
+  - snakemake>=7,<8
+  
+  # Other dependencies
+  - click
+  - pyyaml
+  - smart_open<7
+  
+  # Optional: for compiling hic-straw on Linux
+  # Uncomment if you encounter issues
+  # - gcc
+  # - gxx
+  # - zlib
+  
+  - pip:
+    - hic-straw

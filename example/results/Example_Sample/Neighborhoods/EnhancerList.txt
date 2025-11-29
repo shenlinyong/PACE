@@ -1,0 +1,11 @@
+chr	start	end	name	is_tss	activity
+chr1	1000	1500	region_0	False	0.85
+chr1	5000	5500	region_1	False	0.72
+chr1	10000	10500	region_2	False	0.95
+chr1	15000	15500	region_3	False	0.63
+chr1	20000	20500	region_4	False	0.88
+chr1	25000	25500	region_5	False	0.75
+chr1	30000	30500	region_6	False	0.91
+chr1	35000	35500	region_7	False	0.68
+chr1	40000	40500	region_8	False	0.78
+chr1	45000	45500	region_9	False	0.82

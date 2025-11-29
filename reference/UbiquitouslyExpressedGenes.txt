@@ -1,0 +1,13 @@
+# Ubiquitously Expressed Genes
+# One gene symbol per line
+# These genes are expressed in most tissues
+# Update this list according to your species
+
+# Example housekeeping genes (modify for your species):
+# ACTB
+# GAPDH
+# B2M
+# HPRT1
+# RPL13A
+# RPLP0
+# TBP

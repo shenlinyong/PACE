@@ -1,0 +1,118 @@
+"""
+PACE: Predicting Activity-Contact for Enhancer-promoter
+Snakemake Workflow
+
+Author: Linyong Shen @ Northwest A&F University
+Based on ABC-Enhancer-Gene-Prediction by Broad Institute
+"""
+
+import os
+import pandas as pd
+import numpy as np
+from snakemake.utils import min_version
+min_version("7.0")
+
+configfile: "config/config.yaml"
+conda: "mamba"
+
+include: "rules/utils.smk"
+
+# Make paths absolute
+ABC_DIR_PATH = os.path.abspath(config.get("ABC_DIR_PATH", ""))
+config = make_paths_absolute(config, ABC_DIR_PATH)
+
+RESULTS_DIR = config['results_dir']
+BIOSAMPLES_CONFIG = load_biosamples_config(config)
+SCRIPTS_DIR = os.path.join(ABC_DIR_PATH, "workflow/scripts") if ABC_DIR_PATH else "workflow/scripts"
+ABC_THRESHOLDS = load_abc_thresholds(config)
+
+include: "rules/macs2.smk"
+include: "rules/candidate_regions.smk"
+include: "rules/neighborhoods.smk"
+include: "rules/predictions.smk"
+include: "rules/qc.smk"
+
+
+def qc_plot_outputs():
+    """Generate QC output file list"""
+    output_files = []
+    for _, row in BIOSAMPLES_CONFIG.iterrows():
+        biosample = row["biosample"]
+        threshold = determine_threshold(biosample)
+        file = os.path.join(
+            RESULTS_DIR, biosample, "Metrics", 
+            f"QCSummary_{determine_filtered_prediction_file_format(threshold, config)}.tsv"
+        )
+        output_files.append(file)
+    return output_files
+
+
+rule all:
+    """Main rule: Run complete PACE analysis pipeline"""
+    input:
+        allPutative = expand(
+            os.path.join(RESULTS_DIR, "{biosample}", "Predictions", "EnhancerPredictionsAllPutative.tsv.gz"),
+            biosample=BIOSAMPLES_CONFIG["biosample"]
+        ),
+        qcPlots = qc_plot_outputs()
+
+
+rule peaks_only:
+    """Run peak calling only"""
+    input:
+        expand(
+            os.path.join(RESULTS_DIR, "{biosample}", "Peaks", "macs2_peaks.narrowPeak.sorted.candidateRegions.bed"),
+            biosample=BIOSAMPLES_CONFIG["biosample"]
+        )
+
+
+rule neighborhoods_only:
+    """Run neighborhood analysis only"""
+    input:
+        expand(
+            os.path.join(RESULTS_DIR, "{biosample}", "Neighborhoods", "EnhancerList.txt"),
+            biosample=BIOSAMPLES_CONFIG["biosample"]
+        )
+
+
+rule predictions_only:
+    """Run predictions only"""
+    input:
+        expand(
+            os.path.join(RESULTS_DIR, "{biosample}", "Predictions", "EnhancerPredictionsAllPutative.tsv.gz"),
+            biosample=BIOSAMPLES_CONFIG["biosample"]
+        )
+
+
+# Information messages
+onstart:
+    print("\n" + "="*60)
+    print("PACE: Predicting Activity-Contact for Enhancer-promoter")
+    print("="*60)
+    print(f"Number of samples: {len(BIOSAMPLES_CONFIG)}")
+    print(f"Output directory: {RESULTS_DIR}")
+    print("="*60 + "\n")
+
+
+onsuccess:
+    print("\n" + "="*60)
+    print("PACE analysis completed successfully!")
+    print("="*60)
+    print(f"Results saved to: {RESULTS_DIR}")
+    print("\nMain output files:")
+    print("  - Predictions/EnhancerPredictionsAllPutative.tsv.gz: All predictions")
+    print("  - Predictions/EnhancerPredictions_*.tsv: Filtered predictions")
+    print("  - Metrics/QCPlots_*.pdf: QC plots")
+    print("="*60 + "\n")
+
+
+onerror:
+    print("\n" + "="*60)
+    print("PACE encountered an error!")
+    print("="*60)
+    print("Please check log files for details")
+    print("Common issues:")
+    print("  1. Incorrect input file format")
+    print("  2. Wrong reference file paths")
+    print("  3. Insufficient memory")
+    print("="*60 + "\n")

@@ -1,0 +1,56 @@
+# PACE Sample Configuration
+# Tab-separated format
+#
+# Required columns:
+#   biosample: Sample name
+#   default_accessibility_feature: DHS or ATAC
+#
+# Accessibility (at least one required):
+#   DHS: DNase-seq BAM file
+#   ATAC: ATAC-seq tagAlign file
+#
+# Histone modifications (optional):
+#   H3K27ac, H3K4me1, H3K4me3, H3K36me3, H3K9ac, H3K27me3, H3K9me3
+#
+# 3D Contact (optional):
+#   HiC_file, HiC_type (hic/bedpe/avg), HiC_resolution
+#
+# RNA-seq (optional):
+#   RNA_seq: Gene expression file (TPM)
+#
+# Methylation (optional):
+#   methylation: DNA methylation file
+#
+# TF binding (optional):
+#   TF_binding: Comma-separated TF ChIP files
+#   TF_names: Comma-separated TF names
+#
+# eQTL (optional):
+#   eQTL_file: eQTL summary statistics
+#
+# Custom reference (optional):
+#   alt_TSS, alt_genes
+#
+biosample	DHS	ATAC	H3K27ac	H3K4me1	H3K4me3	H3K36me3	H3K9ac	H3K27me3	H3K9me3	default_accessibility_feature	HiC_file	HiC_type	HiC_resolution	RNA_seq	methylation	TF_binding	TF_names	eQTL_file	alt_TSS	alt_genes
+#
+# ========== EXAMPLE CONFIGURATIONS ==========
+#
+# Example 1: Minimal (ATAC only)
+# Sample1		data/sample1_ATAC.tagAlign.gz									ATAC										
+#
+# Example 2: Standard (ATAC + H3K27ac) - recommended
+# Sample1		data/sample1_ATAC.tagAlign.gz	data/sample1_H3K27ac.bam								ATAC										
+#
+# Example 3: Multi-histone
+# Sample1		data/sample1_ATAC.tagAlign.gz	data/sample1_H3K27ac.bam	data/sample1_H3K4me1.bam	data/sample1_H3K4me3.bam					ATAC										
+#
+# Example 4: With RNA-seq expression filter
+# Sample1		data/sample1_ATAC.tagAlign.gz	data/sample1_H3K27ac.bam								ATAC				data/sample1_rnaseq.tsv						
+#
+# Example 5: With Hi-C data
+# Sample1		data/sample1_ATAC.tagAlign.gz	data/sample1_H3K27ac.bam								ATAC	data/sample1.hic	hic	5000							
+#
+# Example 6: Full integration
+# Sample1		data/sample1_ATAC.tagAlign.gz	data/sample1_H3K27ac.bam	data/sample1_H3K4me1.bam	data/sample1_H3K4me3.bam		data/sample1_H3K9ac.bam	data/sample1_H3K27me3.bam		ATAC	data/sample1.hic	hic	5000	data/sample1_rnaseq.tsv	data/sample1_meth.bw	data/CTCF.bam,data/P300.bam	CTCF,P300	data/sample1_eqtl.tsv		
+#
+# ========== ADD YOUR SAMPLES BELOW ==========
