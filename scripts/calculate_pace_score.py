@@ -383,9 +383,28 @@ class PACEScoreCalculator:
         
         # Add component scores if requested
         if self.config.get('output_options', {}).get('output_signal_scores', True):
+            # Create a temporary DataFrame with component scores for each enhancer
+            component_df = candidate_regions[['chr', 'start', 'end']].copy()
+
+            # Add activating signal scores
             for signal_name, values in activity_components.get('activating_signals', {}).items():
-                # Would need to properly merge these
-                pass
+                component_df[f'signal.{signal_name}'] = values
+
+            # Add inhibitory signal scores
+            for signal_name, values in activity_components.get('inhibitory_signals', {}).items():
+                component_df[f'signal.{signal_name}'] = values
+
+            # Merge component scores into eg_pairs based on enhancer coordinates
+            eg_pairs = eg_pairs.merge(
+                component_df,
+                left_on=['enhancer_chr', 'enhancer_start', 'enhancer_end'],
+                right_on=['chr', 'start', 'end'],
+                how='left',
+                suffixes=('', '_component')
+            )
+
+            # Drop duplicate coordinate columns from the merge
+            eg_pairs = eg_pairs.drop(columns=['chr_component', 'start_component', 'end_component'], errors='ignore')
         
         # Final cleanup and sorting
         eg_pairs = eg_pairs.sort_values('PACE.Score', ascending=False)
