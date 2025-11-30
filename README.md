@@ -135,6 +135,21 @@ This will:
 
 See [example/README.md](example/README.md) for a detailed step-by-step tutorial.
 
+### Run Tests
+
+```bash
+# Run comprehensive test suite (37 tests)
+python test_pace_complete.py
+```
+
+This will test:
+- Module imports (7 tests)
+- Core functions (9 tests)
+- CLI scripts (6 tests)
+- Complete pipeline (5 tests)
+- Machine learning module (10 tests)
+
+
 ### Basic Usage
 
 ```bash
