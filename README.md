@@ -118,6 +118,24 @@ conda install -c bioconda bedtools samtools macs2
 pip install -r requirements.txt
 ```
 
+### Verify Test Environment Setup
+
+To confirm that the testing environment is correctly configured, run the full test suite:
+
+```bash
+# Run comprehensive test suite (37 tests)
+python test_pace_complete.py
+```
+
+This command evaluates the following components:
+- Module imports (7 tests)
+- Core functions (9 tests)
+- CLI scripts (6 tests)
+- Complete pipeline (5 tests)
+- Machine learning module (10 tests)
+
+Successful completion of all tests indicates that the environment has been properly set up and that all major components of the PACE framework are functioning as expected.
+
 ### Try with Example Data (Recommended for First-Time Users)
 
 We provide a complete example dataset to help you get started quickly:
@@ -134,21 +152,6 @@ This will:
 4. Show prediction results
 
 See [example/README.md](example/README.md) for a detailed step-by-step tutorial.
-
-### Run Tests
-
-```bash
-# Run comprehensive test suite (37 tests)
-python test_pace_complete.py
-```
-
-This will test:
-- Module imports (7 tests)
-- Core functions (9 tests)
-- CLI scripts (6 tests)
-- Complete pipeline (5 tests)
-- Machine learning module (10 tests)
-
 
 ### Basic Usage
 
