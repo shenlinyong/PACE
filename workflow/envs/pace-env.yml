@@ -1,0 +1,89 @@
+# PACE Environment Configuration
+# Predicting Activity-Contact for Enhancer-promoter
+#
+# Author: Linyong Shen @ Northwest A&F University
+#
+# Installation:
+#   conda env create -f workflow/envs/pace-env.yml
+#   conda activate pace-env
+#
+# Tested with:
+#   - Python 3.10, 3.11, 3.12
+#   - Ubuntu 20.04, 22.04
+#   - macOS 12+
+
+name: pace-env
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+
+dependencies:
+  #-----------------------------------------
+  # Core Python (required)
+  #-----------------------------------------
+  - python>=3.8,<3.13
+  - pip>=21.0
+  
+  #-----------------------------------------
+  # Data Processing (required)
+  #-----------------------------------------
+  - numpy>=1.20
+  - pandas>=1.3
+  - scipy>=1.7
+  
+  #-----------------------------------------
+  # Visualization (required)
+  #-----------------------------------------
+  - matplotlib>=3.4
+  - seaborn>=0.11
+  
+  #-----------------------------------------
+  # Bioinformatics Tools (required)
+  #-----------------------------------------
+  - bedtools>=2.30
+  - samtools>=1.15
+  - macs2>=2.2
+  - pybigwig>=0.3
+  - pysam>=0.19
+  - pybedtools>=0.9
+  - tabix>=1.11
+  
+  #-----------------------------------------
+  # Workflow Management (required)
+  #-----------------------------------------
+  - snakemake>=7.0,<8.0
+  
+  #-----------------------------------------
+  # Machine Learning (optional but recommended)
+  #-----------------------------------------
+  - scikit-learn>=1.0
+  
+  #-----------------------------------------
+  # Other Dependencies
+  #-----------------------------------------
+  - click>=8.0
+  - pyyaml>=6.0
+  - pyarrow>=8.0
+  
+  #-----------------------------------------
+  # pip packages
+  #-----------------------------------------
+  - pip:
+    # Hi-C data processing (optional)
+    - hic-straw>=1.3
+
+#-----------------------------------------
+# Version Notes (tested combinations)
+#-----------------------------------------
+# Minimal (ATAC-seq only):
+#   python=3.10, numpy=1.24, pandas=2.0, macs2=2.2
+#
+# Standard (with H3K27ac):
+#   + pybigwig=0.3, pybedtools=0.9
+#
+# Full (with Hi-C and ML):
+#   + hic-straw=1.3, scikit-learn=1.3
+#
+# Development:
+#   python=3.12, numpy=2.0, pandas=2.1, scikit-learn=1.4

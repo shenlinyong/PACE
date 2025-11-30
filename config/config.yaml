@@ -1,0 +1,200 @@
+# PACE Configuration File
+# Predicting Activity-Contact for Enhancer-promoter
+#
+# Author: Linyong Shen @ Northwest A&F University
+
+#==============================================================================
+# OUTPUT AND INPUT
+#==============================================================================
+
+# Output directory
+results_dir: "results/"
+
+# Sample configuration table
+biosamplesTable: "config/config_biosamples.tsv"
+
+#==============================================================================
+# REFERENCE FILES (modify for your species)
+#==============================================================================
+
+ref:
+  # Chromosome sizes file (required)
+  chrom_sizes: "reference/your_species/genome.chrom.sizes"
+  
+  # Blacklist regions (optional, can be empty file)
+  regions_blocklist: "reference/your_species/blacklist.bed"
+  
+  # Gene annotation file (required)
+  genes: "reference/your_species/genes.bed"
+  
+  # TSS region file (required)
+  genome_tss: "reference/your_species/genes.TSS500bp.bed"
+  
+  # Ubiquitously expressed genes (optional)
+  ubiquitous_genes: "reference/UbiquitouslyExpressedGenes.txt"
+  
+  # Quantile normalization reference (optional)
+  qnorm: ""
+  
+  # ABC threshold file
+  abc_thresholds: "reference/abc_thresholds.tsv"
+
+#==============================================================================
+# ACTIVITY CALCULATION
+#==============================================================================
+
+# Activity calculation method
+# Options: geometric_mean, weighted_geometric, weighted_sum, arithmetic_mean
+activity_method: "geometric_mean"
+
+# Chromatin accessibility weight
+accessibility:
+  weight: 1.5
+
+# Histone modifications
+histone_marks:
+  H3K27ac:
+    enabled: true
+    weight: 1.0
+    description: "Active enhancers and promoters"
+  
+  H3K4me1:
+    enabled: false
+    weight: 0.8
+    description: "Enhancer mark"
+  
+  H3K4me3:
+    enabled: false
+    weight: 0.5
+    description: "Active promoters"
+  
+  H3K36me3:
+    enabled: false
+    weight: 0.3
+    description: "Transcribed gene bodies"
+  
+  H3K9ac:
+    enabled: false
+    weight: 0.6
+    description: "Active chromatin"
+  
+  # Repressive marks (inhibitory)
+  H3K27me3:
+    enabled: false
+    weight: 0.5
+    inhibitory: true
+    description: "Polycomb repression"
+  
+  H3K9me3:
+    enabled: false
+    weight: 0.5
+    inhibitory: true
+    description: "Heterochromatin"
+
+# DNA methylation (inhibitory signal)
+methylation:
+  enabled: false
+  weight: 0.5
+  context: "CG"
+  transform_method: "linear"
+
+# Transcription factor binding
+transcription_factors:
+  enabled: false
+  default_weight: 0.3
+
+#==============================================================================
+# RNA-SEQ EXPRESSION
+#==============================================================================
+
+expression:
+  enabled: false
+  value_column: "TPM"
+  min_expression: 1.0
+  # Weight method: none, binary, linear, log
+  weight_method: "log"
+
+#==============================================================================
+# EQTL VALIDATION
+#==============================================================================
+
+eqtl_validation:
+  enabled: false
+  pvalue_threshold: 1e-5
+  window: 1000
+  add_to_output: true
+
+#==============================================================================
+# MACS2 PEAK CALLING
+#==============================================================================
+
+params_macs:
+  pval: 0.1
+  # Genome size (adjust for your species)
+  # Pig: 2.5e9, Cattle: 2.7e9, Sheep: 2.6e9, Chicken: 1.0e9, Horse: 2.5e9
+  genome_size: 2.5e9
+  threads: 10
+
+#==============================================================================
+# CANDIDATE REGIONS
+#==============================================================================
+
+params_candidate:
+  # Extend from peak summit (bp)
+  peakExtendFromSummit: 250
+  # Number of strongest peaks to retain
+  nStrongestPeaks: 150000
+
+#==============================================================================
+# NEIGHBORHOOD ANALYSIS
+#==============================================================================
+
+params_neighborhoods:
+  use_qnorm: false
+
+#==============================================================================
+# 3D CONTACT ESTIMATION
+#==============================================================================
+
+params_predict:
+  flags: "--scale_hic_using_powerlaw"
+  # Power-law parameters
+  hic_gamma: 1.024238616787792
+  hic_scale: 5.9594510043736655
+  hic_pseudocount_distance: 5000
+
+#==============================================================================
+# PREDICTION FILTERING
+#==============================================================================
+
+params_filter_predictions:
+  score_column: 'ABC.Score'
+  # ABC score threshold (null = auto, or set value like 0.02)
+  threshold: 0.02
+  include_self_promoter: true
+  only_expressed_genes: false
+
+#==============================================================================
+# MACHINE LEARNING (experimental)
+#==============================================================================
+
+ml_integration:
+  enabled: false
+  model_type: "gradient_boosting"
+  use_pretrained: false
+
+#==============================================================================
+# OUTPUT OPTIONS
+#==============================================================================
+
+output_options:
+  output_signal_scores: true
+  output_components: true
+  generate_plots: true
+  format: "tsv"
+
+#==============================================================================
+# INTERNAL USE
+#==============================================================================
+
+ABC_DIR_PATH: ""
