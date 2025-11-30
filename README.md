@@ -6,12 +6,12 @@
 ```
 ╔══════════════════════════════════════════════════════════╗
 ║                                                          ║
-║   ██████╗  █████╗  ██████╗███████╗                      ║
-║   ██╔══██╗██╔══██╗██╔════╝██╔════╝                      ║
-║   ██████╔╝███████║██║     █████╗                        ║
-║   ██╔═══╝ ██╔══██║██║     ██╔══╝                        ║
-║   ██║     ██║  ██║╚██████╗███████╗                      ║
-║   ╚═╝     ╚═╝  ╚═╝ ╚═════╝╚══════╝                      ║
+║   ██████╗  █████╗  ██████╗███████╗                       ║
+║   ██╔══██╗██╔══██╗██╔════╝██╔════╝                       ║
+║   ██████╔╝███████║██║     █████╗                         ║
+║   ██╔═══╝ ██╔══██║██║     ██╔══╝                         ║
+║   ██║     ██║  ██║╚██████╗███████╗                       ║
+║   ╚═╝     ╚═╝  ╚═╝ ╚═════╝╚══════╝                       ║
 ║                                                          ║
 ║   Predicting Activity-Contact for Enhancer-promoter      ║
 ║                                                          ║
@@ -110,12 +110,22 @@ conda install -c bioconda bedtools samtools macs2
 pip install -r requirements.txt
 ```
 
-### Try with Example Data (Recommended)
+### Try with Example Data (Recommended for First-Time Users)
+
+We provide a complete example dataset to help you get started quickly:
 
 ```bash
-# Run the example pipeline (~2-5 minutes)
+# Run the example pipeline (takes ~2-5 minutes)
 bash example/run_example.sh
 ```
+
+This will:
+1. Generate synthetic test data (5 Mb genome, 50 genes)
+2. Prepare reference files
+3. Run the complete PACE pipeline
+4. Show prediction results
+
+See [example/README.md](example/README.md) for a detailed step-by-step tutorial.
 
 ### Basic Usage
 
@@ -430,10 +440,10 @@ ml_integration:
 If you use PACE in your research, please cite:
 
 ```bibtex
-@software{PACE2024,
+@software{PACE,
   author = {Shen, Linyong},
   title = {PACE: Predicting Activity-Contact for Enhancer-promoter},
-  year = {2024},
+  year = {2026},
   publisher = {GitHub},
   url = {https://github.com/shenlinyong/PACE}
 }
@@ -463,9 +473,9 @@ And the original ABC model papers:
 
 ## Contact
 
-- **Author**: Linyong Shen (沈林泳)
+- **Author**: Linyong Shen (申林用)
 - **Institution**: Northwest A&F University (西北农林科技大学)
-- **Email**: [your.email@nwafu.edu.cn]
+- **Email**: [shenlinyong@nwafu.edu.cn]
 - **Issues**: [GitHub Issues](https://github.com/shenlinyong/PACE/issues)
 
 ## License
