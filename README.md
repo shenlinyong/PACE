@@ -49,6 +49,14 @@ Activity = f(Accessibility, Histones, TFs, Methylation, ...)
 - ✅ **eQTL Validation**: Validate predictions with genetic evidence
 - 🚀 **Automated Pipeline**: Snakemake workflow for one-command execution
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| 📖 [Quick Start Guide](docs/QUICKSTART.md) | 5-minute guide to get started |
+| 📊 [Methods & Algorithm](docs/METHODS.md) | Detailed methods and formulas |
+| 🤖 [ML Integration](docs/ML_INTEGRATION.md) | Machine learning module guide |
+
 ## Quick Start
 
 ### Installation
