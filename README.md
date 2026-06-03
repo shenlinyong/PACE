@@ -22,7 +22,7 @@
 
 ## Overview
 
-**PACE** is a flexible multi-omics computational framework for predicting enhancer-promoter regulatory interactions in livestock species, based on the [Activity-by-Contact (ABC) Model](https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction).
+**PACE** is a flexible multi-omics computational framework for predicting enhancer-promoter regulatory interactions, based on the [Activity-by-Contact (ABC) Model](https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction).
 
 ### Core Innovation
 
