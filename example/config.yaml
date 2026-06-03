@@ -1,0 +1,52 @@
+# PACE Example Configuration File
+# For testing with example data
+
+### OUTPUT DIRECTORY
+results_dir: "example/results/"
+
+### SAMPLE CONFIGURATION TABLE
+biosamplesTable: "example/config_biosamples.tsv"
+
+### REFERENCE FILES (example data)
+ref:
+  chrom_sizes: "example/reference/example.chrom.sizes"
+  regions_blocklist: "example/reference/blacklist.bed"
+  ubiquitous_genes: "reference/UbiquitouslyExpressedGenes.txt"
+  genes: "example/reference/genes.bed"
+  genome_tss: "example/reference/genes.TSS500bp.bed"
+  qnorm: ""
+  abc_thresholds: "reference/abc_thresholds.tsv"
+
+### MACS2 PEAK CALLING PARAMETERS
+params_macs:
+  pval: 0.1
+  # Small genome for example data
+  genome_size: 5.0e6
+  threads: 4
+
+### CANDIDATE REGION PARAMETERS
+params_candidate:
+  peakExtendFromSummit: 250
+  # Reduced for example data
+  nStrongestPeaks: 5000
+
+### NEIGHBORHOOD ANALYSIS PARAMETERS
+params_neighborhoods:
+  use_qnorm: False
+
+### PREDICTION PARAMETERS
+params_predict:
+  flags: "--scale_hic_using_powerlaw"
+  hic_gamma: 1.024238616787792
+  hic_scale: 5.9594510043736655
+  hic_pseudocount_distance: 5000
+
+### FILTER PREDICTION PARAMETERS
+params_filter_predictions:
+  score_column: 'ABC.Score'
+  threshold: 0.02
+  include_self_promoter: True
+  only_expressed_genes: False
+
+### INTERNAL USE
+ABC_DIR_PATH: ""

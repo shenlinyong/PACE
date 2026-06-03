@@ -1,0 +1,35 @@
+# Ubiquitously Expressed Genes
+# One gene symbol per line. Lines starting with '#' are comments.
+#
+# These housekeeping genes are stably and broadly expressed across tissues and
+# are conserved across vertebrates (pig / cattle / chicken / human), so this
+# default list works out of the box for the species PACE targets.
+#
+# Replace or extend this list with a species-specific set if you have one
+# (the gene symbols must match those in your genes.bed / annotation).
+
+ACTB
+GAPDH
+B2M
+HPRT1
+RPL13A
+RPLP0
+TBP
+PGK1
+PPIA
+YWHAZ
+SDHA
+TFRC
+GUSB
+HMBS
+UBC
+EEF1A1
+RPS18
+RPL19
+TUBB
+LDHA
+ALDOA
+ENO1
+PGAM1
+TUBA1B
+VIM
