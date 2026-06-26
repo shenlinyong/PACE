@@ -45,7 +45,6 @@ Activity = f(Accessibility, Histones, Methylation, ...)
 - 📊 **Flexible Multi-omics Integration**: From minimal (ATAC-only) to comprehensive (all data types)
 - 🧬 **RNA-seq Integration**: Filter predictions to expressed genes
 - 🔬 **Methylation Support**: DNA methylation as inhibitory signal
-- 🎯 **TF Binding**: Incorporate transcription factor ChIP-seq
 - ✅ **eQTL Validation**: Validate predictions with genetic evidence
 - 🚀 **Automated Pipeline**: Snakemake workflow for one-command execution
 
