@@ -201,7 +201,7 @@ snakemake --cores 8
 | **H3K27me3** | BAM/bigWig | Polycomb repression | **Inhibitory** |
 | **H3K9me3** | BAM/bigWig | Heterochromatin | **Inhibitory** |
 | **DNA Methylation** | bedGraph/bigWig | CpG methylation | **Inhibitory** |
-| **TF ChIP-seq** | BAM/bigWig | TF binding | Activating |
+| **TF ChIP-seq** | BAM/bigWig | TF binding | activator or repressor  |
 | **Hi-C** | .hic/bedpe | 3D chromatin contact | Contact |
 | **eQTL** | TSV | Genetic evidence | Validation |
 
