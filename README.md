@@ -468,15 +468,21 @@ python scripts/pace_ml.py train \
 python scripts/pace_ml.py predict \
     --predictions results/NewSample/Predictions/EnhancerPredictionsAllPutative.tsv.gz \
     --model models/my_model.pkl \
-    --output results/NewSample/Predictions/EnhancerPredictions_ML.tsv \
-    --abc_weight 0.5
+    --output results/NewSample/Predictions/EnhancerPredictions_ML.tsv
 ```
 
 ### ML Output
 
 The ML module adds:
 - `ML.Score`: ML-based prediction probability
-- `Combined.Score`: Weighted combination of ABC.Score and ML.Score
+- `ML.Decision`: whether the ML fit was `accept`ed or `reject`ed
+- `Combined.Score`: a **gated selection**, not an average. PACE compares the
+  weights learned on your validated data with the default priors (themselves
+  learned on human GM12878 CRISPRi data). If they agree, the small-sample fit
+  is trusted and `Combined.Score = ML.Score`; if they differ, the fit is
+  rejected and `Combined.Score = ABC.Score` (the formula-based score). The two
+  scores are never averaged — averaging would only dilute an unreliable ML
+  score and mix a fixed component back into a data-driven prediction.
 
 ### Configuration
 

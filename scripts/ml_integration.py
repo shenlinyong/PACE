@@ -277,41 +277,43 @@ class PACEMLPredictor:
         }).sort_values("importance_mean", ascending=False)
         return df
 
-    def compare_with_empirical_weights(
-            self, empirical_weights: Dict[str, float]) -> pd.DataFrame:
-        """Compare manual (empirical) signal weights with learned importance.
+    def compare_with_default_priors(
+            self, default_priors: Dict[str, float]) -> pd.DataFrame:
+        """Compare the default prior weights with the learned importance.
 
-        Provides a side-by-side comparison of manual weights (e.g. ATAC=1.5 >
-        H3K27ac=1.0) vs the data-driven feature importance learned by the ML
-        model. Both are rescaled to sum to 1 so the rankings are directly
-        comparable.
+        The PACE default signal weights (e.g. ATAC=1.5 > H3K27ac=1.0) are not
+        hand-set constants: they are *priors learned on the human GM12878
+        CRISPRi-validated E-P data* and adopted as configurable, transferable
+        defaults. This method places those default priors side by side with the
+        data-driven feature importance learned by the current model. Both are
+        rescaled to sum to 1 so the rankings are directly comparable.
 
         Args:
-            empirical_weights: Mapping of signal name -> manual weight.
+            default_priors: Mapping of signal name -> default prior weight.
 
         Returns:
-            DataFrame with empirical and learned (normalized) importances and
-            their ranks for the signals present in both.
+            DataFrame with default-prior and learned (normalized) importances
+            and their ranks for the signals present in both.
         """
         imp = self.get_feature_importance().set_index("feature")["importance"]
 
         rows = []
-        emp_total = sum(abs(v) for v in empirical_weights.values()) or 1.0
+        prior_total = sum(abs(v) for v in default_priors.values()) or 1.0
         # Match feature names flexibly (e.g. 'H3K27ac' vs 'H3K27ac_signal').
-        for sig, w in empirical_weights.items():
+        for sig, w in default_priors.items():
             learned = np.nan
             for feat in imp.index:
                 if feat == sig or feat.startswith(sig):
                     learned = imp[feat]
                     break
             rows.append({"signal": sig,
-                         "empirical_weight": w,
-                         "empirical_weight_norm": w / emp_total,
+                         "default_prior": w,
+                         "default_prior_norm": w / prior_total,
                          "learned_importance": learned})
         df = pd.DataFrame(rows)
         learned_total = df["learned_importance"].sum(skipna=True) or 1.0
         df["learned_importance_norm"] = df["learned_importance"] / learned_total
-        df["empirical_rank"] = df["empirical_weight"].rank(ascending=False)
+        df["default_rank"] = df["default_prior"].rank(ascending=False)
         df["learned_rank"] = df["learned_importance"].rank(ascending=False)
         return df.sort_values("learned_importance", ascending=False)
     
@@ -375,6 +377,83 @@ class PACEMLPredictor:
         self.config = model_data['config']
         
         logger.info(f"Model loaded from {filepath}")
+
+
+def weight_agreement(learned_importance: Dict[str, float],
+                     default_priors: Dict[str, float]) -> Dict[str, float]:
+    """Quantify how closely the learned weights match the default priors.
+
+    PACE adopts the GM12878-learned signal weights as default, transferable
+    priors. When a target system has its own validated E-P data, the ML module
+    is retrained on that data and its learned feature importance is compared
+    with these default priors. This function provides the metric used to decide
+    whether the small-sample fit is trustworthy:
+
+      * ``overlap`` - 1 - 0.5*sum|p_i - q_i| over the matched signals, where
+        ``p`` and ``q`` are the default-prior and learned-importance vectors
+        each L1-normalized to sum to 1. It lies in [0, 1] and equals 1 when the
+        two weight distributions are identical (1 minus total-variation
+        distance).
+      * ``spearman`` - rank correlation of the matched signals (captures
+        whether the *ordering* of signal importance agrees), in [-1, 1].
+
+    Args:
+        learned_importance: Mapping signal/feature name -> learned importance.
+        default_priors: Mapping signal name -> default prior weight.
+
+    Returns:
+        Dict with ``overlap``, ``spearman`` and ``n_matched`` (the number of
+        signals present in both).
+    """
+    matched_prior, matched_learned = [], []
+    for sig, w in default_priors.items():
+        for feat, imp in learned_importance.items():
+            if feat == sig or feat.startswith(sig):
+                matched_prior.append(abs(w))
+                matched_learned.append(abs(imp))
+                break
+
+    n = len(matched_prior)
+    if n == 0:
+        return {"overlap": 0.0, "spearman": float("nan"), "n_matched": 0}
+
+    p = np.asarray(matched_prior, dtype=float)
+    q = np.asarray(matched_learned, dtype=float)
+    p = p / p.sum() if p.sum() > 0 else p
+    q = q / q.sum() if q.sum() > 0 else q
+    overlap = 1.0 - 0.5 * np.abs(p - q).sum()
+
+    spearman = float("nan")
+    if n >= 2:
+        from scipy.stats import spearmanr
+        rho = spearmanr(matched_prior, matched_learned).statistic
+        spearman = float(rho) if rho == rho else float("nan")  # NaN-safe
+
+    return {"overlap": float(overlap), "spearman": spearman, "n_matched": n}
+
+
+def decide_ml_acceptance(learned_importance: Dict[str, float],
+                         default_priors: Dict[str, float],
+                         agreement_threshold: float = 0.7) -> Dict:
+    """Decide whether to accept the learned ML fit or fall back to the formula.
+
+    Implements the PACE acceptance rule: if the weights learned from the
+    target system's own validated data agree with the GM12878-learned default
+    priors (``overlap >= agreement_threshold``), the fit is considered reliable
+    and the ML score is used; otherwise the validated data are judged too few
+    or too noisy, the ML fit is rejected, and the formula-based score with the
+    default priors is used instead. The two scores are never averaged.
+
+    Returns:
+        Dict with ``decision`` ('accept'/'reject'), ``agreement`` metrics and
+        the ``threshold`` used.
+    """
+    agreement = weight_agreement(learned_importance, default_priors)
+    decision = ("accept" if agreement["overlap"] >= agreement_threshold
+                else "reject")
+    return {"decision": decision,
+            "agreement_threshold": agreement_threshold,
+            **agreement}
 
 
 class FeatureEngineering:

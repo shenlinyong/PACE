@@ -214,11 +214,18 @@ params_filter_predictions:
 # context-matched validated E-P interaction data are available for training
 # (e.g. tissue-matched eQTL or CRISPRi pairs). PACE does not perform blind
 # human-to-livestock transfer for production predictions.
+#
+# Combined.Score is a gated SELECTION, not an average: after training on a
+# system's own validated data, the learned signal weights are compared with
+# the default priors (themselves learned on GM12878). If their overlap is at
+# least `weight_agreement_threshold` the ML fit is accepted and the ML score is
+# used; otherwise the fit is rejected and the formula-based score is used. The
+# ML and formula scores are never averaged.
 ml_integration:
   enabled: false
   model_type: "gradient_boosting"   # or "random_forest"
   use_pretrained: false
-  combined_score_alpha: 0.5         # weight of formula score in Combined.Score
+  weight_agreement_threshold: 0.7   # min weight overlap to accept the ML fit
   require_matched_validation: true  # guard against unmatched training data
 
 #==============================================================================

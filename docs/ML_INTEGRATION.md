@@ -95,7 +95,9 @@ Uses Gradient Boosting or Random Forest classifiers:
 
 Outputs:
 - `ML.Score`: ML-predicted probability (0-1)
-- `Combined.Score`: Weighted average of ABC.Score and ML.Score
+- `ML.Decision`: `accept` or `reject` for the trained ML fit
+- `Combined.Score`: a **gated selection** between the ML and formula scores
+  (not an average) — see *Combined scoring* below
 
 ## Usage
 
@@ -149,16 +151,30 @@ chr2:3000-3500	MYC	0
 python scripts/pace_ml.py predict \
     --predictions results/NewSample/Predictions/EnhancerPredictionsAllPutative.tsv.gz \
     --model models/my_model.pkl \
-    --output results/NewSample/Predictions/EnhancerPredictions_ML.tsv \
-    --abc_weight 0.5
+    --output results/NewSample/Predictions/EnhancerPredictions_ML.tsv
 ```
 
-#### `--abc_weight` Parameter
+#### Combined scoring (gated selection, not averaging)
 
-Controls how to combine ABC and ML scores:
-- `0.0`: Use only ML score
-- `0.5`: Equal weight (default)
-- `1.0`: Use only ABC score
+The original purpose of combined scoring is to guard against errors from the
+ML module when the validated E-P data are too few or contain false positives.
+PACE achieves this by **selecting** one score rather than averaging two:
+
+1. At training time the weights learned on your validated data are compared
+   with the default priors (learned on human GM12878 CRISPRi data). The
+   agreement is the overlap (1 − total-variation distance) of the two
+   L1-normalized weight vectors over the matched signals.
+2. If the overlap is `≥ --agreement_threshold` (default `0.7`), the
+   small-sample fit is judged reliable and accepted: `Combined.Score =
+   ML.Score`.
+3. Otherwise the fit is rejected: `Combined.Score = ABC.Score` (the
+   formula-based score with the default priors).
+
+The ML and formula scores are **never averaged**, because averaging would only
+dilute an unreliable ML score and re-introduce a fixed component into a
+data-driven prediction. The decision is recorded in `ML.Decision` and stored in
+the model file. (The former `--abc_weight` averaging parameter is deprecated and
+ignored.)
 
 ## Model Configuration
 
@@ -169,6 +185,7 @@ ml_integration:
   enabled: false                    # Enable ML in workflow
   model_type: "gradient_boosting"   # Model type
   use_pretrained: false             # Use pre-trained model
+  weight_agreement_threshold: 0.7   # Min weight overlap to accept the ML fit
 ```
 
 ### Command-Line Options
@@ -181,6 +198,7 @@ ml_integration:
 | `--learning_rate` | 0.1 | Learning rate (GB only) |
 | `--cv_folds` | 5 | Cross-validation folds |
 | `--balance_classes` | False | Downsample negatives |
+| `--agreement_threshold` | 0.7 | Min weight overlap with the default priors to accept the ML fit |
 
 ## Output Interpretation
 
@@ -244,11 +262,11 @@ and **still requires labelled examples in the target context**; it is intended
 for related tissues/cell types within a species or closely matched contexts,
 not distant cross-species extrapolation.
 
-## Feature importance and comparison with manual weights
+## Feature importance and comparison with the default priors
 
 To inspect which epigenomic features drive the model and to compare the
-data-driven importance with PACE's manual weights (addressing the requests for
-a transparent importance ranking and a manual-vs-learned comparison):
+data-driven importance with PACE's default prior weights (which are themselves
+learned on the GM12878 CRISPRi data, not hand-set):
 
 ```bash
 python scripts/pace_ml.py importance \
@@ -257,10 +275,10 @@ python scripts/pace_ml.py importance \
 ```
 
 Outputs: gain-based importance, permutation importance (robust to feature
-correlation), an `empirical_vs_learned.tsv` table (manual weight vs learned
+correlation), a `default_vs_learned.tsv` table (default prior vs learned
 importance, normalized, with ranks), and a bar plot. In our benchmark the
 learned importance ranks accessibility above H3K27ac above the other marks,
-consistent with the manual weight ordering.
+consistent with the default-prior ordering.
 
 ## Citation
 

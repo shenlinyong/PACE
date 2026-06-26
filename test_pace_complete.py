@@ -686,11 +686,20 @@ def run_ml_tests(test_dir):
         assert (output_dir / "predictions_ml.tsv").exists()
         
         # Check output has ML columns
+        import numpy as np
         import pandas as pd
         df = pd.read_csv(output_dir / "predictions_ml.tsv", sep='\t')
         assert 'ML.Score' in df.columns, "ML.Score column missing"
         assert 'Combined.Score' in df.columns, "Combined.Score column missing"
+        assert 'ML.Decision' in df.columns, "ML.Decision column missing"
+        # Combined.Score must be a *gated selection* (ML.Score if accepted,
+        # else the formula ABC.Score) - never an average of the two.
+        decision = df['ML.Decision'].iloc[0]
+        expected = df['ML.Score'] if decision == 'accept' else df['ABC.Score']
+        assert np.allclose(df['Combined.Score'], expected), \
+            "Combined.Score is not the gated selection (averaging detected)"
         print(f"    ML.Score range: {df['ML.Score'].min():.4f} - {df['ML.Score'].max():.4f}")
+        print(f"    ML decision: {decision}")
         return df
     
     @test("ML: Random Forest model")
@@ -880,7 +889,7 @@ def run_new_module_tests(test_dir):
     test_benchmark()
 
     # --- ML feature importance command ------------------------------------
-    @test("pace_ml.py importance: feature importance + empirical comparison")
+    @test("pace_ml.py importance: feature importance + default-prior comparison")
     def test_ml_importance():
         try:
             import sklearn  # noqa: F401
@@ -902,7 +911,7 @@ def run_new_module_tests(test_dir):
             capture_output=True, text=True)
         assert r.returncode == 0, f"importance failed: {r.stderr}"
         assert (test_dir / "imp.gain_importance.tsv").exists()
-        assert (test_dir / "imp.empirical_vs_learned.tsv").exists()
+        assert (test_dir / "imp.default_vs_learned.tsv").exists()
         return r
 
     test_ml_importance()

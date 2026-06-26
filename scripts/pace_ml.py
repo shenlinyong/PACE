@@ -33,16 +33,21 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ml_integration import (
     PACEMLPredictor, MLConfig, FeatureEngineering,
-    train_pace_ml_model, plot_feature_importance, SKLEARN_AVAILABLE
+    train_pace_ml_model, plot_feature_importance, decide_ml_acceptance,
+    SKLEARN_AVAILABLE
 )
 
 logging.basicConfig(level=logging.INFO, format='[PACE ML] %(message)s')
 logger = logging.getLogger(__name__)
 
-# Default empirical (manual) signal weights, matching config/config.yaml.
-# Used by the `importance` command to compare manual weights with data-driven
-# feature importance.
-DEFAULT_EMPIRICAL_WEIGHTS = {
+# Default signal-weight priors, matching config/config.yaml. These are not
+# hand-set constants: they are priors learned on the human GM12878
+# CRISPRi-validated E-P data and adopted as configurable, transferable
+# defaults. The `importance` command compares them with the data-driven
+# feature importance learned on a target system's own validated pairs, and the
+# `predict` command uses their agreement to decide whether to accept the ML
+# fit or fall back to the formula-based score.
+DEFAULT_PRIOR_WEIGHTS = {
     'ATAC': 1.5, 'DHS': 1.5, 'H3K27ac': 1.0, 'H3K4me1': 0.8,
     'H3K4me3': 0.5, 'H3K9ac': 0.6, 'H3K36me3': 0.3,
     'H3K27me3': 0.5, 'H3K9me3': 0.5, 'methylation': 0.5, 'contact': 1.0,
@@ -209,19 +214,35 @@ def train_model(args):
         config=config
     )
     
+    # Decide whether the small-sample fit is trustworthy by comparing the
+    # learned feature importance with the GM12878-learned default priors.
+    # If they agree the ML score will be used; otherwise PACE falls back to the
+    # formula-based score (the two are never averaged). The decision is stored
+    # in the model file and consulted by the `predict` command.
+    ml_decision = decide_ml_acceptance(
+        model.feature_importance, DEFAULT_PRIOR_WEIGHTS,
+        agreement_threshold=args.agreement_threshold)
+    logger.info(
+        "Weight agreement with default priors: overlap=%.3f (threshold=%.2f) "
+        "-> ML fit %sED",
+        ml_decision['overlap'], ml_decision['agreement_threshold'],
+        ml_decision['decision'].upper())
+
     # Save model
     os.makedirs(os.path.dirname(os.path.abspath(args.output)), exist_ok=True)
-    
+
     with open(args.output, 'wb') as f:
         pickle.dump({
             'model': model,
             'feature_columns': feature_cols,
             'metrics': metrics,
-            'config': config
+            'config': config,
+            'ml_decision': ml_decision,
+            'default_priors': DEFAULT_PRIOR_WEIGHTS,
         }, f)
-    
+
     logger.info(f"Model saved to: {args.output}")
-    
+
     # Print results
     print("\n" + "=" * 50)
     print("Training Results")
@@ -229,6 +250,11 @@ def train_model(args):
     print(f"CV AUC: {metrics['cv_auc_mean']:.3f} ± {metrics['cv_auc_std']:.3f}")
     print(f"Samples: {metrics['n_samples']}")
     print(f"Features: {metrics['n_features']}")
+    print(f"Weight agreement with default priors (overlap): "
+          f"{ml_decision['overlap']:.3f} "
+          f"(threshold {ml_decision['agreement_threshold']:.2f})")
+    print(f"Decision: ML fit {ml_decision['decision'].upper()} "
+          f"({'use ML score' if ml_decision['decision'] == 'accept' else 'fall back to formula score'})")
     print("\nTop Feature Importance:")
     importance = model.get_feature_importance()
     for _, row in importance.head(10).iterrows():
@@ -241,16 +267,36 @@ def predict_with_model(args):
     if not SKLEARN_AVAILABLE:
         logger.error("scikit-learn not installed. Run: pip install scikit-learn")
         sys.exit(1)
-    
+
+    if getattr(args, 'abc_weight', None) is not None:
+        logger.warning(
+            "--abc_weight is deprecated and ignored: PACE no longer averages "
+            "the ML and formula scores. Combined.Score is now a gated "
+            "selection (see --agreement_threshold).")
+
     # Load model
     logger.info(f"Loading model from {args.model}...")
     with open(args.model, 'rb') as f:
         saved = pickle.load(f)
-    
+
     model = saved['model']
     feature_cols = saved['feature_columns']
-    
+
     logger.info(f"Model uses {len(feature_cols)} features")
+
+    # Determine the ML acceptance decision: prefer the decision stored at
+    # training time; otherwise recompute it from the model's learned importance
+    # vs the default priors (keeps older model files working).
+    default_priors = saved.get('default_priors', DEFAULT_PRIOR_WEIGHTS)
+    ml_decision = saved.get('ml_decision')
+    if ml_decision is None:
+        ml_decision = decide_ml_acceptance(
+            model.feature_importance, default_priors,
+            agreement_threshold=args.agreement_threshold)
+    logger.info(
+        "ML acceptance decision: %s (weight overlap %.3f, threshold %.2f)",
+        ml_decision['decision'].upper(), ml_decision['overlap'],
+        ml_decision['agreement_threshold'])
     
     # Load predictions
     logger.info("Loading predictions...")
@@ -274,21 +320,33 @@ def predict_with_model(args):
     logger.info("Generating ML predictions...")
     probabilities, _ = model.predict(X)
     
-    # Add ML score
+    # Add ML score (always reported for transparency)
     predictions['ML.Score'] = probabilities
-    
-    # Combine with ABC score if available
-    if 'ABC.Score' in predictions.columns:
-        # Weighted combination
-        alpha = args.abc_weight
-        predictions['Combined.Score'] = (
-            alpha * predictions['ABC.Score'] + 
-            (1 - alpha) * predictions['ML.Score']
-        )
+
+    # Combined score = a gated SELECTION, not an average. If the learned
+    # weights agree with the default priors, the ML fit is trusted and the ML
+    # score is used; otherwise the fit is rejected and the formula-based
+    # (ABC/PACE) score is used. Averaging is intentionally avoided because it
+    # would only dilute an unreliable ML score and re-introduce a fixed
+    # component into a data-driven prediction.
+    formula_col = ('ABC.Score' if 'ABC.Score' in predictions.columns
+                   else ('PACE.Score' if 'PACE.Score' in predictions.columns
+                         else None))
+    predictions['ML.Decision'] = ml_decision['decision']
+
+    if ml_decision['decision'] == 'accept' or formula_col is None:
+        if formula_col is None and ml_decision['decision'] == 'reject':
+            logger.warning(
+                "ML fit rejected but no formula score column "
+                "(ABC.Score/PACE.Score) is present; using ML.Score.")
+        predictions['Combined.Score'] = predictions['ML.Score']
         score_col = 'Combined.Score'
     else:
-        score_col = 'ML.Score'
-    
+        logger.info("Using formula-based score (%s) as Combined.Score.",
+                    formula_col)
+        predictions['Combined.Score'] = predictions[formula_col]
+        score_col = 'Combined.Score'
+
     # Sort by score
     predictions = predictions.sort_values(score_col, ascending=False)
     
@@ -304,8 +362,13 @@ def predict_with_model(args):
     print("=" * 50)
     print(f"Total predictions: {len(predictions)}")
     print(f"ML Score range: {predictions['ML.Score'].min():.4f} - {predictions['ML.Score'].max():.4f}")
-    if 'Combined.Score' in predictions.columns:
-        print(f"Combined Score range: {predictions['Combined.Score'].min():.4f} - {predictions['Combined.Score'].max():.4f}")
+    print(f"ML fit decision: {ml_decision['decision'].upper()} "
+          f"(weight overlap {ml_decision['overlap']:.3f}, "
+          f"threshold {ml_decision['agreement_threshold']:.2f})")
+    src = ('ML.Score' if ml_decision['decision'] == 'accept'
+           else 'formula score')
+    print(f"Combined.Score source: {src}")
+    print(f"Combined Score range: {predictions['Combined.Score'].min():.4f} - {predictions['Combined.Score'].max():.4f}")
     print("=" * 50)
 
 
@@ -315,7 +378,7 @@ def feature_importance_command(args):
     Produces:
       * <output>.gain_importance.tsv      impurity/gain-based importance
       * <output>.permutation_importance.tsv (if --predictions/--validation given)
-      * <output>.empirical_vs_learned.tsv  manual weights vs learned importance
+      * <output>.default_vs_learned.tsv   default priors vs learned importance
       * <output>.png                       bar plot of importance
     """
     if not SKLEARN_AVAILABLE:
@@ -356,11 +419,11 @@ def feature_importance_command(args):
         logger.info("Wrote permutation importance to %s", perm_file)
         plot_value, plot_err, plot_src = 'importance_mean', 'importance_std', perm
 
-    # 3) Empirical vs learned comparison
-    comparison = model.compare_with_empirical_weights(DEFAULT_EMPIRICAL_WEIGHTS)
-    cmp_file = f"{out_prefix}.empirical_vs_learned.tsv"
+    # 3) Default priors vs learned comparison
+    comparison = model.compare_with_default_priors(DEFAULT_PRIOR_WEIGHTS)
+    cmp_file = f"{out_prefix}.default_vs_learned.tsv"
     comparison.to_csv(cmp_file, sep='\t', index=False)
-    logger.info("Wrote empirical-vs-learned comparison to %s", cmp_file)
+    logger.info("Wrote default-vs-learned comparison to %s", cmp_file)
 
     # 4) Plot
     plot_file = f"{out_prefix}.png"
@@ -374,8 +437,8 @@ def feature_importance_command(args):
     print("=" * 50)
     for _, row in gain.head(10).iterrows():
         print(f"  {row['feature']}: {row['importance']:.4f}")
-    print("\nEmpirical weight vs learned importance:")
-    print(comparison[['signal', 'empirical_weight', 'learned_importance']]
+    print("\nDefault prior weight vs learned importance:")
+    print(comparison[['signal', 'default_prior', 'learned_importance']]
           .to_string(index=False))
     print("=" * 50)
 
@@ -429,6 +492,12 @@ Examples:
                              help='Number of cross-validation folds')
     train_parser.add_argument('--balance_classes', action='store_true',
                              help='Balance classes by downsampling negatives')
+    train_parser.add_argument('--agreement_threshold', type=float, default=0.7,
+                             help='Minimum weight overlap with the default '
+                                  'priors for the ML fit to be accepted '
+                                  '(0-1, default: 0.7). Below this the fit is '
+                                  'rejected and predict falls back to the '
+                                  'formula-based score.')
     
     # Predict command
     predict_parser = subparsers.add_parser('predict', help='Apply ML model')
@@ -438,14 +507,21 @@ Examples:
                                help='Trained model file (.pkl)')
     predict_parser.add_argument('--output', '-o', required=True,
                                help='Output predictions file')
-    predict_parser.add_argument('--abc_weight', type=float, default=0.5,
-                               help='Weight for ABC score in combined score (0-1)')
+    predict_parser.add_argument('--agreement_threshold', type=float, default=0.7,
+                               help='Weight-overlap threshold for accepting the '
+                                    'ML fit, used only when the model file has '
+                                    'no stored decision (0-1, default: 0.7)')
+    predict_parser.add_argument('--abc_weight', type=float, default=None,
+                               help='DEPRECATED and ignored. PACE no longer '
+                                    'averages the ML and formula scores; the '
+                                    'Combined.Score is now a gated selection '
+                                    'between them (see --agreement_threshold).')
 
     # Importance command
     imp_parser = subparsers.add_parser(
         'importance',
         help='Export feature importance (gain + permutation) and compare '
-             'with empirical weights')
+             'with the default prior weights')
     imp_parser.add_argument('--model', required=True,
                             help='Trained model file (.pkl)')
     imp_parser.add_argument('--output', '-o', required=True,
