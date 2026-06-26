@@ -36,7 +36,7 @@ PACE Score(E,G) = ────────────────────�
 
 Where Activity can integrate multiple data types:
 ```
-Activity = f(Accessibility, Histones, TFs, Methylation, ...)
+Activity = f(Accessibility, Histones, Methylation, ...)
 ```
 
 ### Key Features
