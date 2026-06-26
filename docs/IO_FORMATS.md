@@ -107,8 +107,10 @@ All scored E-G pairs within 5 Mb.
 Filtered predictions (score ≥ threshold): slim key columns / all columns.
 
 ### `Predictions/EnhancerPredictions_ML.tsv`
-Adds `ML.Score` (ML probability) and `Combined.Score`
-(α·formula + (1−α)·ML).
+Adds `ML.Score` (ML probability), `ML.Decision` (`accept`/`reject`), and
+`Combined.Score` — a gated selection (`ML.Score` if the learned weights agree
+with the default priors, otherwise the formula-based `ABC.Score`; never an
+average).
 
 ### `Metrics/QCSummary_*.tsv`, `Metrics/QCPlots_*.pdf`
 Per-sample summary statistics and QC plots (score/distance distributions,
@@ -120,4 +122,4 @@ score-vs-distance, enhancer class, activity, enhancers per gene).
 | `eqtl_enrichment.py` | TSV: contingency counts, OR + 95% CI, Fisher p, score-stratified fold enrichment |
 | `sensitivity_analysis.py` | TSV: per-weight factor, Jaccard/overlap of top-k, Spearman, AUROC |
 | `benchmark_compare.py` | `benchmark_summary.tsv` (AUROC/AUPRC/sens@spec) + `benchmark_curves.png` |
-| `pace_ml.py importance` | gain & permutation importance TSVs, empirical-vs-learned TSV, plot |
+| `pace_ml.py importance` | gain & permutation importance TSVs, default-vs-learned TSV, plot |

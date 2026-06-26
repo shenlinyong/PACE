@@ -6,8 +6,10 @@ in PACE. PACE is a **flexible, configurable framework**: the values below are
 Every value can be changed in `config/config.yaml`, and the framework provides
 tools to re-derive or stress-test the defaults on your own data
 (`scripts/sensitivity_analysis.py`, the optional ML module), documenting the
-biological rationale, statistical basis, and reproducibility of the empirical
-settings.
+biological rationale, statistical basis, and reproducibility of the default
+settings. The default signal weights in particular are not hand-set constants:
+they are priors learned on the human GM12878 CRISPRi-validated E-P data and
+adopted as configurable, transferable defaults.
 
 All stochastic steps are controlled by a single `random_seed` (default 42),
 so any PACE run is exactly reproducible.
@@ -51,10 +53,11 @@ inhibitory layer to zero out activity on its own.
 1. **Biological ordering** (accessibility ≥ active-enhancer ≥ enhancer-mark ≥
    promoter-mark ≥ TF) reflects the specificity of each mark for active distal
    regulation and is consistent with the ABC model and the broader literature.
-2. **Magnitudes** were calibrated on the human GM12878 CRISPRi benchmark, the
-   one dataset with experimentally validated E-P pairs, and then held fixed
-   across species (we do **not** re-tune per species, to avoid over-fitting and
-   to keep predictions reproducible).
+2. **Magnitudes** were learned by training the ML module on the human GM12878
+   CRISPRi-validated E-P pairs (the one dataset with experimentally validated
+   pairs) and then adopted as default priors held fixed across species (we do
+   **not** re-tune per species, to avoid over-fitting and to keep predictions
+   reproducible).
 3. **Robustness, not point estimates.** Because the exact magnitudes are
    uncertain, PACE is designed so that predictions are *insensitive* to them.
    `scripts/sensitivity_analysis.py` perturbs every weight (activating **and**
@@ -63,7 +66,7 @@ inhibitory layer to zero out activity on its own.
 4. **Data-driven alternative.** When species-/context-matched validated E-P
    data are available, the optional ML module learns the feature combination
    directly and reports feature importance, which can be compared with these
-   manual weights (`python scripts/pace_ml.py importance`; see §4).
+   default priors (`python scripts/pace_ml.py importance`; see §4).
 
 ---
 
@@ -106,10 +109,10 @@ but this is an explicit, documented choice rather than a hidden assumption.
 
 ---
 
-## 4. Empirical weights vs. learned importance
+## 4. Default priors vs. learned importance
 
-To verify that the manual weights are biologically sensible, train the ML
-module on validated pairs and compare:
+To verify that the default prior weights are biologically sensible, train the
+ML module on validated pairs and compare:
 
 ```bash
 python scripts/pace_ml.py train     --predictions preds.tsv.gz --validation pairs.tsv --output model.pkl --balance_classes
@@ -119,15 +122,16 @@ python scripts/pace_ml.py importance --model model.pkl --output importance/run
 This writes:
 - `*.gain_importance.tsv` — impurity/gain-based importance;
 - `*.permutation_importance.tsv` — permutation importance (robust, unbiased);
-- `*.empirical_vs_learned.tsv` — manual weight vs learned importance, both
+- `*.default_vs_learned.tsv` — default prior vs learned importance, both
   normalized, with ranks;
 - `*.png` — bar plot.
 
 In our benchmark the **rank ordering** of the learned importances matches the
-manual ordering (accessibility > H3K27ac > other marks), supporting the
+default-prior ordering (accessibility > H3K27ac > other marks), supporting the
 biological validity of the defaults while making any discrepancy transparent.
-The `Combined.Score` (formula × ML) is reported alongside the standalone ML
-score so users can confirm whether combining helps for their data.
+The `Combined.Score` is a gated selection between the formula and ML scores
+(`ML.Score` when the learned weights agree with the default priors, otherwise
+the formula-based `ABC.Score`); the two are never averaged.
 
 ---
 
