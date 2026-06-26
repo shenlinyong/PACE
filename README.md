@@ -41,7 +41,7 @@ Activity = f(Accessibility, Histones, Methylation, ...)
 
 ### Key Features
 
-- 🐄 **Universal for Livestock**: Pig, cattle, sheep, chicken, horse, and other domestic animals
+- 🐄 **Flexibly adaptable for Livestock**: Pig, cattle, sheep, chicken, horse, and other domestic animals
 - 📊 **Flexible Multi-omics Integration**: From minimal (ATAC-only) to comprehensive (all data types)
 - 🧬 **RNA-seq Integration**: Filter predictions to expressed genes
 - 🔬 **Methylation Support**: DNA methylation as inhibitory signal
