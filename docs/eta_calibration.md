@@ -3,15 +3,15 @@
 PACE accepts any finite `eta` in [0, 1]. The default configuration is `eta: auto`:
 without applicable functional labels or a matching frozen artifact, the exponent
 used numerically is **zero**. Explicit numeric eta values never trigger fitting.
-This revision supersedes the initial binary-only eta contract in the supplied
-development documents. The independent elastic-net classifier remains separate.
+The [primary formula](FORMULA.md) and the independent elastic-net classifier have
+different roles; fitting eta does not train that classifier.
 
 ## Formula and objective
 
-\[
+$$
 \mathrm{PACE}(E,G)=\frac{A_\star(E)\overline C(E,G)B(E,G)^{\eta_{used}}}
 {\sum_{e\in\mathcal E^{score}(G)}A_\star(e)\overline C(e,G)B(e,G)^{\eta_{used}}}.
-\]
+$$
 
 In automatic mode, eta_used is the bounded fitted estimate when calibration is
 possible, and zero otherwise. At exactly zero, B and its missing-data requirements
@@ -24,12 +24,12 @@ direction-qualified positives and powered negatives **within each gene**. Define
 their log PACE ratio equals their log support ratio; the gene denominator cancels.
 The declared ranking objective is
 
-\[
+$$
 \widehat\eta=\arg\min_{0\le\eta\le1}
 \frac1{|\mathcal G_{fit}|}\sum_{G\in\mathcal G_{fit}}
 \frac1{|P_G||N_G|}\sum_{p\in P_G,n\in N_G}
 \log\left[1+\exp\{-[(a_p-a_n)+\eta(b_p-b_n)]\}\right].
-\]
+$$
 
 Each informative gene has equal weight, and each positive-negative pair within a
 gene has equal weight. The objective is convex. Endpoint derivative checks and
@@ -57,7 +57,7 @@ on independent functional experiments in the intended population and tissue.
 | `assay_id`, `source_id` | Nonempty experimental assay and source identifiers |
 
 See the [synthetic table](../examples/training/eta_labels.tsv). This is a dedicated
-calibration table, distinct from the historical region-level benchmark schema.
+calibration table, distinct from the region-level benchmark schema.
 Convert a region label only when its canonical element mapping is unambiguous.
 RNA abundance and association/QTL annotations do not constitute functional labels.
 Negative status must reflect adequate assay power, not merely a nonsignificant test.

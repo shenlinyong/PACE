@@ -40,12 +40,13 @@ optimum, endpoint/zero/missing cases, split leakage and artifact mismatch, all
 three modes with flags alone, installation outside the checkout, documentation,
 full regression tests and hosted CI. Synthetic fixtures verify computation only.
 
-Status: implemented as software 0.2.0. The full local suite passes 153 tests,
-including the independent fractional-score and interior-optimum fixtures.
+Continuous calibration was introduced in software 0.2.0. Its numerical and behavior
+tests remain in the current suite, including fractional-score and interior-optimum fixtures.
 Direct flag-only measured, hybrid and genome modes, prefix installation and
 wheel execution outside the checkout are exercised. The [validation record](../docs/validation.md)
 and GitHub workflow track distribution and hosted regression results.
 
-The initial documents are retained with prominent supersession notes. Current
-formula/parameter documentation and both README entry points describe the new
-continuous rule. Legacy region-interface defaults remain separately documented.
+The subsequent public-documentation consolidation replaces duplicated initial
+contracts with maintained entry points. Current formula/parameter pages and both
+READMEs describe the continuous rule. Retired implementations and their defaults
+are available only through Git history; see [the public audit](public_docs_audit.md).

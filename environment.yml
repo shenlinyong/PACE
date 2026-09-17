@@ -1,17 +1,9 @@
 name: pace
 channels:
   - conda-forge
-  - bioconda
   - nodefaults
 dependencies:
   - python=3.11
-  - numpy>=1.26,<3
-  - pandas>=2.2,<3
-  - pyyaml>=6,<7
-  - scipy>=1.11,<2
-  - matplotlib-base>=3.8,<4
-  - pybigwig>=0.3.22,<0.4
-  - bedtools>=2.31,<3
-  - samtools>=1.19,<2
-  - pytest>=8,<10
   - pip>=24
+  - pip:
+      - .

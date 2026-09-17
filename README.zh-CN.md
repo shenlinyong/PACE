@@ -4,6 +4,21 @@ PACE 是用于研究家养动物增强子—基因调控联系的 Python 软件�
 
 作者与维护者：**申林用（Linyong Shen，shenlinyong），西北农林科技大学**。
 
+## 当前总公式
+
+$$
+\boxed{
+\operatorname{PACE}(E,G)=
+\frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
+{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
+ A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
+}
+$$
+
+分母只有目标基因实际可评分候选的支持总和。默认无适用功能校准时 eta=0；
+有合格训练/校准数据时估计 [0,1] 内的连续值。测试集不参与。
+完整定义见[数学公式](docs/FORMULA.md)。
+
 ## 安装与最小示例
 
 需要 Python 3.11 或更新版本。以下命令从仓库安装；暂不表示已经发布到 PyPI。
@@ -77,8 +92,8 @@ PACE 不是因果概率，也不直接预测表达变化。增强子自身支持
 目标被 indel 改变或已报告但无法解析的 SV，会返回明确不可用状态。软件不承担比对、变异发现、SV calling、
 全基因组新增强子发现或复杂 CNV 剂量重建。单变异 REF/ALT 情景与完整个体效应分开输出。
 
-旧 `scripts/pace.py`、`workflow/` 和旧教程保留，用于复现已有区域分析；它们采用不同的历史默认值和缺失规则，
-与 `pace-livestock` 的规范网格结果不能直接混合比较。
+当前分支只有一套评分实现，所有命令别名和 `scripts/pace.py` 都调用相同的软件包。
+已淘汰的工作流和公式仅通过 Git 历史追溯，参见[迁移说明](docs/migration.md)。
 
 详细说明：[新软件手册](docs/software.md) · [输入准备](docs/input_preparation.md) · [训练与校准](docs/training.md) ·
 [比较与基准](docs/comparison.md) · [测试记录](docs/validation.md) · [数学合同](docs/model.md)。

@@ -2,8 +2,9 @@
 
 PACE converts measured or predicted activity and contact evidence into relative enhancer–gene
 support. The installable `pace-livestock` package implements the September 2026 contracts.
-The older `scripts/pace.py` interface remains available for reproducing region-based analyses;
-its missing-data rules and defaults differ. Do not mix their scores.
+All installed command aliases and `scripts/pace.py` call this same package and
+[formula](FORMULA.md). Superseded implementations are available through Git history
+as described in [migration](migration.md).
 
 ## Install and run
 

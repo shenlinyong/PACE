@@ -5,6 +5,7 @@ records implementation decisions and verification boundaries for future maintain
 
 - [Numerical and provenance decisions](impl_canonical.md).
 - [Continuous eta and direct PACE command revision](impl_eta_cli.md).
+- [Public documentation consolidation and content audit](public_docs_audit.md).
 - [Development record](../PLAN.md).
 - [Executed verification](../docs/validation.md).
 - [Known scientific and implementation limits](../docs/limitations.md).

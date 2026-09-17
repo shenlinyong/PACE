@@ -1,35 +1,24 @@
-> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
-> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+# Notation and output fields
 
-# Mathematical notation and software fields
+All symbols refer to the [current formula](FORMULA.md).
 
-PACE (Prediction of Activity-based regulatory Connections for Enhancers) uses $\mathit{PACE}(E,G)$ for the mathematical score. Entity-dependent quantities use function notation.
+| Symbol | Meaning | Software field or contract |
+|---|---|---|
+| E, G | Canonical scoring unit and target gene | `element_id`, `gene_id` |
+| t | Deduplicated physical promoter/TSS | `promoter_id`, `tss0` |
+| M | Fixed assay panel | `activity.panel` |
+| x_star,m | Qualified resolved assay signal | `resolved_activity.resolved_value` |
+| A_star | Equal geometric activity of the fixed panel | `A_used` |
+| r | Declared observed-contact mixing weight | Contact resolution policy |
+| pi(t given G) | Frozen within-gene promoter weight | `promoters.pi` |
+| Cbar | Weighted mean contact across required TSSs | `Cbar` |
+| G(E) | Frozen candidate-gene set for E | `inputs.candidates` |
+| B | Contact share across G(E) | `B`; skipped at eta zero |
+| eta_used | Actual fixed or calibrated allocation exponent | `comparison_contract.eta`, `eta_calibration.json` |
+| S | Unnormalized activity/contact/allocation support | `support`, `log_support` |
+| E_score(G) | Actually scoreable candidates for G | Normalization identifiers and coverage |
+| PACE(E,G) | Within-gene relative support | `pace_score` |
 
-| Symbol | Meaning | Software representation |
-| --- | --- | --- |
-| $E$, $G$, $t$, $i$ | Enhancer, gene, TSS, assay | Coordinates, stable target ID, `TargetGeneTSS`, named signal |
-| $S(E,i)$ | Preprocessed assay signal | Input signal column |
-| $a_i$ | Fixed positive assay scale | Activity JSON `scale` |
-| $x(E,i)$ | Scaled signal $S(E,i)/a_i$ | Computed before aggregation |
-| $m(E,i)$ | Measurement present/absent | Finite value versus `NA` |
-| $w_i$, $q(E,i)$ | Assay prior and measurement quality | JSON `weight`, `quality_column` |
-| $A(E)$ | Enhancer activity | `activity` |
-| $\kappa$, $I(E)$ | Inhibitory strength and aggregate fraction | API `inhibition_strength`, output `repression` |
-| $P(d)$ | Positive contact prior | `contact_prior` |
-| $H(E,t)$, $D(d)$ | Observed and expected contact | `contact_observed`, `contact_expected` |
-| $\lambda(E,t)$ | Contact reliability used in mixing | Input `contact_reliability`, computed `contact_weight` |
-| $\pi(G,t)$ | TSS-use weight | `tss_weight` |
-| $C_{\mathrm{adj}}(E,t)$ | Adjusted TSS-level contact | `contact` before aggregation |
-| $C(E,G)$ | Gene-level contact | `contact_gene` |
-| $B(E,G)$ | Enhancer-centred target share | `target_share` |
-| $\eta$ | Allocation exponent | `competition_power` |
-| $R(E,G)$ | Raw activity/contact/allocation support | `raw_support` |
-| $\mathcal E^{\mathrm{obs}}(G)$ | Supplied candidates with finite support | Defines `observed_mass` |
-| $U(G)$ | Independently supplied residual support | `unassigned_mass` |
-| $\mathit{PACE}(E,G)$ | Relative gene-normalized score | `PACE.Score` |
-| $Q_A,Q_C,Q_T,Q_{\mathrm{cat}}$ | Activity, contact, TSS and catalogue QC | `activity_quality`, `contact_quality`, `tss_quality`, `catalogue_quality` |
-| $Q(E,G)$ | Minimum evidence component, unknown retained | `evidence_quality` |
-
-The [ABC comparison](ABC_COMPARISON.md) also writes this gene-level contact as $\overline C(E,G)$ to distinguish it from the ABC contact estimate. Thus $\overline C(E,G)\equiv C(E,G)$ in PACE: both denote the same reliability-adjusted, TSS-averaged `contact_gene` field.
-
-Distance units are bp. Signal, observed-contact and residual-support units must be documented with the input profile. See [equations](FORMULA.md), [parameters](PARAMETERS.md) and [outputs](IO_FORMATS.md).
+Auxiliary classifier outputs `pace_ml_score` and `pace_ml_probability` are separate.
+QC and coverage are reported explicitly; no universal combined quality index is
+multiplied into the main score. See the [data dictionary](data_dictionary.md).

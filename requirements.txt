@@ -1,9 +1,2 @@
-# Python dependencies for the direct PACE workflows.
-# Recommended complete installation: conda env create -f environment.yml
-# bedtools and samtools are external commands, not pip packages.
--r requirements-core.txt
-scipy>=1.11,<2
-matplotlib>=3.8,<4
-pyBigWig>=0.3.22,<0.4
-# Optional .hic/.cool readers: hic-straw / cooler.
-# The Snakemake/MACS2 recipe is workflow/envs/pace-env.yml.
+# Install the current package and genomic file adapters from the repository root.
+.[io]

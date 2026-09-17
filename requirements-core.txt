@@ -1,3 +1,2 @@
-numpy>=1.26,<3
-pandas>=2.2,<3
-PyYAML>=6,<7
+# Install the current package and its declared core dependencies.
+.

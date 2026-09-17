@@ -1,34 +1,40 @@
-> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
-> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+# Implemented methods
 
-# Computational methods
+PACE uses one [mathematical definition](FORMULA.md) for measured, hybrid and genome
+inputs. Detailed biological assumptions and research extensions are in
+[the model description](model.md); executable contracts are in [parameters](parameters.md).
 
-PACE (Prediction of Activity-based regulatory Connections for Enhancers) predicts relative support for cis enhancer–gene links using a shared scoring kernel. The [equations](FORMULA.md) are the mathematical specification; [parameter rationale](PARAMETERS.md) identifies defaults and available controls.
+## Shared calculation
 
-## Candidate and promoter preparation
+1. Freeze nonoverlapping scoring units, distinct TSSs and candidate enhancer–gene edges.
+2. Resolve each declared assay from compatible observations, quantitative predictions
+   or an independently calibrated combination. Preserve missing values and true zeros.
+3. Form the equal geometric activity of the fixed panel. For bulk sequence evidence,
+   average each assay across copies before forming activity.
+4. Resolve contact from the declared observed/prior policy and average distinct TSS
+   contacts with frozen promoter weights. Retain distance background in contact.
+5. Use eta zero by default without applicable calibration; otherwise fit eligible
+   functional training/calibration labels or reuse their frozen artifact.
+6. Multiply activity, contact and optional allocation, then normalize over the
+   actual scoreable candidates of each gene. Export coverage, denominator and provenance.
 
-Use a fixed, same-assembly enhancer catalogue and complete available gene annotation before score filtering. The supplied narrowPeak adapter selects peaks by `signalValue`, extends summits and applies optional blacklist filtering. Its TSS-region option identifies overlaps; it does not add missing promoter candidates or merge overlapping intervals. If a study requires a union of enhancer and promoter windows, construct that catalogue upstream and use it consistently for all models.
+## Inputs and fitted assets
 
-`prepare_tss.py` reads gene/transcript GTF records, converts positions to BED0, keeps distinct TSSs per stable gene ID and labels gene-boundary fallback. It retains all provided biotypes. File predictors generate same-chromosome pairs whose interval-midpoint-to-TSS distance is strictly below the configured window. Numerical-table scoring instead uses the candidate pairs supplied by the analyst.
+Measured mode needs qualified activity and contact or an explicit compatible prior.
+Hybrid mode additionally permits matching quantitative sequence evidence; actual
+fusion needs a target-specific calibrator. Genome mode needs trained quantitative
+sequence weights and contact prior, reference/individual sequence and a frozen
+candidate catalog. No universal species weights or contact constants are supplied.
 
-## Activity and contact
+The sequence CNN, contact-prior fit, signal-fusion fit, eta calibration and separate
+elastic-net classifier have distinct targets. Their data splits and validity checks
+are documented in [training](training.md). Additional omics are annotations unless
+explicitly used by that classifier. The primary score remains a support composition.
 
-Activity combines nonnegative, appropriately scaled signals through the missing-aware shifted geometric mean. Unknown measurements and measured zero remain distinct. Assay priors and quality inputs have separate meanings. The primary configuration uses accessibility and available H3K27ac with equal priors; optional inhibitory attenuation is disabled.
+## Reproducibility and evaluation
 
-Contact combines a positive distance prior with qualified observed/expected contact through supplied local reliability. Metadata must establish compatible units and source provenance. Missing prerequisites cause prior fallback rather than automatic acceptance of an unscaled observation. Distinct promoter contacts are averaged using gene-level TSS-use weights defined before windowing.
-
-## Target allocation and gene normalization
-
-Each enhancer's contact is allocated over its candidate genes. Raw support is activity × gene contact × target allocation raised to its configured exponent. The final score divides this support by finite gene-level support plus optional independently supplied residual mass. Unknown residual mass remains flagged. Unscorable candidates remain visible in the unfiltered result.
-
-The activity–contact basis is from [Fulco et al. (2019)](https://doi.org/10.1038/s41588-019-0538-0); enhancer-centred allocation and the multiple-promoter principle draw on [Hecker et al. (2023)](https://doi.org/10.1093/bioinformatics/btad062). PACE's exact operations and defaults are not interchangeable with every ABC or STARE release. See [the comparison](ABC_COMPARISON.md).
-
-## Evidence and implementation
-
-Input evidence is reported separately from relative score. Activity, contact, promoter and catalogue quality determine an operational evidence state, with reason codes for unknown or low support. RNA provides stable-ID context and optional downstream eligibility filtering; it does not multiply structural scores.
-
-The table CLI and file adapters call [workflow/scripts/pace_core.py](../workflow/scripts/pace_core.py). All gene-level candidates are written before optional output thresholding. Runtime dependencies and environment records are described in [Installation](INSTALLATION.md); [Validation](../VALIDATION.md) distinguishes numerical/software verification from biological evaluation.
-
-## Reproducible biological use
-
-Record source accessions, assembly/annotation versions, preprocessing, replicate handling, candidate/TSS construction, signal scales, contact QC, model settings and the exact commit. Calibration or comparison must preserve the declared data budget and include omitted predictions in coverage reporting. Software examples are synthetic, and a successful run does not by itself demonstrate functional enhancer regulation.
+Runs export input/model/software hashes, resolved configuration, evidence tables,
+actual eta and normalization identities. Tests compare independent hand calculations,
+missing-data invariants and installed command behavior. Independent biological
+accuracy still requires appropriate functional and individual-level datasets.
+See [validation](validation.md), [comparisons](comparison.md) and [limitations](limitations.md).

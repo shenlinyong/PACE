@@ -1,2 +1,2 @@
--r requirements.txt
-pytest>=8,<10
+# Current development suite; choose a suitable PyTorch build for sequence tests.
+.[dev,io,sequence,ml]

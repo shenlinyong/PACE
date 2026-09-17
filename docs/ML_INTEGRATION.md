@@ -1,6 +1,11 @@
-> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
-> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+# Additional omics and supervised learning
 
-# Archived supervised tools
+RNA, auxiliary histone marks, CTCF and methylation are annotations by default.
+They do not multiply the primary [PACE formula](FORMULA.md). With appropriate
+functional labels, the separate elastic-net classifier can use declared features.
+Its outputs are `pace_ml_score` and, after appropriate calibration, `pace_ml_probability`.
 
-The current primary PACE score is formula-based. Historical ML utilities are retained under `legacy/scripts/` with their [historical documentation](../legacy/docs/ML_INTEGRATION.md). They are not called by the current scoring kernel or validated as part of its prediction workflow.
+[Training](training.md) describes grouped tuning, training-only preprocessing and
+frozen inference with `PACE train` / `PACE predict-ml`. This classifier is separate
+from [continuous eta fitting](eta_calibration.md); neither converts the primary
+support share into a universal causal probability.

@@ -71,11 +71,7 @@ run_config: examples/measured/config.yaml
 labels: functional_labels.tsv
 region_membership: region_membership.tsv
 stratify: [gene_id]
-thresholds:
-  PACE_eta0:
-    value: 0.02
-    source_split: calibration
-    source_id: recorded_calibration_experiment
+thresholds: {}
 # external_methods:
 #   - name: gABC
 #     path: gabc_scores.tsv
@@ -83,16 +79,17 @@ thresholds:
 #     configuration: recorded_external_configuration
 ```
 
-The numeric threshold above is only an illustration. Freeze a threshold from appropriate
-training/calibration data; omit it when no such evidence exists. The benchmark never selects
+Decision thresholds are omitted by default. If a threshold has been independently frozen
+from appropriate training/calibration data, map its method name to `value`, `source_split`
+and `source_id`; omit it when no such evidence exists. The benchmark never selects
 a deployment threshold using the test set. Labels use the [standard dictionary](data_dictionary.md)
 and preserve every tested positive in the evaluation universe, including absent predictions.
-The first implementation trains/evaluates only unambiguous one-to-one region mappings; ambiguous
+The current implementation trains/evaluates only unambiguous one-to-one region mappings; ambiguous
 regions are exported rather than copied to several tiles.
 
 Built-ins are negative distance ranking, ABC-style single-TSS, and PACE eta 0/1. The single TSS
 is chosen by smallest coordinate then promoter ID before evaluation, and saved in the report.
-The three formula methods are additionally normalized on their common scoreable sets. External
+All configured formula methods are additionally normalized on their common scoreable sets. External
 scores require version/configuration provenance and columns `element_id,gene_id,score`; absent
 files become `not_available`. Without external raw support, their common-denominator status is
 explicitly not assessed. PACE does not claim to reimplement the external gABC package.

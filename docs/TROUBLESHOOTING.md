@@ -1,30 +1,21 @@
-> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
-> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
-
 # Troubleshooting
 
-PACE (Prediction of Activity-based regulatory Connections for Enhancers) reports invalid numerical inputs and preserves missing evidence. Start by checking the command, environment, assembly and unfiltered output.
+| Symptom | Check and correction |
+|---|---|
+| `PACE: command not found` | Activate the environment where the package was installed or add the installer prefix's bin directory to PATH |
+| Python version error | Select Python >=3.11; the prefix installer accepts `--python` |
+| Missing optional reader/model library | Install the matching `io` or `sequence` extra using the same environment's Python |
+| Input path not found | CLI paths use the working directory; YAML paths use the YAML file's directory |
+| Existing output directory | Select a new output path; outputs are not overwritten |
+| Schema/unknown configuration error | Use the [current schemas](data_dictionary.md) and [parameters](parameters.md), not a retired configuration |
+| Missing activity | Supply every declared assay for the fixed panel, or explicitly choose an appropriate separate single-layer run |
+| Missing contact or B | Check required TSSs and the fixed candidate-gene set; do not remove missing genes to change allocation |
+| All gene scores are NA | Inspect unresolved inputs and `gene_summary.tsv`; zero total support cannot be normalized |
+| Scores sum to one but coverage is partial | Inspect `normalization_status`; the sum describes the measurable subset only |
+| Automatic eta remains zero | Read `eta_calibration.json`: no labels, inapplicable context, insufficient informative genes, or a valid boundary optimum can explain zero |
+| Eta calibration scope mismatch | Use the same scientific context, catalog and evidence/model policy, or perform a new justified calibration |
+| Synthetic asset rejected | Use demonstration mode for bundled fixtures; provide real appropriate assets for research |
+| Genome predictions unavailable | Check sequence weights, reference/variants, phase, ploidy, callability and supported variant geometry |
 
-| Symptom | Check / resolution |
-| --- | --- |
-| `conda: command not found` | Install Miniforge/Conda and initialize the shell; reopen it before creating the environment |
-| Conda solve fails | Use the supplied recipe with strict priority; check network access and platform package availability. Avoid mixing default channels into this environment |
-| `conda activate` is unavailable in a batch job | Initialize Conda for the job shell, or use `conda run -n pace python ...` |
-| Existing environment name | Activate it and verify versions, or create a distinct prefix with `conda env create --prefix /path/to/env -f environment.yml` |
-| Missing NumPy/pandas/pyBigWig/bedtools | Confirm `which python` and `which bedtools`; use the active `pace` environment. Re-run the import and test commands in [Installation](INSTALLATION.md) |
-| Snakemake / PuLP API error | Use the supplied `pace-workflow` recipe with its compatible versions |
-| Snakemake reports wildcard target errors | Include the explicit target `all` in the documented command; verify the repository commit |
-| No candidate links | Match contig names, stable IDs and assembly; check TSS coordinates and the strict cis-distance window |
-| Missing-column error from `pace.py` | Use a headered TSV with every required [input column](INPUTS.md#quantified-candidate-table), not a BED file |
-| Activity/TSS conflict error | Deduplicate consistent records; do not attach different enhancer signal or TSS-use weight values to the same biological entity |
-| Every score is `NA` for a gene | Inspect missing activity and total raw support; zero denominator is unscorable and must not be replaced by a fabricated score |
-| Many rows are `provisional` | Expected with distance-only contact or unknown input QC. Read `evidence_reasons`; do not set unknown quality to 1 to obtain a preferred label |
-| Hi-C file supplied but scores still use the prior | Inspect expected contact, reliability and source metadata. An available file alone is insufficient for contact mixing |
-| Binary contact reader unavailable | Install the relevant optional reader and check the logs; the BEDPE example does not validate all binary file variants |
-| H3K27ac/methylation option rejected | Use `missing_geometric`; primary file adapters reject inhibitory inputs. Explicit fraction-scale inhibition is a core-API extension, disabled by default |
-| Filtered table is empty | Inspect the unfiltered scores and missingness before changing the threshold; verify that your biological decision cutoff is independently justified |
-| `.filtered.tsv` or `_Full.tsv` seems smaller than expected | These contain selected rows. The main predictor output is the complete record |
-| Unexpected effect from editing YAML | Consult [the interface mapping](PARAMETERS.md#5-which-configuration-entries-are-active); some compatibility keys are not forwarded |
-| Long genome-wide runtime or high memory | Run one chromosome as a pilot. Partition on boundaries that preserve each gene's and enhancer's candidate background; arbitrary row chunks alter normalization |
-
-To report a reproducible problem, include the Git commit, exact command, environment export, relevant error log and the smallest non-sensitive input that reproduces it in [GitHub Issues](https://github.com/shenlinyong/PACE/issues). Do not substitute a filtered result for the original input when diagnosing missing candidates.
+Report reproducible bugs with the command, commit, minimal non-sensitive example and
+QC reason. Software checks and their limitations are described in [validation](validation.md).

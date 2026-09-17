@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install . pytest build
-      - name: Core, schema, genotype and command tests
+      - name: Core, schema, genotype, command and public-documentation tests
         run: python -m pytest tests/test_canonical_*.py --ignore=tests/test_canonical_sequence.py -q
       - name: Build and test wheel outside checkout
         run: |
@@ -67,5 +67,6 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install '.[dev,io,ml]'
       - run: python -m pytest tests -q
-      - run: ruff check src/pace_livestock tests/test_canonical_*.py
-      - run: ruff format --check src/pace_livestock tests/test_canonical_*.py
+      - run: python scripts/check_public_docs.py
+      - run: ruff check src/pace_livestock tests/test_canonical_*.py scripts/check_public_docs.py scripts/pace.py
+      - run: ruff format --check src/pace_livestock tests/test_canonical_*.py scripts/check_public_docs.py scripts/pace.py

@@ -1,49 +1,39 @@
-# PACE implementation record
+# PACE development record
 
 Updated 2026-09-17. Maintainer: 申林用 (Linyong Shen), Northwest A&F University.
+Public repository: https://github.com/shenlinyong/PACE.
 
-This work implements the three supplied September 2026 contracts as an installable
-Python package while preserving the existing region-based scripts and their history.
-The existing public repository, `https://github.com/shenlinyong/PACE`, is the upload target.
+## Current model and software
 
-## Delivery sequence
+The current branch provides one implementation in `src/pace_livestock`. All PACE
+command aliases and the compatibility launcher call it. The mathematical source
+of truth is [FORMULA.md](docs/FORMULA.md), with the detailed
+[model](docs/model.md), [calibration contract](docs/eta_calibration.md) and
+[independent calculations](PACE_Review_and_Validation.md).
 
-1. Strict schemas, pure numerical kernel, candidate catalogs and provenance.
-2. Measured, hybrid and genome-only pipelines with offline synthetic examples.
-3. Genomic adapters, conservative variant mapping, quantitative CNN and calibration.
-4. Common-denominator comparison, grouped learning and benchmarks.
-5. Regression tests, wheel installation, CI, bilingual documentation and push.
+Measured, hybrid and genome-only modes share the same bulk-proxy scoring order.
+Automatic eta uses zero without suitable functional data, otherwise a bounded
+training/calibration estimate; test labels do not fit eta. Main normalization uses
+only actual scoreable support. Separate classifier outputs and QC retain their roles.
 
-## Decisions and evidence boundaries
+## Public documentation correction
 
-- The supplied documents override older formula defaults: eta=0, fixed assay panel,
-  no arbitrary residual mass, and missing values distinct from biological zero.
-- Existing `scripts/` and `workflow/` remain a separate legacy interface. Their outputs
-  must not be compared directly with canonical-grid scores.
-- Only synthetic fixtures are available. No livestock weights, biological accuracy,
-  or validated individual effects are claimed.
-- Skills: `research-software-engineering`, with resource and documentation companions,
-  from a-attia/scicomp-research-skills at commit
-  `8435b16d91972c4f31b006de7bcacf1f5eb47e8e`.
-- Package templates follow Scientific Python's src-layout, PEP 621 metadata and
-  wheel-test conventions. No copied scientific implementation is introduced.
+The user identified incompatible formulas and outdated information still visible
+in the public repository. Software 0.2.1 removes the retired code/configuration/
+example paths from the current branch and rewrites the public documentation.
+Git history preserves prior source and results. The
+[content audit](notes/public_docs_audit.md) records preserved, replaced and removed
+material; [migration](docs/migration.md) links the archival snapshot.
 
-## Status
+The local current-model suite passes 111 tests, including six new public-documentation
+and launcher checks. Packaging and hosted CI checks accompany publication. Final executed results are recorded in
+[validation](docs/validation.md). No real biological validation or livestock weights
+are claimed from these synthetic software tests.
 
-Software 0.2.0 implements continuous, functional-label-calibrated eta and the
-`PACE` executable with direct options for measured, hybrid and genome-only runs.
-All 153 local tests pass. Direct flag-only modes, actual prefix installation,
-fractional-score references, split-leakage rejection and frozen calibration reuse
-have been exercised. Acceptance and numerical decisions are in
-[the revision note](notes/impl_eta_cli.md). Packaging and hosted checks are recorded
-in [validation](docs/validation.md) and the linked GitHub workflow.
+## Development practices
 
-The completed initial delivery below is the historical 0.1.0 baseline.
-
-Implementation and local verification completed. The canonical package, real fitting/adaptation
-paths, offline examples, bilingual guides and CI are present. The local full suite passed 127
-tests; wheel-only offline demos and actual training/inference commands passed. See
-`docs/validation.md` for precise scope and environment, and `docs/limitations.md` for research
-extensions and unavailable real biological assets. The existing public GitHub main branch has
-been updated without rewriting history. The initial hosted CI run completed all eight jobs;
-the workflow tracks subsequent revisions. Run manifests also record the installed source hash.
+The work uses research-software-engineering, agent-resource-discipline and
+human-facing-doc-authoring from scicomp-research-skills, with independent numerical
+references, deterministic seeds, safe model artifacts and source hashing.
+[Implementation decisions](notes/impl_canonical.md) and
+[continuous-eta decisions](notes/impl_eta_cli.md) retain the numerical rationale.

@@ -16,9 +16,10 @@ Missing values and biological zeros must remain distinct. Preprocessing may only
 inside the training split; real validation claims must cite actual evidence. Keep IO separate
 from the mathematical functions. Loading models must not execute pickle or arbitrary code.
 
-New canonical features belong in `src/pace_livestock`. The existing scripts and workflow are
-a separate region-based interface; changes to their behavior require explicit regression
-evidence and documentation. Additions should preserve their API and license notices.
+All scientific implementations belong in `src/pace_livestock`. Command aliases and compatibility
+launchers must call this same package. Keep the public formula, examples and schemas consistent;
+run `python scripts/check_public_docs.py` before publishing documentation changes. Superseded
+implementations are accessible only through Git history. Preserve licence and attribution notices.
 
 Use small focused commits and include tests and relevant documentation. The project follows
 the numerical-correctness and reproducibility workflow of

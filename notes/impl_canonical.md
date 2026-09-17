@@ -1,12 +1,13 @@
 # Canonical implementation decisions
 
-Updated 2026-09-17. The development and review documents at the repository root are the primary
-scientific specification; the existing scripts implement a different historical region profile.
+Updated 2026-09-17. The authoritative scientific definition is [FORMULA.md](../docs/FORMULA.md).
+All current entry points use the src package; independent hand calculations remain
+in the root review document.
 
 | Decision | Source and rationale |
 |---|---|
-| Separate src package | Supplied contract A/B: preserve existing APIs and analyses while implementing revised rules |
-| eta=0 default, no residual mass | Model §§2/6 and review: allocation is optional; unknown support is not a fitted constant |
+| Single src package | All current entry points must implement the same scientific contract; history retains retired APIs |
+| Automatic eta with zero fallback | Formula and calibration contract: fit eligible functional training/calibration data within [0,1]; no added support term |
 | float64 log normalization | Development E: protect high-dynamic-range shares without pseudocounts; preserve support=0 |
 | Shared bulk marginal average | Review §3.1: 5/9 is distinct from copy-sum 3/7 |
 | Fixed panel and promoter pi | Model §§4/6: missing required layers/TSSs do not silently redefine the estimand |
@@ -23,11 +24,11 @@ the same deterministic kernel under reordered input. Optimizer tests use a 2e-6 
 tolerance against the analytical Bernoulli intercept; classifier optimization records convergence.
 CNN tests check gradients, updates, masks and persistence, not an invented accuracy target.
 
-Documentation audit: README has a new canonical entry section; all original substantial legacy
-content remains below its explicit interface boundary. Existing guides received scope notices,
-with their scientific formulas left unchanged for historical reproducibility. New model/data/
-parameter/training/comparison guides cover the new package. CITATION and AUTHORS use only the
-confirmed author and institution, with no invented DOI or coauthor.
+Public documentation is consolidated around the current model. Incompatible retained
+formulas, workflows and outputs were removed from the current branch after the user
+identified the conflicting descriptions. The [public audit](public_docs_audit.md)
+records the content disposition and verification. CITATION and AUTHORS use confirmed
+authorship, without an invented DOI or coauthor.
 
 Skills applied: research-software-engineering and its resource/documentation companions,
 installed from a-attia/scicomp-research-skills commit

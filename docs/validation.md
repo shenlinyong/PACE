@@ -1,78 +1,66 @@
-# Software verification record
+# Current software verification
 
-This record describes executed software checks on **2026-09-17**. It is not a biological
-validation study. All new examples, labels, variants and model weights used here are synthetic.
-No true livestock quantitative weights, paired-animal effects or independent perturbation
-benchmarks were supplied in this task.
+Executed local checks on **2026-09-17** for software **0.2.1**. The tests use synthetic
+fixtures, including actual small genomic file formats. They verify software behavior;
+no real livestock weights, independent functional benchmark or individual-effect
+accuracy is claimed.
 
-## Executed local checks
+## Executed checks
 
-| Check | Observed result |
+| Check | Result |
 |---|---|
-| Complete repository test suite | **153 passed** for software 0.2.0, including retained region-interface tests |
-| Canonical package statement coverage | Initial 0.1.0 baseline: **78.5%** (2,011 of 2,561 statements); not remeasured for 0.2.0 and not a biological-quality score |
-| Independent mathematical fixtures | Exact rational eta 0/1 and hand-derived eta=0.5 scores; analytic interior eta optimum at 0.5; activity, multi-TSS, fusion, bulk-order and CpG examples passed |
-| Functional eta calibration | Bounded endpoints, known interior optimum, fallback, train/test isolation, frozen reuse and scope rejection passed |
-| Direct executable | All three modes ran with file flags alone and no YAML, including paths with spaces and explicit overrides |
-| Prefix installer | Actual isolated installation with install.sh, PACE entry-point execution and shell syntax checks passed |
-| Missingness/denominators | True zero, missing assay/contact, fixed B universe, partial/common normalization and overflow passed |
-| Real small-file IO | bigWig missing/negative signal, sparse cool queries, BED/GTF, stranded CpG and RNA mappings passed |
-| Sequence handling | REF, GT, ploidy, phase sets, callability, multiallelic SNV, fixed-target indel and reported SV checks passed |
-| Actual CNN | CPU gradients/loss finite, masked heads respected, parameters updated, safetensors loading and central-position response passed |
-| Grouped classifier | Fold isolation, label exclusions, train-only preprocessing, actual auxiliary-feature use and calibration passed |
-| Offline modes | measured, hybrid and genome_only ran through the same scoring kernel |
-| Actual command workflows | Training → CNN predictions → genome scoring; prior/fusion fitting; train/predict ML; compare/stability/benchmark/variant scenarios succeeded |
-| Distribution | sdist and wheel built successfully; clean wheel-only environment ran all three demos outside the source checkout |
-| Offline guarantee in wheel test | NumPy/PyYAML-only environment; torch/pandas absent; socket connection calls disabled during all demos |
-| Style/patch checks | Ruff lint/format and git diff --check passed |
-| Mutation checks | In isolated copies, deleting B allocation or replacing geometric by arithmetic activity caused independent reference tests to fail |
+| Current test suite | **111 passed** |
+| Numerical references | Hand-derived endpoint and fractional eta scores, known interior calibration optimum, activity, TSS, fusion, bulk-order and CpG calculations pass |
+| Evidence and normalization | Missingness/zero distinction, fixed panel and B universe, partial/common denominators and overflow checks pass |
+| Calibration | Context and split isolation, zero fallback, bounded fitting, frozen reuse, incompatible scope and invalid artifact rejection pass |
+| Genomic IO | Small bigWig and sparse cooler fixtures, BED/GTF, CpG, RNA and variant/callability behavior pass |
+| Sequence and ML | Actual CNN gradient/update/save/load and grouped classifier/preprocessing checks pass |
+| Installed command | Three direct-file modes, file paths with spaces, YAML overrides and output protection pass |
+| Compatibility launchers | scripts/pace.py invokes the same fractional-scoring implementation; setup.sh delegates to the current installer |
+| Public documentation | Main displayed equations match FORMULA.md; documented defaults match configuration; relative links resolve; retired model terms and trees are rejected |
+| Source style | Ruff lint/format, shell syntax and git patch checks pass |
 
-One dependency warning was observed: cooler 0.10.4 uses a NumPy timedelta construction that
-NumPy 2.5.3 deprecates. It did not change the tested outputs. The initial legacy-suite attempt
-reported a missing matplotlib dependency; after installing that documented legacy dependency,
-the complete suite passed. No legacy mathematical function was changed to make these tests pass.
+The preceding mixed-interface suite had 153 tests. This revision retains its 105
+current-model tests, removes 48 tests together with the retired implementation, and
+adds six public-documentation/launcher checks. No current-model test was removed.
 
-## Requirements-to-evidence map
+One cooler 0.10.4 warning concerns NumPy timedelta construction; it does not change
+the tested outputs. The local environment uses Python 3.13.12, NumPy 2.5.3 and
+PyYAML 6.0.3, with optional IO and sequence dependencies installed. The
+[recorded dependency snapshot](../requirements-tested-python313.txt) identifies the
+research environment; it is not a claim that every dependency is required for scoring.
 
-| Development contract | Main implementation | Test evidence |
+## Verification map
+
+| Contract | Implementation | Test modules |
 |---|---|---|
-| C/E: schemas, source identity, window/assembly consistency, numerical core | config.py, schemas.py, core/scoring.py | test_canonical_core.py, test_canonical_pipeline.py |
-| C: grid, de-duplication, sparse candidates, format adapters | catalog/, io/ | test_canonical_adapters.py |
-| D/F: three regimes, asset scope, same bulk order, safe quantitative models | evidence/, sequence/, pipeline.py | pipeline/genome/sequence tests |
-| E: common denominator, full/conditional Delta, compositional interpretation | evaluation/compare.py | pipeline counterexamples and actual compare/stability commands |
-| F: priors, independent-target fusion | evidence/contact.py, evidence/fusion.py, operations.py | test_canonical_operations.py |
-| G: labels, groups, fixed transforms, elastic net, calibration | learning/model.py | test_canonical_learning.py |
-| User revision: continuous eta, functional fitting and direct PACE executable | learning/allocation.py, run_options.py, cli.py | test_canonical_allocation.py, test_canonical_cli.py |
-| H: functional-label baselines, coverage and AP | evaluation/benchmark.py, metrics.py | operation and metric tests |
-| I/J: packaging, offline use, preserved history, documentation | pyproject.toml, CI, demos, bilingual guides | local distribution test and GitHub workflow |
+| Primary formula and evidence | core/scoring.py, config.py, schemas.py, pipeline.py | canonical_core, canonical_pipeline |
+| Continuous eta | learning/allocation.py | canonical_allocation |
+| Genomic inputs and units | catalog/, io/, sequence/genome.py | canonical_adapters, canonical_genome |
+| Quantitative model and supervised learning | sequence/, learning/model.py | canonical_sequence, canonical_learning |
+| Preparation, comparison and evaluation | operations.py, evaluation/ | canonical_operations, canonical_pipeline |
+| Public commands and documentation | cli.py, run_options.py, scripts/check_public_docs.py | canonical_cli, canonical_documentation |
 
-Each numerical reference test names the independent source or analytical construction. The
-test constants are not regenerated from current software output. Tests deliberately avoid
-requiring a small synthetic training run to reach an arbitrary prediction-accuracy threshold.
+Each numerical assertion names an independent mathematical expectation or invariant.
+Small synthetic training runs test correct optimization and persistence rather than
+an arbitrary accuracy target. [Worked examples](WORKED_EXAMPLES.md) and the
+[review](../PACE_Review_and_Validation.md) give the reference calculations.
 
-## Measured synthetic scale
+## Distribution and hosted checks
 
-`scripts/measure_canonical_performance.py` was run with 20,000 units and 1,000 genes. It emitted
-99,880 sparse cis edges: candidate generation **0.615 s**, eta-1 scoring **1.228 s**, process peak
-RSS **135.8 MiB**. This measures candidate generation plus the numerical kernel, including
-interpreter/process memory; it does **not** measure genomic track IO, CNN inference, end-to-end
-whole-genome analysis or biological accuracy. Single measurements are descriptive, not a
-performance guarantee.
+Source and wheel distributions use the same PACE package. Distribution acceptance
+runs all three modes outside the checkout, verifies the installed source fingerprint,
+and exercises eta fitting and frozen reuse. The
+[GitHub workflow](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml) checks
+Python 3.11–3.13, minimum core dependencies, IO/sequence/ML extras, current regression,
+public documentation and installed-wheel behavior. Its status is attached to each
+source commit; a previous commit's result is not validation of a new revision.
 
-Environment: Python 3.13.12, Linux x86_64 / glibc 2.28; NumPy 2.5.3, PyYAML 6.0.3,
-PyTorch 2.14.0+cpu, cooler 0.10.4, pyBigWig 0.3.26, pysam 0.24.1. Full local package versions are
-recorded in [requirements-tested-python313.txt](../requirements-tested-python313.txt).
-The core CI matrix covers Python 3.11–3.13 and separately tests minimum core dependencies;
-IO, sequence, ML and legacy regression jobs are separate. Current hosted results are linked
-from the [Actions workflow](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml).
-The initial hosted run [35223670168](https://github.com/shenlinyong/PACE/actions/runs/35223670168)
-completed all eight jobs successfully; subsequent source revisions trigger the same checks.
+## Biological validation still required
 
-## Scientific validation still required
-
-Cross-locus quantitative prediction, within-locus individual changes and enhancer–gene link
-prediction remain **separate unvalidated tasks** until appropriate real held-out evidence is
-provided. Population scope, functional-label direction/power, calibration independence,
-candidate discovery and end-to-end missing-positive accounting need study-specific evaluation.
-QTL association is auxiliary evidence. No accuracy improvement or general livestock readiness
-is inferred from the tests in this record. See [limitations](limitations.md).
+Cross-locus quantitative prediction, within-locus individual changes and enhancer–gene
+link prediction are separate tasks. Each requires suitable independent evidence,
+applicable sampling and explicit coverage accounting. QTL association is auxiliary
+support, not functional ground truth. No historical dataset counts, unbundled study
+results or synthetic checks establish current-model biological performance.
+See [limitations](limitations.md).

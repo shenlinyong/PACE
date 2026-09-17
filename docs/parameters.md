@@ -58,10 +58,10 @@ promoters:
   weights: provided
 allocation:
   eta: auto
+  missing_policy: fixed_gene_set
   labels_path: null
   calibrator_path: null
   minimum_genes: 3
-  missing_policy: fixed_gene_set
 sequence:
   model_path: null
   max_n_fraction: 0.05
