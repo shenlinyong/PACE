@@ -50,7 +50,7 @@ python $S/pace_candidate_regions.py \
     --output "$OUT/Peaks/candidateRegions.bed" \
     --nStrongestPeaks 150000 --peakExtendFromSummit 250
 
-echo "[2/5] Neighborhood analysis (ATAC + H3K27ac, weighted geometric) ..."
+echo "[2/5] Neighborhood analysis (ATAC + H3K27ac, missing-aware geometric) ..."
 python $S/pace_neighborhoods.py \
     --candidate_regions "$OUT/Peaks/candidateRegions.bed" \
     --genes "$REF/genes.bed" \
@@ -58,7 +58,7 @@ python $S/pace_neighborhoods.py \
     --output_dir "$OUT/Neighborhoods" \
     --accessibility_file "$DATA/example_ATAC.tagAlign.gz" \
     --H3K27ac "$DATA/example_H3K27ac.tagAlign.gz" \
-    --activity_method weighted_geometric
+    --activity_method missing_geometric
 
 echo "[3/5] Predicting enhancer-gene interactions ..."
 python $S/pace_predict.py \

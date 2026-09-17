@@ -1,39 +1,14 @@
 #!/usr/bin/env python3
 """
-PACE: Enhanced ABC Score Calculator
+PACE signal-file scoring interface.
 
-This script computes the enhanced PACE score by integrating:
-1. Chromatin accessibility (ATAC-seq/DNase-seq)
-2. Multiple histone modifications
-3. 3D chromatin contact (Hi-C or power-law)
-4. Gene expression (RNA-seq)
-5. DNA methylation (inhibitory)
-6. TF binding
-7. eQTL validation
+Quantifies accessibility and configured activating signals, then scores
+enhancer-gene candidates using the shared activity-contact kernel.
 
-PACE Score Formula:
-==================
+PACE uses the single kernel in workflow/scripts/pace_core.py.
+RNA is context only; see docs/FORMULA.md for the versioned equations.
 
-    PACE_Score(E,G) = [Activity(E) × Contact(E,G) × Expr_Weight(G) × Reg_Factor(E)] / Σ(...)
-
-Where:
-    Activity(E) = Aggregation of chromatin signals at enhancer E
-    Contact(E,G) = 3D contact frequency between E and gene G promoter
-    Expr_Weight(G) = Expression-based weight for gene G
-    Reg_Factor(E) = Regulatory factor (TF binding, methylation, etc.)
-
-Activity Calculation:
-====================
-
-For geometric mean (original ABC):
-    Activity = √(Accessibility × H3K27ac)
-
-For weighted geometric mean (PACE):
-    Activity = ∏(Signal_i ^ Weight_i) × (1 - Inhibitory_Score)
-
-Where Inhibitory_Score combines repressive marks and methylation.
-
-Author: Linyong Shen @ Northwest A&F University
+Author: 申林用 (Linyong Shen) @ Northwest A&F University
 """
 
 import argparse
@@ -43,6 +18,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 import os
 import sys
+from pathlib import Path
 
 # Import from multiomics module
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -64,6 +40,7 @@ _WORKFLOW_SCRIPTS = os.path.join(
 )
 if os.path.isdir(_WORKFLOW_SCRIPTS):
     sys.path.insert(0, _WORKFLOW_SCRIPTS)
+from tools import read_candidate_regions
 try:
     from hic import ContactEstimator
     HAS_HIC = True
@@ -94,7 +71,7 @@ class PACEScoreCalculator:
             config: Configuration dictionary
         """
         self.config = config
-        self.activity_method = config.get('activity_method', 'geometric_mean')
+        self.activity_method = config.get('activity_method', 'missing_geometric')
         
         # Initialize components
         self._init_activity_calculator()
@@ -109,7 +86,9 @@ class PACEScoreCalculator:
             'weighted_sum': AggregationMethod.WEIGHTED_SUM,
             'arithmetic_mean': AggregationMethod.ARITHMETIC_MEAN
         }
-        method = method_map.get(self.activity_method, AggregationMethod.GEOMETRIC_MEAN)
+        if self.activity_method != 'missing_geometric':
+            raise ValueError('PACE requires activity_method: missing_geometric; use archived v1 for old modes')
+        method = AggregationMethod.WEIGHTED_GEOMETRIC
         self.activity_calc = MultiOmicsActivityCalculator(method=method)
         
     def _init_expression_filter(self):
@@ -153,13 +132,13 @@ class PACEScoreCalculator:
             self.activity_calc.add_signal(
                 "ATAC", SignalType.ACCESSIBILITY, 
                 sample_config['ATAC'],
-                weight=self.config.get('accessibility', {}).get('weight', 1.5)
+                weight=self.config.get('accessibility', {}).get('weight', 1.0)
             )
         elif sample_config.get('DHS'):
             self.activity_calc.add_signal(
                 "DHS", SignalType.ACCESSIBILITY,
                 sample_config['DHS'],
-                weight=self.config.get('accessibility', {}).get('weight', 1.5)
+                weight=self.config.get('accessibility', {}).get('weight', 1.0)
             )
         
         # Histone modifications
@@ -178,7 +157,7 @@ class PACEScoreCalculator:
         for mark, signal_type in histone_mapping.items():
             if sample_config.get(mark):
                 mark_config = histone_config.get(mark, {})
-                if mark_config.get('enabled', True):
+                if mark_config.get('enabled', mark == 'H3K27ac'):
                     # Repressive marks (H3K27me3/H3K9me3) are inhibitory by
                     # default; this can be overridden in the config.
                     default_inhib = signal_type == SignalType.REPRESSIVE
@@ -192,7 +171,7 @@ class PACEScoreCalculator:
         # Methylation
         if sample_config.get('methylation'):
             meth_config = self.config.get('methylation', {})
-            if meth_config.get('enabled', True):
+            if meth_config.get('enabled', False):
                 self.activity_calc.add_signal(
                     "methylation", SignalType.METHYLATION,
                     sample_config['methylation'],
@@ -204,7 +183,7 @@ class PACEScoreCalculator:
         # PACE does not assume a fixed sign. The mode is
         # taken from the per-sample 'TF_modes' column (activator/repressor) or
         # from the 'specific_tfs' config; the default is activator.
-        if sample_config.get('TF_binding'):
+        if sample_config.get('TF_binding') and self.config.get('transcription_factors', {}).get('enabled', False):
             tf_files = str(sample_config['TF_binding']).split(',')
             tf_names = str(sample_config.get('TF_names', '')).split(',')
             tf_modes = str(sample_config.get('TF_modes', '')).split(',')
@@ -314,10 +293,10 @@ class PACEScoreCalculator:
         """Create all enhancer-gene pairs within ``max_distance``."""
         pairs = []
         for _, enh in enhancers.iterrows():
-            enh_center = (enh['start'] + enh['end']) // 2
+            enh_center = (enh['start'] + enh['end']) / 2
             nearby_genes = genes[
                 (genes['chr'] == enh['chr']) &
-                (abs(genes['tss'] - enh_center) <= max_distance)
+                (abs(genes['tss'] - enh_center) < max_distance)
             ]
             for _, gene in nearby_genes.iterrows():
                 distance = abs(gene['tss'] - enh_center)
@@ -334,154 +313,56 @@ class PACEScoreCalculator:
                 })
         return pd.DataFrame(pairs)
     
-    def calculate_pace_scores(self,
-                              candidate_regions: pd.DataFrame,
-                              genes: pd.DataFrame,
-                              sample_config: Dict) -> pd.DataFrame:
-        """
-        Calculate PACE scores for all E-G pairs.
-        
-        This is the main method that integrates all components.
-        
-        Args:
-            candidate_regions: Candidate enhancer regions
-            genes: Gene annotations
-            sample_config: Sample-specific configuration
-            
-        Returns:
-            DataFrame with PACE predictions
-        """
-        logger.info("=" * 60)
-        logger.info("PACE Score Calculation")
-        logger.info("=" * 60)
-        
-        # Add signals from sample
+    def calculate_pace_scores(self, candidate_regions, genes, sample_config):
+        from predictor import PACEPredictor
+        self.activity_calc.signals.clear()
+        # Empty TSV cells are absent assays, not float NaN paths.
+        sample_config = {k: v for k, v in sample_config.items()
+                         if v is not None and not (isinstance(v, float) and np.isnan(v))}
         self.add_signals_from_sample(sample_config)
-
-        # Ensure every candidate region has a unique name (used for the
-        # contact pairing and the component-score broadcast below).
-        candidate_regions = candidate_regions.copy()
-        if 'name' not in candidate_regions.columns:
-            candidate_regions['name'] = [
-                f"{r['chr']}:{r['start']}-{r['end']}"
-                for _, r in candidate_regions.iterrows()]
-
-        # Calculate activity
-        logger.info("\n[1/5] Calculating enhancer activity...")
-        activity, activity_components = self.calculate_activity(candidate_regions)
-        candidate_regions['activity'] = activity
-        
-        # Calculate contact
-        logger.info("\n[2/5] Calculating E-G contact frequencies...")
-        eg_pairs = self.calculate_contact(
-            candidate_regions, genes,
-            hic_file=sample_config.get('HiC_file'),
-            hic_type=sample_config.get('HiC_type'),
-            hic_resolution=sample_config.get('HiC_resolution', 5000)
-        )
-        
-        # Merge activity with E-G pairs
-        eg_pairs = eg_pairs.merge(
-            candidate_regions[['chr', 'start', 'end', 'activity']],
-            left_on=['enhancer_chr', 'enhancer_start', 'enhancer_end'],
-            right_on=['chr', 'start', 'end'],
-            how='left'
-        )
-        
-        # Calculate raw ABC score
-        logger.info("\n[3/5] Calculating raw ABC scores...")
-        eg_pairs['activity_x_contact'] = eg_pairs['activity'] * eg_pairs['contact']
-        
-        # Normalize by sum per gene
-        gene_sums = eg_pairs.groupby('gene_id')['activity_x_contact'].sum()
-        eg_pairs['gene_sum'] = eg_pairs['gene_id'].map(gene_sums)
-        eg_pairs['ABC.Score'] = eg_pairs['activity_x_contact'] / eg_pairs['gene_sum']
-        
-        # Apply expression filter/weight
-        logger.info("\n[4/5] Applying expression filter/weight...")
-        if self.expression_filter and sample_config.get('RNA_seq'):
-            self.expression_filter.expression_file = sample_config['RNA_seq']
-            eg_pairs = self.expression_filter.filter_predictions(eg_pairs)
-            
-            weight_method = self.config.get('expression', {}).get('weight_method', 'none')
-            if weight_method != 'none':
-                eg_pairs = self.expression_filter.add_expression_weight(eg_pairs, weight_method)
-                eg_pairs['PACE.Score'] = eg_pairs['ABC.Score'] * eg_pairs['expression_weight']
-            else:
-                eg_pairs['PACE.Score'] = eg_pairs['ABC.Score']
-        else:
-            eg_pairs['PACE.Score'] = eg_pairs['ABC.Score']
-        
-        # Add eQTL validation
-        logger.info("\n[5/5] Adding eQTL validation...")
-        if self.eqtl_validator and sample_config.get('eQTL_file'):
-            eqtl_cfg = self.config.get('eqtl_validation', {})
-            self.eqtl_validator.eqtl_file = sample_config['eQTL_file']
-            eg_pairs = self.eqtl_validator.validate_predictions(
-                eg_pairs,
-                pvalue_threshold=eqtl_cfg.get('pvalue_threshold', 1e-5),
-                window=eqtl_cfg.get('window', 1000),
-            )
-            try:
-                self.eqtl_enrichment = self.eqtl_validator.calculate_enrichment(
-                    eg_pairs, score_column='PACE.Score',
-                    threshold=self.config.get('params_filter_predictions', {})
-                    .get('threshold', 0.02) or 0.02)
-                logger.info("eQTL enrichment OR=%.2f (P=%.2e)",
-                            self.eqtl_enrichment['odds_ratio'],
-                            self.eqtl_enrichment['pvalue'])
-            except Exception as exc:  # pragma: no cover
-                logger.warning("Could not compute eQTL enrichment: %s", exc)
-
-        # Attach per-signal component scores to each E-G pair (one value per
-        # enhancer, broadcast to all of that enhancer's pairs).
-        if self.config.get('output_options', {}).get('output_signal_scores', True):
-            comp = activity_components.get('activating_signals', {})
-            comp.update(activity_components.get('inhibitory_signals', {}))
-            for signal_name, values in comp.items():
-                sig_map = dict(zip(candidate_regions['name'], values))
-                eg_pairs[signal_name] = eg_pairs['enhancer_name'].map(sig_map)
-
-        # Standardize to the canonical PACE output schema so that the output
-        # of the standalone calculator matches the Snakemake pipeline and is
-        # directly consumable by the ML and validation modules.
-        eg_pairs = eg_pairs.rename(columns={
-            'enhancer_name': 'name',
-            'gene_name': 'TargetGene',
-            'gene_id': 'TargetGeneEnsemblID',
-            'gene_tss': 'TargetGeneTSS',
-        })
-        if 'class' not in eg_pairs.columns:
-            from tools import assign_enhancer_class
-            eg_pairs['class'] = eg_pairs['distance'].apply(assign_enhancer_class)
-
-        # Final cleanup and sorting
-        eg_pairs = eg_pairs.sort_values('PACE.Score', ascending=False)
-
-        logger.info("\n" + "=" * 60)
-        logger.info(f"Completed! Generated {len(eg_pairs)} E-G predictions")
-        logger.info("=" * 60)
-
-        return eg_pairs
+        activity, components = self.calculate_activity(candidate_regions)
+        enh = candidate_regions.copy()
+        enh['activity'] = activity
+        if hasattr(self.activity_calc, 'last_qc'):
+            for c in self.activity_calc.last_qc:
+                if c != 'activity': enh[c] = self.activity_calc.last_qc[c].to_numpy()
+        g = genes.copy()
+        if 'TSS' not in g and 'tss' in g: g['TSS'] = g.tss
+        hic = sample_config.get('HiC_file')
+        params = self.config.get('params_predict', {})
+        predictor = PACEPredictor(
+            max_distance=params.get('window', 5000000),
+            contact_method=('avg' if sample_config.get('HiC_type') == 'avg' else 'hic') if hic else 'powerlaw',
+            hic_file=hic, hic_type=sample_config.get('HiC_type', 'hic'),
+            hic_resolution=int(sample_config.get('HiC_resolution', 5000)),
+            hic_gamma=params.get('hic_gamma', 1.024238616787792),
+            hic_scale=params.get('hic_scale', 5.9594510043736655))
+        expr_path = sample_config.get('RNA_seq')
+        expression = pd.read_csv(expr_path, sep='\t') if expr_path else None
+        qc_path = sample_config.get('contact_metadata')
+        qc = pd.read_csv(qc_path, sep='\t') if qc_path else None
+        return predictor.predict(enh, g, expression=expression, contact_metadata=qc)
 
 
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(
-        description='PACE: Enhanced ABC Score Calculator',
+        description='PACE: score enhancer-gene candidates from signal files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
     # Basic usage
     python calculate_pace_score.py \\
-        --config config/config_v1.yaml \\
+        --config config/config.yaml \\
         --sample Pig_Liver \\
+        --candidates candidates.bed --genes genes.tsv \\
         --output results/pace_predictions.tsv
         
     # With all options
     python calculate_pace_score.py \\
-        --config config/config_v1.yaml \\
+        --config config/config.yaml \\
         --sample Pig_Liver \\
+        --candidates candidates.bed --genes genes.tsv \\
         --output results/pace_predictions.tsv \\
         --threshold 0.02 \\
         --output_components
@@ -505,19 +386,27 @@ Examples:
         config = yaml.safe_load(f)
     
     # Load candidate regions
-    candidates = pd.read_csv(args.candidates, sep='\t', 
-                             names=['chr', 'start', 'end', 'name', 'score', 'strand'])
+    candidates = read_candidate_regions(args.candidates)
     
-    # Load genes
-    genes = pd.read_csv(args.genes, sep='\t',
-                        names=['chr', 'start', 'end', 'name', 'score', 'strand', 
-                               'gene_id', 'gene_type'])
-    genes['gene_name'] = genes['name'].str.split(';').str[0]
-    genes['tss'] = np.where(genes['strand'] == '+', genes['start'], genes['end'])
-    
+    # Accept the current all-TSS TSV as well as historical extended BED.
+    with open(args.genes) as handle:
+        header = handle.readline().split('\t')[0].lower()
+    if header in ('chr', 'chrom', '#chr'):
+        genes = pd.read_csv(args.genes, sep='\t')
+    else:
+        genes = pd.read_csv(args.genes, sep='\t',
+                            names=['chr','start','end','name','score','strand','gene_id','gene_type'])
+    if 'gene_name' not in genes:
+        genes['gene_name'] = genes['name'].str.split(';').str[0] if 'name' in genes else genes['gene_id']
+    if 'TSS' not in genes and 'tss' not in genes:
+        genes['TSS'] = np.where(genes['strand'] == '+', genes['start'], genes['end'] - 1)
+
     # Get sample configuration
     biosamples = pd.read_csv(config['biosamplesTable'], sep='\t', comment='#')
-    sample_config = biosamples[biosamples['biosample'] == args.sample].iloc[0].to_dict()
+    selected = biosamples[biosamples['biosample'] == args.sample]
+    if len(selected) != 1:
+        parser.error(f'Sample {args.sample!r} must occur exactly once in biosamplesTable')
+    sample_config = selected.iloc[0].to_dict()
     
     # Calculate PACE scores
     calculator = PACEScoreCalculator(config)
@@ -525,9 +414,11 @@ Examples:
     
     # Filter and save
     filtered = predictions[predictions['PACE.Score'] >= args.threshold]
-    filtered.to_csv(args.output, sep='\t', index=False)
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    predictions.to_csv(args.output, sep='\t', index=False)
+    filtered.to_csv(args.output + '.filtered.tsv', sep='\t', index=False)
     
-    logger.info(f"Saved {len(filtered)} predictions to {args.output}")
+    logger.info(f"Saved {len(predictions)} predictions to {args.output}; {len(filtered)} to the filtered file")
 
 
 if __name__ == '__main__':

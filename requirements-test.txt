@@ -1,0 +1,5 @@
+-r requirements-core.txt
+pytest>=7
+scipy>=1.9
+matplotlib>=3.6
+pyBigWig>=0.3

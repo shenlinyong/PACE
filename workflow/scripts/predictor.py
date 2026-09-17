@@ -9,6 +9,7 @@ Author: Linyong Shen @ Northwest A&F University
 """
 
 import os
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from typing import Optional, List, Dict, Tuple, Union
@@ -18,6 +19,7 @@ from tools import (
     create_enhancer_gene_pairs, assign_enhancer_class, logger
 )
 from hic import ContactEstimator
+from pace_core import score_pairs, ScoreConfig
 
 
 class PACEPredictor:
@@ -33,7 +35,7 @@ class PACEPredictor:
                  hic_resolution: int = 5000,
                  hic_gamma: float = 1.024238616787792,
                  hic_scale: float = 5.9594510043736655,
-                 score_column: str = 'ABC.Score',
+                 score_column: str = 'PACE.Score',
                  include_self_promoter: bool = True):
         """
         Initialize predictor.
@@ -63,260 +65,119 @@ class PACEPredictor:
             hic_scale=hic_scale
         )
     
-    def create_pairs(self,
-                    enhancers: pd.DataFrame,
-                    genes: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create all enhancer-gene pairs within distance threshold.
-        
-        Args:
-            enhancers: DataFrame with enhancer regions
-            genes: DataFrame with gene info
-        
-        Returns:
-            DataFrame with E-G pairs
-        """
-        logger.info(f"Creating E-G pairs within {self.max_distance/1e6:.1f} Mb")
-        
-        pairs = []
-        
-        # Ensure required columns
-        if 'TSS' not in genes.columns:
-            if 'start' in genes.columns:
-                genes['TSS'] = genes['start']
+    def create_pairs(self, enhancers, genes):
+        enhancers = enhancers.copy()
+        genes = genes.copy()
+        enhancers['chr'] = enhancers['chr'].astype(str)
+        genes['chr'] = genes['chr'].astype(str)
+        if 'gene_id' not in genes or genes.gene_id.isna().any():
+            raise ValueError('Stable gene_id is required')
+        if 'TSS' not in genes:
+            if 'tss' in genes:
+                genes['TSS'] = genes.tss
+            elif {'start', 'end', 'strand'}.issubset(genes):
+                genes['TSS'] = np.where(genes.strand == '-', genes.end - 1, genes.start)
             else:
-                logger.error("Genes must have TSS or start column")
-                return pd.DataFrame()
-        
-        # Group by chromosome for efficiency
-        for chrom in enhancers['chr'].unique():
-            enh_chrom = enhancers[enhancers['chr'] == chrom]
-            gene_chrom = genes[genes['chr'] == chrom]
-            
-            for _, enh in enh_chrom.iterrows():
-                enh_mid = (enh['start'] + enh['end']) // 2
-                
-                for _, gene in gene_chrom.iterrows():
-                    tss = gene['TSS']
-                    dist = abs(enh_mid - tss)
-                    
-                    if dist <= self.max_distance:
-                        pairs.append({
-                            'chr': chrom,
-                            'start': enh['start'],
-                            'end': enh['end'],
-                            'name': enh.get('name', f"{chrom}:{enh['start']}-{enh['end']}"),
-                            'TargetGene': gene.get('gene_name', gene.get('name', '')),
-                            'TargetGeneEnsemblID': gene.get('gene_id', ''),
-                            'TargetGeneTSS': tss,
-                            'TargetGeneStrand': gene.get('strand', '+'),
-                            'distance': dist,
-                            'enhancer_mid': enh_mid,
-                            # Copy activity and signals if available
-                            'activity': enh.get('activity', 1.0),
-                        })
-        
-        df = pd.DataFrame(pairs)
-        
-        # Add enhancer class
-        if len(df) > 0:
-            df['class'] = df.apply(
-                lambda x: assign_enhancer_class(x['distance']),
-                axis=1
-            )
-        
-        logger.info(f"Created {len(df)} E-G pairs")
-        
-        return df
-    
-    def estimate_contacts(self, pairs: pd.DataFrame) -> pd.DataFrame:
-        """
-        Estimate 3D contacts for all pairs.
-        
-        Args:
-            pairs: DataFrame with E-G pairs
-        
-        Returns:
-            DataFrame with contact column added
-        """
-        logger.info("Estimating 3D contacts")
-        
+                raise ValueError('Provide BED0 TSS or start/end/strand')
+        tss_keys = ['chr', 'gene_id', 'TSS']
+        for column in ['tss_weight', 'tss_quality', 'catalogue_quality',
+                       'unassigned_mass', 'strand']:
+            if column in genes and (genes.groupby(tss_keys)[column].nunique(dropna=False) > 1).any():
+                raise ValueError(f'Conflicting {column} for duplicate gene/TSS records')
+        genes = genes.drop_duplicates(tss_keys)
+        if 'tss_weight' not in genes:
+            genes['tss_weight'] = 1 / genes.groupby(['chr', 'gene_id']).TSS.transform('size')
+        records = []
+        for chrom, ec in enhancers.groupby('chr'):
+            gc = genes[genes.chr == chrom].sort_values('TSS')
+            positions = gc.TSS.to_numpy()
+            for _, e in ec.iterrows():
+                # Match the analysis adapter exactly, including odd-width BED
+                # intervals and candidates exactly at the open window boundary.
+                mid = (e.start + e.end) / 2
+                lo = np.searchsorted(positions, mid-self.max_distance, side='right')
+                hi = np.searchsorted(positions, mid+self.max_distance, side='left')
+                for _, g in gc.iloc[lo:hi].iterrows():
+                    dist = abs(mid-g.TSS)
+                    row = dict(e)
+                    row.update(TargetGene=g.get('gene_name', g.get('name', g.gene_id)),
+                               TargetGeneEnsemblID=g.gene_id, TargetGeneTSS=g.TSS,
+                               TargetGeneStrand=g.get('strand', '+'), distance=dist,
+                               enhancer_mid=mid, tss_weight=g.tss_weight)
+                    for c in ['tss_quality', 'catalogue_quality', 'unassigned_mass']:
+                        if c in g: row[c] = g[c]
+                    row['class'] = assign_enhancer_class(dist)
+                    if self.include_self_promoter or row['class'] != 'promoter':
+                        records.append(row)
+        return pd.DataFrame(records)
+
+    def estimate_contacts(self, pairs):
         pairs = pairs.copy()
-        
-        contacts = self.contact_estimator.estimate_batch(
-            pairs,
-            chrom_col='chr',
-            pos1_col='enhancer_mid',
-            pos2_col='TargetGeneTSS'
-        )
-        
-        pairs['contact'] = contacts
-        
+        pairs['contact_prior'] = power_law_contact(
+            pairs.distance.to_numpy(), hic_gamma=self.contact_estimator.hic_gamma,
+            hic_scale=self.contact_estimator.hic_scale)
+        pairs['contact_source'] = 'distance_prior'
+        pairs['contact_observed'] = np.nan
+        processor = self.contact_estimator.hic_processor
+        if processor is not None:
+            observations = []
+            for _, r in pairs.iterrows():
+                observations.append(processor.get_contact(
+                    str(r['chr']), r.enhancer_mid, r.TargetGeneTSS,
+                    use_powerlaw_fallback=False))
+            pairs['contact_observed'] = observations
+            # A readable contact file does not establish matching tissue or
+            # sample provenance. Matching must be declared in contact metadata.
+            pairs['contact_source'] = 'unknown'
+        elif self.contact_estimator.avg_contacts:
+            pairs['contact_observed'] = self.contact_estimator.estimate_batch(
+                pairs, pos1_col='enhancer_mid', pos2_col='TargetGeneTSS')
+            pairs['contact_source'] = 'surrogate'
+        # Raw processed contacts without an expected curve and QC remain
+        # visible but unscaled. They cannot silently replace the distance prior.
         return pairs
-    
-    def calculate_abc_score(self,
-                           pairs: pd.DataFrame,
-                           activity_column: str = 'activity',
-                           contact_column: str = 'contact') -> pd.DataFrame:
-        """
-        Calculate ABC/PACE score.
-        
-        Args:
-            pairs: DataFrame with E-G pairs
-            activity_column: Column with activity values
-            contact_column: Column with contact values
-        
-        Returns:
-            DataFrame with score column added
-        """
-        logger.info("Calculating prediction scores")
-        
-        pairs = pairs.copy()
-        
-        # Calculate A × C product
-        pairs['AxC'] = pairs[activity_column] * pairs[contact_column]
-        
-        # Normalize by sum per gene
-        gene_sums = pairs.groupby('TargetGene')['AxC'].transform('sum')
-        
-        pairs[self.score_column] = safe_divide(pairs['AxC'], gene_sums, default=0.0)
-        
-        # Handle self-promoters
-        if not self.include_self_promoter:
-            pairs.loc[pairs['class'] == 'promoter', self.score_column] = 0.0
-        
-        # Clean up
-        pairs.drop('AxC', axis=1, inplace=True)
-        
-        logger.info(f"Score range: {pairs[self.score_column].min():.4f} - {pairs[self.score_column].max():.4f}")
-        
-        return pairs
-    
-    def add_expression_weight(self,
-                             pairs: pd.DataFrame,
-                             expression: pd.DataFrame,
-                             gene_column: str = 'TargetGene',
-                             expr_column: str = 'TPM',
-                             weight_method: str = 'log',
-                             min_expression: float = 1.0) -> pd.DataFrame:
-        """
-        Add expression weight to predictions.
-        
-        Args:
-            pairs: DataFrame with E-G pairs
-            expression: DataFrame with gene expression
-            gene_column: Column with gene names
-            expr_column: Column with expression values
-            weight_method: Weight method (binary, linear, log)
-            min_expression: Minimum expression threshold
-        
-        Returns:
-            DataFrame with expression weight
-        """
-        logger.info("Adding expression weights")
-        
-        pairs = pairs.copy()
-        
-        # Create expression dictionary
-        expr_dict = dict(zip(expression.iloc[:, 0], expression[expr_column]))
-        
-        # Map expression to genes
-        pairs['Expression'] = pairs[gene_column].map(expr_dict).fillna(0)
-        
-        # Filter to expressed genes
-        pairs['isExpressed'] = pairs['Expression'] >= min_expression
-        
-        # Calculate expression weight
-        if weight_method == 'binary':
-            pairs['ExpressionWeight'] = pairs['isExpressed'].astype(float)
-        
-        elif weight_method == 'linear':
-            max_expr = pairs['Expression'].max()
-            pairs['ExpressionWeight'] = pairs['Expression'] / (max_expr + 1e-10)
-        
-        elif weight_method == 'log':
-            log_expr = np.log2(pairs['Expression'] + 1)
-            max_log = log_expr.max()
-            pairs['ExpressionWeight'] = log_expr / (max_log + 1e-10)
-        
-        else:
-            pairs['ExpressionWeight'] = 1.0
-        
-        logger.info(f"Expressed genes: {pairs['isExpressed'].sum()}")
-        
-        return pairs
-    
-    def predict(self,
-               enhancers: pd.DataFrame,
-               genes: pd.DataFrame,
-               expression: Optional[pd.DataFrame] = None,
-               expression_weight: bool = False,
-               weight_method: str = 'log',
-               min_expression: float = 1.0) -> pd.DataFrame:
-        """
-        Run full prediction pipeline.
-        
-        Args:
-            enhancers: DataFrame with enhancers (must have 'activity' column)
-            genes: DataFrame with genes
-            expression: Optional expression DataFrame
-            expression_weight: Whether to weight by expression
-            weight_method: Expression weight method
-            min_expression: Minimum expression threshold
-        
-        Returns:
-            DataFrame with predictions
-        """
-        # Create pairs
+
+    def calculate_abc_score(self, pairs, activity_column='activity', contact_column='contact'):
+        """Legacy method name; delegates to the sole current gene-level kernel."""
+        if activity_column != 'activity':
+            raise ValueError('Expression-weighted activity is not part of PACE')
+        return score_pairs(pairs)
+
+    def predict(self, enhancers, genes, expression=None, expression_weight=False,
+                weight_method='log', min_expression=1.0, contact_metadata=None):
+        enhancers = enhancers.copy()
+        if 'activity' not in enhancers:
+            raise ValueError('Provide quantified activity; missing activity is not 1')
         pairs = self.create_pairs(enhancers, genes)
-        
-        if len(pairs) == 0:
-            logger.warning("No E-G pairs created!")
-            return pd.DataFrame()
-        
-        # Copy activity from enhancers (handle different column names)
-        activity_col = None
-        for col in ['activity', 'activity_base', 'Activity', 'score', 'signalValue']:
-            if col in enhancers.columns:
-                activity_col = col
-                break
-        
-        if activity_col:
-            enh_activity = dict(zip(enhancers['name'], enhancers[activity_col]))
-            pairs['activity'] = pairs['name'].map(enh_activity).fillna(1.0)
-        else:
-            logger.warning("No activity column found in enhancers, using default 1.0")
-            pairs['activity'] = 1.0
-        
-        # Estimate contacts
+        if pairs.empty:
+            return pd.DataFrame(columns=['PACE.Score', 'evidence_status'])
         pairs = self.estimate_contacts(pairs)
-        
-        # Add expression weight if requested
-        if expression_weight and expression is not None:
-            pairs = self.add_expression_weight(
-                pairs, expression,
-                weight_method=weight_method,
-                min_expression=min_expression
-            )
-            
-            # Incorporate expression weight into activity
-            pairs['activity_weighted'] = pairs['activity'] * pairs['ExpressionWeight']
-            
-            # Calculate score with expression weight
-            pairs = self.calculate_abc_score(
-                pairs,
-                activity_column='activity_weighted',
-                contact_column='contact'
-            )
-        else:
-            # Calculate score without expression weight
-            pairs = self.calculate_abc_score(pairs)
-        
-        # Sort by score
-        pairs = pairs.sort_values(self.score_column, ascending=False)
-        
-        return pairs
-    
+        if contact_metadata is not None:
+            keys = ['chr', 'start', 'end', 'TargetGeneEnsemblID', 'TargetGeneTSS']
+            allowed = ['contact_observed', 'contact_expected', 'contact_reliability', 'contact_source']
+            md = contact_metadata[keys + [c for c in allowed if c in contact_metadata]].copy()
+            md['chr'] = md['chr'].astype(str)
+            if md.duplicated(keys).any(): raise ValueError('Duplicate contact metadata keys')
+            pairs = pairs.merge(md, on=keys, how='left', suffixes=('', '_qc'), validate='one_to_one')
+            for c in allowed:
+                if c + '_qc' in pairs:
+                    pairs[c] = pairs[c + '_qc'].combine_first(pairs[c])
+                    pairs = pairs.drop(columns=[c + '_qc'])
+        predictions = score_pairs(pairs)
+        if expression_weight:
+            logger.warning('PACE retains RNA as context; expression multiplication is disabled')
+        if expression is not None:
+            idcol = next((c for c in ['gene_id', 'TargetGeneEnsemblID'] if c in expression), None)
+            if idcol is None or 'TPM' not in expression:
+                raise ValueError('RNA context requires stable gene_id and TPM columns')
+            expr = expression[[idcol, 'TPM']].drop_duplicates()
+            if expr.duplicated(idcol).any(): raise ValueError('Conflicting gene expression records')
+            predictions['Expression'] = predictions.TargetGeneEnsemblID.map(expr.set_index(idcol).TPM)
+            predictions['expression_status'] = np.where(predictions.Expression.isna(), 'unknown',
+                np.where(predictions.Expression >= min_expression, 'detected', 'below_threshold'))
+            predictions['isExpressed'] = predictions.Expression >= min_expression
+        return predictions
+
     def filter_predictions(self,
                           predictions: pd.DataFrame,
                           threshold: float = 0.02,
@@ -360,7 +221,8 @@ def run_predictions(enhancer_file: str,
                    hic_gamma: float = 1.024238616787792,
                    hic_scale: float = 5.9594510043736655,
                    score_threshold: float = 0.02,
-                   include_self_promoter: bool = True) -> str:
+                   include_self_promoter: bool = True,
+                   contact_metadata_file: Optional[str] = None) -> str:
     """
     Run prediction pipeline.
     
@@ -392,11 +254,11 @@ def run_predictions(enhancer_file: str,
     
     # Load expression if provided
     expression = None
-    if expression_file and os.path.exists(expression_file):
+    if expression_file:
         expression = pd.read_csv(expression_file, sep='\t')
     
     # Initialize predictor
-    contact_method = 'hic' if hic_file else 'powerlaw'
+    contact_method = ('avg' if hic_type == 'avg' else 'hic') if hic_file else 'powerlaw'
     
     predictor = PACEPredictor(
         max_distance=max_distance,
@@ -416,9 +278,11 @@ def run_predictions(enhancer_file: str,
         expression=expression,
         expression_weight=use_expression_weight,
         weight_method=weight_method,
-        min_expression=min_expression
+        min_expression=min_expression,
+        contact_metadata=pd.read_csv(contact_metadata_file, sep='\t') if contact_metadata_file else None
     )
     
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
     # Write all predictions (gzipped)
     if output_file.endswith('.gz'):
         predictions.to_csv(output_file, sep='\t', index=False, compression='gzip')
@@ -428,7 +292,10 @@ def run_predictions(enhancer_file: str,
     logger.info(f"Wrote {len(predictions)} predictions to {output_file}")
     
     # Also write filtered predictions
-    filtered_file = output_file.replace('AllPutative', 'Filtered')
+    destination = Path(output_file)
+    filtered_file = str(destination.with_name(destination.name.replace('AllPutative', 'Filtered')))
+    if filtered_file == output_file:
+        filtered_file = output_file + '.filtered.tsv'
     # Normalize the extension to a single .tsv (avoid '.tsv.tsv').
     if filtered_file.endswith('.tsv.gz'):
         filtered_file = filtered_file[:-len('.tsv.gz')] + '.tsv'

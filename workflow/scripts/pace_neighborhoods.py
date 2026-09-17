@@ -16,7 +16,7 @@ Usage:
         [--H3K4me1 h3k4me1.bam] \
         [--methylation methylation.bw] \
         [--expression expression.tsv] \
-        [--activity_method geometric_mean]
+        [--activity_method missing_geometric]
 
 Author: Linyong Shen @ Northwest A&F University
 """
@@ -79,12 +79,12 @@ def main():
                        help='RNA-seq expression file')
     
     # Activity calculation options
-    parser.add_argument('--activity_method', default='geometric_mean',
-                       choices=['geometric_mean', 'weighted_geometric', 'weighted_sum', 'arithmetic_mean'],
+    parser.add_argument('--activity_method', default='missing_geometric',
+                       choices=['missing_geometric'],
                        help='Activity calculation method')
     
     # Weights
-    parser.add_argument('--accessibility_weight', type=float, default=1.5,
+    parser.add_argument('--accessibility_weight', type=float, default=1.0,
                        help='Weight for accessibility signal')
     parser.add_argument('--H3K27ac_weight', type=float, default=1.0,
                        help='Weight for H3K27ac signal')
@@ -100,6 +100,11 @@ def main():
                        help='Weight for H3K9me3 (inhibitory)')
 
     args = parser.parse_args()
+    for name in ['accessibility_file', 'chrom_sizes', 'H3K27ac', 'H3K4me1', 'H3K4me3',
+                 'H3K36me3', 'H3K9ac', 'H3K27me3', 'H3K9me3', 'methylation', 'expression']:
+        path = getattr(args, name)
+        if path and not os.path.isfile(path):
+            parser.error(f'{name} file not found: {path}')
     
     # Validate inputs
     if not os.path.exists(args.candidate_regions):

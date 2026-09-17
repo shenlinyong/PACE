@@ -15,9 +15,14 @@ from typing import Optional, Dict, List, Tuple
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import seaborn as sns
 
 from tools import logger
+
+
+def gene_keys(df):
+    """Use stable identifiers, with sample and chromosome scope when present."""
+    identifier = 'TargetGeneEnsemblID' if 'TargetGeneEnsemblID' in df else 'TargetGene'
+    return [c for c in ['sample_id', 'chr', identifier] if c in df]
 
 
 class PACEMetrics:
@@ -25,7 +30,7 @@ class PACEMetrics:
     Calculator for PACE quality control metrics.
     """
     
-    def __init__(self, predictions: pd.DataFrame, score_column: str = 'ABC.Score'):
+    def __init__(self, predictions: pd.DataFrame, score_column: str = 'PACE.Score'):
         """
         Initialize metrics calculator.
         
@@ -48,8 +53,10 @@ class PACEMetrics:
         
         metrics = {
             'total_predictions': len(df),
-            'unique_enhancers': df['name'].nunique() if 'name' in df.columns else 0,
-            'unique_genes': df['TargetGene'].nunique() if 'TargetGene' in df.columns else 0,
+            'unique_enhancers': len(df[[c for c in ['sample_id', 'chr', 'start', 'end'] if c in df]].drop_duplicates())
+                if {'chr', 'start', 'end'}.issubset(df) else 0,
+            'unique_genes': len(df[gene_keys(df)].drop_duplicates())
+                if {'TargetGeneEnsemblID', 'TargetGene'}.intersection(df) else 0,
         }
         
         if self.score_column in df.columns:
@@ -106,17 +113,16 @@ class PACEMetrics:
         df = self.predictions
         metrics = {}
         
-        if 'TargetGene' in df.columns:
-            enhancers_per_gene = df.groupby('TargetGene').size()
+        if {'TargetGeneEnsemblID', 'TargetGene'}.intersection(df):
+            enhancers_per_gene = df.groupby(gene_keys(df)).size()
             metrics['mean_enhancers_per_gene'] = enhancers_per_gene.mean()
             metrics['median_enhancers_per_gene'] = enhancers_per_gene.median()
             metrics['max_enhancers_per_gene'] = enhancers_per_gene.max()
             
-            # Genes with high-confidence predictions
+            # A descriptive score cutoff is not a confidence calibration.
             if self.score_column in df.columns:
-                high_conf = df[df[self.score_column] >= 0.02]
-                genes_with_high_conf = high_conf['TargetGene'].nunique()
-                metrics['genes_with_high_conf_prediction'] = genes_with_high_conf
+                selected = df[df[self.score_column] >= 0.02]
+                metrics['genes_with_score_ge_0_02'] = len(selected[gene_keys(df)].drop_duplicates())
         
         self.metrics.update(metrics)
         return metrics
@@ -159,7 +165,7 @@ class PACEPlotter:
     Plotter for PACE quality control visualizations.
     """
     
-    def __init__(self, predictions: pd.DataFrame, score_column: str = 'ABC.Score'):
+    def __init__(self, predictions: pd.DataFrame, score_column: str = 'PACE.Score'):
         """
         Initialize plotter.
         
@@ -171,7 +177,7 @@ class PACEPlotter:
         self.score_column = score_column
         
         # Set style
-        sns.set_style('whitegrid')
+        plt.style.use('default')
         plt.rcParams['figure.dpi'] = 150
     
     def plot_score_distribution(self, ax: Optional[plt.Axes] = None) -> plt.Axes:
@@ -187,7 +193,7 @@ class PACEPlotter:
         if ax is None:
             fig, ax = plt.subplots(figsize=(6, 4))
         
-        scores = self.predictions[self.score_column]
+        scores = self.predictions[self.score_column].dropna()
         
         ax.hist(scores, bins=50, edgecolor='black', alpha=0.7)
         ax.axvline(0.02, color='red', linestyle='--', label='Threshold (0.02)')
@@ -233,7 +239,7 @@ class PACEPlotter:
         if ax is None:
             fig, ax = plt.subplots(figsize=(6, 4))
         
-        df = self.predictions.sample(min(5000, len(self.predictions)))  # Subsample for speed
+        df = self.predictions.sample(min(5000, len(self.predictions)), random_state=42)
         
         ax.scatter(
             df['distance'] / 1000,
@@ -308,7 +314,7 @@ class PACEPlotter:
         if ax is None:
             fig, ax = plt.subplots(figsize=(6, 4))
         
-        enhancers_per_gene = self.predictions.groupby('TargetGene').size()
+        enhancers_per_gene = self.predictions.groupby(gene_keys(self.predictions)).size()
         
         ax.hist(enhancers_per_gene, bins=50, edgecolor='black', alpha=0.7)
         ax.set_xlabel('Number of Enhancers')
@@ -342,7 +348,7 @@ class PACEPlotter:
 
 def generate_metrics(predictions_file: str,
                     output_dir: str,
-                    score_column: str = 'ABC.Score',
+                    score_column: str = 'PACE.Score',
                     sample_name: str = 'sample') -> Tuple[str, str]:
     """
     Generate metrics and plots for predictions.
@@ -381,7 +387,7 @@ def generate_metrics(predictions_file: str,
 
 def compare_samples(predictions_files: Dict[str, str],
                    output_file: str,
-                   score_column: str = 'ABC.Score') -> pd.DataFrame:
+                   score_column: str = 'PACE.Score') -> pd.DataFrame:
     """
     Compare metrics across multiple samples.
     

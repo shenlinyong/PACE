@@ -82,7 +82,7 @@ class SignalConfig:
     file_path: str
     weight: float = 1.0
     is_inhibitory: bool = False   # True for repressive marks, methylation, TF repressors
-    normalize: str = "rpkm"       # rpkm | quantile | minmax | none
+    normalize: str = "none"       # rpkm | quantile | minmax | none
     log_transform: bool = False
     pseudocount: float = 1.0
     stat: str = "mean"            # bigWig summary statistic
@@ -155,10 +155,10 @@ def quantify_signal_over_regions(regions: pd.DataFrame,
         for i, (_, row) in enumerate(regions.iterrows()):
             try:
                 v = bw.stats(str(row["chr"]), int(row["start"]),
-                             int(row["end"]), type=stat)[0]
-                values[i] = v if v is not None else 0.0
-            except (RuntimeError, ValueError):
-                values[i] = 0.0
+                             int(row["end"]), type=stat, exact=True)[0]
+                values[i] = v if v is not None else np.nan
+            except (RuntimeError, ValueError) as exc:
+                raise ValueError(f'Cannot read {file_path} at {row.to_dict()}') from exc
         bw.close()
         return values
 
@@ -174,8 +174,9 @@ def quantify_signal_over_regions(regions: pd.DataFrame,
         in_name = tmp_in.name
     out_name = in_name + ".cov"
     try:
-        _run(f"bedtools coverage -a {in_name} -b {file_path} -counts "
-             f"> {out_name}")
+        with open(out_name, 'w') as output:
+            subprocess.run(['bedtools','coverage','-a',in_name,'-b',file_path,'-counts'],
+                           stdout=output,check=True)
         cov = pd.read_csv(out_name, sep="\t", header=None,
                           names=["chr", "start", "end", "_pace_id", "count"])
     finally:
@@ -193,25 +194,33 @@ def quantify_signal_over_regions(regions: pd.DataFrame,
     return counts
 
 
-def _normalize(values: np.ndarray, method: str) -> np.ndarray:
-    """Normalize a signal vector with the requested method."""
-    values = np.asarray(values, dtype=float)
-    if method == "none" or len(values) == 0:
-        return values
-    if method == "rpkm":
-        total = values.sum()
-        return values * 1e6 / total if total > 0 else values
-    if method == "minmax":
-        lo, hi = values.min(), values.max()
-        return (values - lo) / (hi - lo) if hi > lo else np.zeros_like(values)
-    if method == "quantile":
-        # Map to uniform quantiles in (0, 1] – robust, scale-free.
-        order = values.argsort()
-        ranks = np.empty_like(order, dtype=float)
-        ranks[order] = np.arange(1, len(values) + 1)
-        return ranks / len(values)
-    return values
+def _normalize(values, method):
+    """Legacy scale adapter; preserve missingness and ties.
 
+    'rpkm' historically meant within-candidate total scaling, not true RPKM.
+    Prefer pre-normalized tracks ('none') or fixed-scale quantified current inputs.
+    """
+    values = np.asarray(values, dtype=float).copy()
+    finite = np.isfinite(values)
+    if np.isinf(values).any() or (values[finite] < 0).any():
+        raise ValueError('Signal must be nonnegative and finite or NaN')
+    if method == 'none' or not finite.any(): return values
+    if method == 'rpkm':
+        total = np.nansum(values)
+        return values * 1e6 / total if total > 0 else values
+    if method == 'quantile':
+        values[finite] = pd.Series(values[finite]).rank(method='average').to_numpy()/finite.sum()
+        return values
+    if method == 'minmax':
+        lo, hi = np.nanmin(values), np.nanmax(values)
+        values[finite] = (values[finite]-lo)/(hi-lo) if hi > lo else 0
+        return values
+    raise ValueError(f'Unknown normalization method {method}')
+
+
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'workflow', 'scripts'))
+from pace_core import aggregate_activity
 
 class MultiOmicsActivityCalculator:
     """Calculate enhancer activity from multiple epigenomic signals.
@@ -243,7 +252,7 @@ class MultiOmicsActivityCalculator:
                    file_path: str,
                    weight: float = 1.0,
                    inhibitory: Optional[bool] = None,
-                   normalize: str = "rpkm",
+                   normalize: str = "none",
                    log_transform: bool = False,
                    stat: str = "mean") -> None:
         """Add a signal to the activity calculation.
@@ -299,58 +308,10 @@ class MultiOmicsActivityCalculator:
 
         Inhibitory signals: Final = Activating * (1 - clip(sum w_k s_k, 0, 1))
         """
-        n_regions = len(next(iter(activating.values())))
-
-        if self.method == AggregationMethod.GEOMETRIC_MEAN:
-            log_sum = np.zeros(n_regions)
-            for values in activating.values():
-                log_sum += np.log(np.maximum(values, 1e-10))
-            activating_score = np.exp(log_sum / len(activating))
-
-        elif self.method == AggregationMethod.WEIGHTED_GEOMETRIC:
-            # Normalized weighted geometric mean so the activity scale is
-            # independent of the absolute weight magnitudes (consistent with
-            # neighborhoods.py).
-            log_sum = np.zeros(n_regions)
-            weight_sum = 0.0
-            for name, values in activating.items():
-                w = weights_act[name]
-                log_sum += w * np.log(np.maximum(values, 1e-10))
-                weight_sum += w
-            weight_sum = weight_sum if weight_sum > 0 else 1.0
-            activating_score = np.exp(log_sum / weight_sum)
-
-        elif self.method == AggregationMethod.WEIGHTED_SUM:
-            activating_score = np.zeros(n_regions)
-            for name, values in activating.items():
-                activating_score += weights_act[name] * values
-
-        elif self.method == AggregationMethod.ARITHMETIC_MEAN:
-            activating_score = np.mean(list(activating.values()), axis=0)
-
-        elif self.method == AggregationMethod.MAX:
-            activating_score = np.max(list(activating.values()), axis=0)
-
-        elif self.method == AggregationMethod.PRODUCT:
-            activating_score = np.ones(n_regions)
-            for values in activating.values():
-                activating_score *= values
-        else:
-            raise ValueError(f"Unknown aggregation method: {self.method}")
-
         if inhibitory:
-            inhibitory_score = np.zeros(n_regions)
-            for name, values in inhibitory.items():
-                # Inhibitory signals are scaled to [0, 1] so the weight is the
-                # maximum fractional reduction of activity.
-                v = _normalize(values, "minmax")
-                inhibitory_score += weights_inh[name] * v
-            inhibitory_score = np.clip(inhibitory_score, 0, 1)
-            final_activity = activating_score * (1 - inhibitory_score)
-        else:
-            final_activity = activating_score
-
-        return final_activity
+            raise ValueError('Repression is opt-in via the current quantified-input kernel; provide fraction-scale signals and an explicit inhibition_strength')
+        self.last_qc = aggregate_activity(activating, weights_act)
+        return self.last_qc.activity.to_numpy()
 
     def calculate_activity(self,
                            regions: pd.DataFrame,

@@ -1,0 +1,2 @@
+# Empty final TSV fields are significant.
+*.tsv whitespace=-blank-at-eol

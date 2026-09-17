@@ -42,6 +42,9 @@ class HiCProcessor:
         self.hic_pseudocount = hic_pseudocount
         
         self.contact_matrix = {}  # chromosome -> sparse contact matrix
+        # Only a complete matrix with valid normalization weights establishes
+        # that an omitted sparse entry is a measured zero.
+        self.valid_bins = {}
         self.hic_loaded = False
     
     def load_hic_file(self, hic_file: str, hic_type: str = 'hic') -> None:
@@ -104,6 +107,7 @@ class HiCProcessor:
     def _load_bedpe_format(self, bedpe_file: str) -> None:
         """Load BEDPE format Hi-C file."""
         df = pd.read_csv(bedpe_file, sep='\t', header=None,
+                        dtype={'chr1': str, 'chr2': str},
                         names=['chr1', 'start1', 'end1', 'chr2', 'start2', 'end2', 'score'])
         
         # Only intra-chromosomal contacts
@@ -116,6 +120,10 @@ class HiCProcessor:
             for _, row in chrom_df.iterrows():
                 bin1 = (row['start1'] + row['end1']) // 2 // self.resolution
                 bin2 = (row['start2'] + row['end2']) // 2 // self.resolution
+                if not np.isfinite(row['score']) or row['score'] < 0:
+                    raise ValueError('BEDPE contact scores must be finite and nonnegative')
+                if (bin1, bin2) in contacts and contacts[(bin1, bin2)] != row['score']:
+                    raise ValueError('Conflicting BEDPE records for the same contact bins')
                 contacts[(bin1, bin2)] = row['score']
                 contacts[(bin2, bin1)] = row['score']
             
@@ -127,18 +135,31 @@ class HiCProcessor:
             import cooler
             
             clr = cooler.Cooler(cool_file)
+            if clr.binsize != self.resolution:
+                raise ValueError(f'Cooler resolution {clr.binsize} differs from requested resolution {self.resolution}')
             
             for chrom in clr.chromnames:
                 try:
-                    matrix = clr.matrix(balance=True).fetch(chrom)
+                    matrix = clr.matrix(balance=True, sparse=True).fetch(chrom)
+                    bins = clr.bins().fetch(chrom)
+                    if 'weight' not in bins:
+                        raise ValueError('Cooler balancing weights are unavailable')
+                    weights = bins['weight'].to_numpy()
+                    self.valid_bins[str(chrom)] = set(np.flatnonzero(np.isfinite(weights) & (weights > 0)))
                     
                     # Convert to sparse dict
                     contacts = {}
-                    rows, cols = np.where(~np.isnan(matrix) & (matrix > 0))
-                    for r, c in zip(rows, cols):
-                        contacts[(r, c)] = matrix[r, c]
+                    if hasattr(matrix, 'tocoo'):
+                        sparse = matrix.tocoo()
+                        entries = zip(sparse.row, sparse.col, sparse.data)
+                    else:
+                        rows, cols = np.where(np.isfinite(matrix) & (matrix >= 0))
+                        entries = ((r, c, matrix[r, c]) for r, c in zip(rows, cols))
+                    for r, c, value in entries:
+                        if np.isfinite(value) and value >= 0:
+                            contacts[(int(r), int(c))] = float(value)
                     
-                    self.contact_matrix[chrom] = contacts
+                    self.contact_matrix[str(chrom)] = contacts
                     
                 except Exception as e:
                     logger.warning(f"Could not load {chrom}: {e}")
@@ -163,22 +184,26 @@ class HiCProcessor:
         Returns:
             Contact frequency
         """
+        chrom = str(chrom)
         if self.hic_loaded and chrom in self.contact_matrix:
-            bin1 = pos1 // self.resolution
-            bin2 = pos2 // self.resolution
+            bin1 = int(pos1 // self.resolution)
+            bin2 = int(pos2 // self.resolution)
             
             contacts = self.contact_matrix[chrom]
-            contact = contacts.get((bin1, bin2), 0)
+            contact = contacts.get((bin1, bin2), np.nan)
             
-            if contact > 0:
+            if np.isfinite(contact):
                 return contact
+            valid = self.valid_bins.get(chrom, set())
+            if bin1 in valid and bin2 in valid:
+                return 0.0
         
         # Fall back to power-law
         if use_powerlaw_fallback:
             distance = abs(pos1 - pos2)
             return self.estimate_contact_powerlaw(distance)
         
-        return 0.0
+        return np.nan
     
     def estimate_contact_powerlaw(self, distance: Union[int, np.ndarray]) -> Union[float, np.ndarray]:
         """

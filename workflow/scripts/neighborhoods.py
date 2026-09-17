@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 from typing import Optional, List, Dict, Tuple, Union
 import tempfile
+import sys
+from pathlib import Path
 
 # Optional pyBigWig import
 try:
@@ -23,10 +25,15 @@ except ImportError:
     HAS_PYBIGWIG = False
 
 from tools import (
-    read_bed, write_bed, run_command, bedtools_intersect,
+    read_bed, read_candidate_regions, write_bed, run_command, bedtools_intersect,
     normalize_signal, geometric_mean, weighted_geometric_mean,
     logger
 )
+
+
+from pace_core import aggregate_activity
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+from multiomics_activity import quantify_signal_over_regions
 
 
 class NeighborhoodAnalyzer:
@@ -69,41 +76,11 @@ class NeighborhoodAnalyzer:
             column_name: Name for output column
             stat: Statistic to compute (mean, max, sum)
         """
-        if not HAS_PYBIGWIG:
-            raise ImportError("pyBigWig is required for bigWig processing. "
-                            "Install with: pip install pyBigWig")
-        
         logger.info(f"Quantifying {column_name} from {bigwig_file}")
-        
-        bw = pyBigWig.open(bigwig_file)
-        values = []
-        
-        for _, row in self.regions.iterrows():
-            chrom = row['chr']
-            start = int(row['start'])
-            end = int(row['end'])
-            
-            try:
-                if stat == 'mean':
-                    val = bw.stats(chrom, start, end, type='mean')[0]
-                elif stat == 'max':
-                    val = bw.stats(chrom, start, end, type='max')[0]
-                elif stat == 'sum':
-                    val = bw.stats(chrom, start, end, type='sum')[0]
-                else:
-                    val = bw.stats(chrom, start, end, type='mean')[0]
-                
-                values.append(val if val is not None else 0)
-            except Exception:
-                values.append(0)
-        
-        bw.close()
-        
-        self.regions[column_name] = values
+        self.regions[column_name] = quantify_signal_over_regions(
+            self.regions, bigwig_file, stat=stat)
         self.signal_columns.append(column_name)
-        
-        logger.info(f"Added signal column: {column_name}")
-    
+
     def quantify_signal_from_bam(self,
                                  bam_file: str,
                                  column_name: str,
@@ -114,43 +91,13 @@ class NeighborhoodAnalyzer:
         Args:
             bam_file: Path to BAM file
             column_name: Name for output column
-            normalize: Whether to normalize to RPM
+            normalize: Divide counts by region width in kb, as in the standalone adapter
         """
         logger.info(f"Quantifying {column_name} from {bam_file}")
-        
-        # Write regions to temp file
-        with tempfile.NamedTemporaryFile(suffix='.bed', delete=False, mode='w') as tmp:
-            self.regions[['chr', 'start', 'end', 'name']].to_csv(
-                tmp, sep='\t', header=False, index=False
-            )
-            tmp_name = tmp.name
-        
-        # Count reads using bedtools
-        with tempfile.NamedTemporaryFile(suffix='.bed', delete=False) as tmp_out:
-            cmd = f"bedtools coverage -a {tmp_name} -b {bam_file} -counts > {tmp_out.name}"
-            run_command(cmd)
-            
-            counts = pd.read_csv(
-                tmp_out.name, sep='\t', header=None,
-                names=['chr', 'start', 'end', 'name', 'count']
-            )
-            os.unlink(tmp_out.name)
-        
-        os.unlink(tmp_name)
-        
-        # Merge counts
-        count_dict = dict(zip(counts['name'], counts['count']))
-        self.regions[column_name] = self.regions['name'].map(count_dict).fillna(0)
-        
-        # Normalize if requested
-        if normalize:
-            total = self.regions[column_name].sum()
-            if total > 0:
-                self.regions[column_name] = self.regions[column_name] * 1e6 / total
-        
+        self.regions[column_name] = quantify_signal_over_regions(
+            self.regions, bam_file, region_size_norm=normalize)
         self.signal_columns.append(column_name)
-        logger.info(f"Added signal column: {column_name}")
-    
+
     def quantify_signal_from_tagalign(self,
                                       tagalign_file: str,
                                       column_name: str,
@@ -161,7 +108,7 @@ class NeighborhoodAnalyzer:
         Args:
             tagalign_file: Path to tagAlign file
             column_name: Name for output column
-            normalize: Whether to normalize to RPM
+            normalize: Divide counts by region width in kb, as in the standalone adapter
         """
         # tagAlign is essentially BED format, use same method as BAM
         self.quantify_signal_from_bam(tagalign_file, column_name, normalize)
@@ -231,33 +178,12 @@ class NeighborhoodAnalyzer:
                           histone_weights: Optional[Dict[str, float]] = None,
                           inhibitory_columns: Optional[List[str]] = None,
                           inhibitory_weights: Optional[Dict[str, float]] = None,
-                          method: str = 'geometric_mean',
-                          accessibility_weight: float = 1.5) -> None:
-        """
-        Calculate enhancer activity score.
+                          method: str = 'missing_geometric',
+                          accessibility_weight: float = 1.0) -> None:
+        """Aggregate pre-normalized signals with the shared missing-aware kernel.
 
-        Activating signals are aggregated according to ``method`` and then
-        scaled down by an inhibitory factor derived from repressive marks /
-        DNA methylation:
-
-            geometric_mean:      A = (prod s_i) ** (1/n)              [ABC]
-            weighted_geometric:  A = (prod s_i ** w_i) ** (1/sum w_i) [PACE]
-            weighted_sum:        A = sum (w_i * s_i)
-            A_final = A * (1 - clip(sum_k w_k * minmax(I_k), 0, 1))
-
-        The weighted geometric mean is normalized by the sum of weights so the
-        activity scale is independent of the absolute weight magnitudes
-        (consistent with scripts/multiomics_activity.py).
-
-        Args:
-            accessibility_column: Column with accessibility signal.
-            histone_columns: Columns with activating histone signals.
-            histone_weights: Weights keyed by column name.
-            inhibitory_columns: Columns with inhibitory signals
-                (methylation, H3K27me3, H3K9me3).
-            inhibitory_weights: Weights for inhibitory signals.
-            method: Aggregation method.
-            accessibility_weight: Weight for the accessibility signal.
+        Unknown signal values stay NaN. Repression requires the explicit
+        fraction-scale core API. See docs/FORMULA.md.
         """
         logger.info(f"Calculating activity using {method}")
 
@@ -272,41 +198,15 @@ class NeighborhoodAnalyzer:
                     w = histone_weights.get(col, 1.0) if histone_weights else 1.0
                     weights.append(w)
 
-        # Stack without mutating the source arrays.
-        activating = np.clip(np.vstack(signal_arrays), 1e-10, None)
-        weights = np.asarray(weights, dtype=float)
-
-        if method == 'geometric_mean':
-            activity = np.exp(np.mean(np.log(activating), axis=0))
-
-        elif method == 'weighted_geometric':
-            w_sum = weights.sum() if weights.sum() > 0 else 1.0
-            log_activity = np.tensordot(weights, np.log(activating), axes=1) / w_sum
-            activity = np.exp(log_activity)
-
-        elif method == 'weighted_sum':
-            activity = np.tensordot(weights, activating, axes=1)
-
-        else:  # arithmetic_mean
-            activity = np.mean(activating, axis=0)
-
-        # Apply inhibitory signals (each scaled to [0, 1] independently).
+        if method != 'missing_geometric':
+            raise ValueError('PACE requires missing_geometric; old modes are archived')
         if inhibitory_columns:
-            inhibitory_score = np.zeros(len(self.regions))
-            for col in inhibitory_columns:
-                if col in self.regions.columns:
-                    w = (inhibitory_weights.get(col, 0.5)
-                         if inhibitory_weights else 0.5)
-                    inhib = self.regions[col].to_numpy(dtype=float)
-                    rng = inhib.max() - inhib.min()
-                    inhib_norm = ((inhib - inhib.min()) / rng
-                                  if rng > 0 else np.zeros_like(inhib))
-                    inhibitory_score += w * inhib_norm
-            inhibitory_score = np.clip(inhibitory_score, 0, 1)
-            activity = activity * (1 - inhibitory_score)
+            raise ValueError('Use current quantified input for explicit fraction-scale repression')
+        names = [accessibility_column] + [c for c in (histone_columns or []) if c in self.regions]
+        result = aggregate_activity(dict(zip(names, signal_arrays)), dict(zip(names, weights)))
+        for c in result:
+            self.regions[c] = result[c].to_numpy()
 
-        self.regions['activity'] = activity
-        logger.info(f"Activity range: {activity.min():.4f} - {activity.max():.4f}")
     
     def normalize_signals(self,
                          columns: Optional[List[str]] = None,
@@ -354,6 +254,7 @@ class NeighborhoodAnalyzer:
         if include_activity and 'activity' in self.regions.columns:
             output_cols.append('activity')
         
+        output_cols += [c for c in ['activity_quality', 'activity_observed_fraction', 'activity_modalities_observed', 'repression_observed', 'repression'] if c in self.regions and c not in output_cols]
         enhancers = self.regions[output_cols].copy()
         enhancers.to_csv(output_file, sep='\t', index=False)
         
@@ -402,9 +303,9 @@ class NeighborhoodAnalyzer:
                     expr_dict = {}
             
             # Map expression to genes
-            for id_col in ['gene_name', 'gene_id', 'name']:
+            for id_col in ['gene_id']:
                 if id_col in genes.columns:
-                    genes['Expression'] = genes[id_col].map(expr_dict).fillna(0)
+                    genes['Expression'] = genes[id_col].map(expr_dict)
                     break
             else:
                 genes['Expression'] = 0
@@ -424,11 +325,11 @@ def run_neighborhoods(candidate_regions_file: str,
                      histone_files: Optional[Dict[str, str]] = None,
                      methylation_file: Optional[str] = None,
                      expression_file: Optional[str] = None,
-                     activity_method: str = 'geometric_mean',
+                     activity_method: str = 'missing_geometric',
                      histone_weights: Optional[Dict[str, float]] = None,
                      inhibitory_histone_files: Optional[Dict[str, str]] = None,
                      inhibitory_weights: Optional[Dict[str, float]] = None,
-                     accessibility_weight: float = 1.5) -> Tuple[str, str]:
+                     accessibility_weight: float = 1.0) -> Tuple[str, str]:
     """
     Run neighborhood analysis.
 
@@ -455,13 +356,16 @@ def run_neighborhoods(candidate_regions_file: str,
     Returns:
         Tuple of (enhancer_list_file, gene_list_file)
     """
+    for path in [accessibility_file, expression_file, methylation_file,
+                 *(histone_files or {}).values(), *(inhibitory_histone_files or {}).values()]:
+        if path and not os.path.isfile(path):
+            raise FileNotFoundError(f'Signal or annotation file not found: {path}')
     os.makedirs(output_dir, exist_ok=True)
     
     # Load data
     logger.info("Loading candidate regions and genes")
     
-    regions = pd.read_csv(candidate_regions_file, sep='\t', header=None,
-                         names=['chr', 'start', 'end', 'name'])
+    regions = read_candidate_regions(candidate_regions_file)
     
     # Read the gene annotation robustly. PACE gene BEDs may be BED6 or an
     # extended BED with gene_id / gene_type columns (as produced by
@@ -504,7 +408,7 @@ def run_neighborhoods(candidate_regions_file: str,
     # Strand-aware TSS (5'-most position of the gene).
     if 'TSS' not in genes.columns and {'start', 'end', 'strand'}.issubset(genes.columns):
         genes['TSS'] = genes.apply(
-            lambda r: int(r['start']) if str(r['strand']) != '-' else int(r['end']),
+            lambda r: int(r['start']) if str(r['strand']) != '-' else int(r['end']) - 1,
             axis=1)
     
     chrom_sizes = {}

@@ -19,6 +19,26 @@ import subprocess
 import tempfile
 
 
+def read_candidate_regions(filename):
+    """Read BED3 or wider without treating extra fields as an index."""
+    table = pd.read_csv(filename, sep='\t', header=None, comment='#', dtype={0: str})
+    if table.shape[1] < 3:
+        raise ValueError('Candidate BED requires chromosome, start and end')
+    names = ['chr', 'start', 'end', 'name', 'score', 'strand']
+    names += [f'extra_{i}' for i in range(6, table.shape[1])]
+    table.columns = names[:table.shape[1]]
+    if 'name' not in table:
+        table['name'] = [f'region_{i}' for i in range(len(table))]
+    for col in ['start', 'end']:
+        values = pd.to_numeric(table[col], errors='raise')
+        if not np.isfinite(values).all() or (values < 0).any() or (values != np.floor(values)).any():
+            raise ValueError(f'{col} must contain nonnegative integer coordinates')
+        table[col] = values.astype('int64')
+    if (table.end <= table.start).any():
+        raise ValueError('Candidate BED requires end > start')
+    return table
+
+
 def read_bed(filename: str, 
              names: Optional[List[str]] = None,
              usecols: Optional[List[int]] = None,

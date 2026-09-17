@@ -11,6 +11,7 @@ rule generate_qc_plot_and_summary:
         output_dir = os.path.join(RESULTS_DIR, "{biosample}", "Metrics"),
         scripts_dir = SCRIPTS_DIR,
         sample_name = lambda wildcards: wildcards.biosample,
+        output_prefix = lambda w: f"threshold{w.threshold}{w.separator}{w.other_flags}",
     conda:
         "../envs/pace-env.yml"
     output:
@@ -27,6 +28,6 @@ rule generate_qc_plot_and_summary:
         python {params.scripts_dir}/pace_metrics.py \
             --predictions {input.enhPredictionsFull} \
             --output_dir {params.output_dir} \
-            --sample_name {params.sample_name} \
+            --sample_name {params.output_prefix:q} \
             2> {log}
         """

@@ -19,7 +19,9 @@ def _get_hic_params(wildcards):
     hic_type = BIOSAMPLES_CONFIG.loc[wildcards.biosample, "HiC_type"] if "HiC_type" in BIOSAMPLES_CONFIG.columns else "hic"
     hic_resolution = BIOSAMPLES_CONFIG.loc[wildcards.biosample, "HiC_resolution"] if "HiC_resolution" in BIOSAMPLES_CONFIG.columns else 5000
     
-    return f"--hic_file {hic_file} --hic_type {hic_type} --hic_resolution {hic_resolution}"
+    metadata = BIOSAMPLES_CONFIG.loc[wildcards.biosample, 'contact_metadata'] if 'contact_metadata' in BIOSAMPLES_CONFIG.columns else ''
+    extra = f' --contact_metadata {metadata}' if pd.notna(metadata) and metadata else ''
+    return f"--hic_file {hic_file} --hic_type {hic_type} --hic_resolution {hic_resolution}{extra}"
 
 
 def _get_expression_params(wildcards):
@@ -101,7 +103,8 @@ rule filter_predictions:
         """
         python {params.scripts_dir}/pace_filter.py \
             --predictions {input.allPutative} \
-            --output {output.enhPredictionsFull} \
+            --output {output.enhPredictionsSlim:q} \
+            --full_output_file {output.enhPredictionsFull:q} \
             --threshold {params.threshold} \
             --score_column {params.score_column} \
             {params.only_expressed} \

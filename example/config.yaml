@@ -43,7 +43,7 @@ params_predict:
 
 ### FILTER PREDICTION PARAMETERS
 params_filter_predictions:
-  score_column: 'ABC.Score'
+  score_column: 'PACE.Score'
   threshold: 0.02
   include_self_promoter: True
   only_expressed_genes: False

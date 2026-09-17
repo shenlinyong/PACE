@@ -10,7 +10,7 @@ Usage:
         --predictions predictions.tsv.gz \
         --output_dir output/Metrics \
         [--sample_name sample1] \
-        [--score_column ABC.Score]
+        [--score_column PACE.Score]
 
 Author: Linyong Shen @ Northwest A&F University
 """
@@ -40,7 +40,7 @@ def main():
     # Optional arguments
     parser.add_argument('--sample_name', default='sample',
                        help='Sample name for output files')
-    parser.add_argument('--score_column', default='ABC.Score',
+    parser.add_argument('--score_column', default='PACE.Score',
                        help='Score column name')
     
     # Comparison mode

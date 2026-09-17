@@ -21,6 +21,8 @@ import argparse
 import sys
 import os
 import pandas as pd
+from pathlib import Path
+from typing import Optional
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -31,10 +33,11 @@ from tools import logger
 def filter_predictions(predictions_file: str,
                        output_file: str,
                        threshold: float = 0.02,
-                       score_column: str = 'ABC.Score',
+                       score_column: str = 'PACE.Score',
                        only_expressed: bool = False,
                        output_full: bool = True,
-                       output_slim: bool = True) -> pd.DataFrame:
+                       output_slim: bool = True,
+                       full_output_file: Optional[str] = None) -> pd.DataFrame:
     """
     Filter predictions by threshold and criteria.
     
@@ -74,7 +77,9 @@ def filter_predictions(predictions_file: str,
     
     # Write full output
     if output_full:
-        full_file = output_file.replace('.tsv', '_Full.tsv')
+        destination = Path(output_file)
+        full_file = full_output_file or str(destination.with_name(destination.stem + '_Full.tsv'))
+        Path(full_file).parent.mkdir(parents=True, exist_ok=True)
         filtered.to_csv(full_file, sep='\t', index=False)
         logger.info(f"Wrote full output to {full_file}")
     
@@ -83,13 +88,14 @@ def filter_predictions(predictions_file: str,
         slim_columns = [
             'chr', 'start', 'end', 'name',
             'TargetGene', 'TargetGeneTSS', 'TargetGeneStrand',
-            score_column, 'distance', 'class'
+            score_column, 'distance', 'class', 'TargetGeneEnsemblID', 'TargetGeneTSSs', 'evidence_quality', 'evidence_status', 'evidence_reasons', 'score_scope'
         ]
         
         # Only keep columns that exist
         slim_columns = [c for c in slim_columns if c in filtered.columns]
         
-        slim_file = output_file.replace('.tsv', '.tsv')
+        slim_file = output_file
+        Path(slim_file).parent.mkdir(parents=True, exist_ok=True)
         filtered[slim_columns].to_csv(slim_file, sep='\t', index=False)
         logger.info(f"Wrote slim output to {slim_file}")
     
@@ -110,7 +116,7 @@ def main():
     # Filter options
     parser.add_argument('--threshold', type=float, default=0.02,
                        help='Score threshold (default: 0.02)')
-    parser.add_argument('--score_column', default='ABC.Score',
+    parser.add_argument('--score_column', default='PACE.Score',
                        help='Score column name')
     parser.add_argument('--only_expressed', action='store_true',
                        help='Filter to expressed genes only')
@@ -124,6 +130,7 @@ def main():
                        help='Do not write full output')
     parser.add_argument('--no_slim', action='store_true',
                        help='Do not write slim output')
+    parser.add_argument('--full_output_file', help='Explicit full-table path for workflow output tracking')
     
     args = parser.parse_args()
     
@@ -143,7 +150,8 @@ def main():
         score_column=args.score_column,
         only_expressed=args.only_expressed,
         output_full=args.output_full and not args.no_full,
-        output_slim=args.output_slim and not args.no_slim
+        output_slim=args.output_slim and not args.no_slim,
+        full_output_file=args.full_output_file
     )
     
     logger.info("Done!")

@@ -1,0 +1,14 @@
+{
+  "signals": {
+    "ATAC": {
+      "weight": 1,
+      "scale": 1,
+      "quality_column": "ATAC_quality"
+    },
+    "H3K27ac": {
+      "weight": 1,
+      "scale": 1,
+      "quality_column": "H3K27ac_quality"
+    }
+  }
+}

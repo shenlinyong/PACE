@@ -62,14 +62,14 @@ def main():
     
     # Expression options
     parser.add_argument('--expression', default=None,
-                       help='Expression file for filtering/weighting')
+                       help='Optional RNA context TSV with gene_id and TPM')
     parser.add_argument('--use_expression_weight', action='store_true',
-                       help='Weight predictions by gene expression')
+                       help='Deprecated compatibility flag; RNA never multiplies current scores')
     parser.add_argument('--weight_method', default='log',
                        choices=['binary', 'linear', 'log'],
-                       help='Expression weight method')
+                       help='Deprecated compatibility option; has no effect on current scores')
     parser.add_argument('--min_expression', type=float, default=1.0,
-                       help='Minimum expression for filtering (TPM)')
+                       help='TPM cutoff for expression-status annotation')
     
     # Prediction options
     parser.add_argument('--max_distance', type=int, default=5000000,
@@ -82,10 +82,13 @@ def main():
                        help='Exclude self-promoter interactions')
     
     # Output options
-    parser.add_argument('--score_column', default='ABC.Score',
+    parser.add_argument('--score_column', default='PACE.Score',
                        help='Name for score column')
     
+    parser.add_argument('--contact_metadata', help='TSS-pair keyed expected contacts and QC TSV')
     args = parser.parse_args()
+    if args.score_column != 'PACE.Score' or args.scale_hic_using_powerlaw:
+        parser.error('Use PACE.Score and --contact_metadata for explicit contact scaling')
     
     # Validate inputs
     if not os.path.exists(args.enhancers):
@@ -120,7 +123,8 @@ def main():
         hic_gamma=args.hic_gamma,
         hic_scale=args.hic_scale,
         score_threshold=args.threshold,
-        include_self_promoter=include_self
+        include_self_promoter=include_self,
+        contact_metadata_file=args.contact_metadata
     )
     
     logger.info(f"Predictions written to: {output_file}")

@@ -96,6 +96,7 @@ echo ""
 
 # Run snakemake
 snakemake \
+    --snakefile workflow/Snakefile \
     --configfile example/config.yaml \
     --cores ${CORES} \
     --printshellcmds \
