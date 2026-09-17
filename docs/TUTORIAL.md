@@ -1,6 +1,6 @@
 # Running an analysis
 
-PACE (Prediction of Activity-based regulatory Connections for Enhancers) offers a numerical-table interface and genomic-file adapters. This tutorial starts with files shipped in the repository, then describes how to substitute a domestic-animal dataset. Run commands from the repository root with `conda activate pace`.
+PACE (Prediction of Activity-based regulatory Connections for Enhancers) offers a numerical-table interface and genomic-file adapters. This tutorial starts with files shipped in the repository, then shows how to use a dataset from your species and tissue. Run commands from the repository root with `conda activate pace`.
 
 ## Step-by-step genomic-file example
 
@@ -91,7 +91,7 @@ python scripts/calculate_pace_score.py \
 
 The main file contains all predictions; `standalone.tsv.filtered.tsv` contains selected rows. Each biosample name must occur exactly once in the sample sheet. The standalone calculator and the two-stage neighborhood/predictor route delegate to the same scoring kernel. [Parameters](PARAMETERS.md) documents which controls each wrapper exposes.
 
-## Replace the example with a livestock sample
+## Replace the example with your species and tissue
 
 1. **Choose the assembly and annotation together.** Use a matched FASTA, GTF and chromosome-size file. Keep the same identifiers (`1` versus `chr1`, scaffold names and stable gene IDs) in reads, signals, peaks and annotation. PACE does not lift coordinates between assemblies.
 2. **Prepare processed assay inputs.** Use aligned, quality-controlled accessibility reads or an appropriately normalized bigWig. Add matched H3K27ac if available. Keep replicate handling and normalization in the run record; they are not inferred from filenames.
@@ -111,11 +111,17 @@ cut -f1,2 reference/animal.fa.fai > reference/animal.chrom.sizes
 
 ## Add measured contacts or RNA context
 
-For qualified measured contact, append the following to the prediction command, replacing these example paths with your files:
+For qualified measured contact, run the complete command below after preparing the enhancer and gene lists. Replace the two `data/` paths with your own contact file and metadata; these files are not bundled inputs:
 
 ```bash
---hic_file data/tissue_contacts.bedpe --hic_type bedpe --hic_resolution 5000 \
---contact_metadata data/contact_metadata.tsv
+python workflow/scripts/pace_predict.py \
+  --enhancers results/tutorial/neighborhoods/EnhancerList.txt \
+  --genes results/tutorial/neighborhoods/GeneList.txt \
+  --output results/tutorial/measured_contact.tsv.gz \
+  --max_distance 5000000 \
+  --hic_file data/tissue_contacts.bedpe \
+  --hic_type bedpe --hic_resolution 5000 \
+  --contact_metadata data/contact_metadata.tsv
 ```
 
 The metadata is keyed by enhancer coordinates, gene ID and TSS and supplies compatible expected contacts, reliability and `matched` or `surrogate` provenance. If required metadata are absent, the observation remains visible but the structural score falls back to the distance prior. Setting every reliability to 1 simply because a file exists is not a valid QC procedure. [Contact schemas](INPUTS.md#contact-metadata)
@@ -128,7 +134,7 @@ For RNA annotation, add `--expression data/rna.tsv` to `pace_predict.py`. The ta
 
 Use `scripts/pace.py` when activity scales, quality or contact expectations have already been quantified. It expects one enhancer–gene–TSS row and scores the supplied candidate set without generating or distance-filtering pairs. The [input specification](INPUTS.md) lists required fields.
 
-To remove enhancer-centred allocation while holding the input table fixed:
+The [worked examples](WORKED_EXAMPLES.md) provide runnable cases for a missing assay, missing contact and measured zero contact. To remove enhancer-centred allocation while holding the input table fixed:
 
 ```bash
 python scripts/pace.py \

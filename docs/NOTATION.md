@@ -27,4 +27,6 @@ PACE (Prediction of Activity-based regulatory Connections for Enhancers) uses $\
 | $Q_A,Q_C,Q_T,Q_{\mathrm{cat}}$ | Activity, contact, TSS and catalogue QC | `activity_quality`, `contact_quality`, `tss_quality`, `catalogue_quality` |
 | $Q(E,G)$ | Minimum evidence component, unknown retained | `evidence_quality` |
 
+The [ABC comparison](ABC_COMPARISON.md) also writes this gene-level contact as $\overline C(E,G)$ to distinguish it from the ABC contact estimate. Thus $\overline C(E,G)\equiv C(E,G)$ in PACE: both denote the same reliability-adjusted, TSS-averaged `contact_gene` field.
+
 Distance units are bp. Signal, observed-contact and residual-support units must be documented with the input profile. See [equations](FORMULA.md), [parameters](PARAMETERS.md) and [outputs](IO_FORMATS.md).

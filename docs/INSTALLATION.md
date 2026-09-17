@@ -2,9 +2,29 @@
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) runs locally or on a Linux compute server. The recommended setup uses Conda and the supplied environment files.
 
+## Choose an environment
+
+| Your starting point | Environment | Includes |
+| --- | --- | --- |
+| Quantified tables, called peaks or processed signal tracks | `pace`, from `environment.yml` | Scoring, genomic interval tools, direct commands, QC and tests |
+| Aligned reads requiring automated peak calling | `pace-workflow`, from `workflow/envs/pace-env.yml` | Everything above plus MACS2 and Snakemake |
+| Binary `.hic` or `.cool` contact files | Either environment plus the applicable optional reader | `hic-straw` or `cooler` |
+
+Choose one of the first two environments for your analysis; the workflow environment already contains the direct-workflow dependencies. BEDPE contact tables need no extra reader.
+
 ## Before installation
 
 Install **Bash, Git and Conda**. Conda supplies Python; a separate system Python installation is unnecessary. [Miniforge](https://github.com/conda-forge/miniforge#install) provides Conda with conda-forge configured. Follow its instructions for your operating system and CPU architecture, then reopen the shell or initialize Conda for that shell.
+
+On a managed compute server, use the administrator-provided Conda installation if available. To install Conda yourself on Linux x86-64, the following follows the [Miniforge installation instructions](https://github.com/conda-forge/miniforge#install). It requires `curl` and uses an interactive installer, which lets you choose the installation directory:
+
+```bash
+curl -fL -o Miniforge3-Linux-x86_64.sh \
+  https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+bash Miniforge3-Linux-x86_64.sh
+```
+
+Accept shell initialization and open a new Bash terminal. Skip this step when `conda --version` already works. Git is needed to clone the repository; an extracted source ZIP can be used instead by entering its top-level directory. PACE's Conda environments do not require administrator privileges.
 
 The documented validation target is **Linux x86-64**. On Windows, use a Linux environment such as WSL2. macOS installations depend on availability of the chosen bioinformatics packages and are not part of the recorded Linux validation. A GPU is not required. Genome-wide memory and runtime depend on the number of candidate–TSS pairs; pilot one chromosome before submitting a full-genome job. The small bundled examples do not establish a genome-wide resource requirement.
 
@@ -51,6 +71,19 @@ python scripts/pace.py --help
 python -m pytest tests -q
 python scripts/smoke_test.py --output-dir results/smoke
 ```
+
+`Imports OK` confirms the Python modules are available; bedtools and samtools should each print a version. The regression suite should pass **48 tests**, and the small-file check should end with `PASS`. These checks exercise installed software; they do not benchmark a species or tissue.
+
+For a batch job without interactive activation, use Conda's environment runner:
+
+```bash
+conda run -n pace python scripts/pace.py \
+  --pairs example_quantified/candidates.tsv \
+  --activity-config example_quantified/activity.json \
+  --output results/installation_check/predictions.tsv
+```
+
+This should write six gene-level rows. If your environment has a different name or was created with `--prefix`, replace `-n pace` with the matching name or `-p /path/to/env`.
 
 Continue with the [quick start](QUICKSTART.md).
 

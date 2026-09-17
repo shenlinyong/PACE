@@ -42,6 +42,17 @@ PYCODE
 
 Nine TSS-level rows become six gene-level links. Two scores remain `NA` because enhancer activity was not observed. Scores for the remaining rows are conditional on the available candidate background. A large score does not eliminate missing evidence.
 
+Expected values, rounded to six decimal places (`NaN` is pandas' display of a missing number):
+
+| Enhancer start | Gene | Distinct TSSs | PACE score | Evidence status |
+| --- | --- | --- | --- | --- |
+| 1000 | g1 | 2 | 0.828036 | `provisional` |
+| 1000 | g2 | 1 | 0.819960 | `provisional` |
+| 0 | g2 | 1 | 0.180040 | `provisional` |
+| 0 | g1 | 2 | 0.171964 | `provisional` |
+| 2000 | g1 | 2 | `NA` | `insufficient` |
+| 2000 | g2 | 1 | `NA` | `insufficient` |
+
 ## 4. Create a separate filtered output
 
 ```bash
@@ -63,6 +74,8 @@ python scripts/smoke_test.py --output-dir results/smoke
 The small-file workflow prints a final `PASS` report and compares outputs with a separate numerical calculation. To process supplied genomic-read files next, run `bash example/run_example_direct.sh` or follow the [step-by-step tutorial](TUTORIAL.md).
 
 ## Choose your next route
+
+To see the effect of a missing assay, missing contact or measured zero contact using runnable inputs, continue with [worked examples](WORKED_EXAMPLES.md).
 
 | Your data | Next step |
 | --- | --- |

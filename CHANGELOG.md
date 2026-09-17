@@ -2,7 +2,10 @@
 
 ## 17 September 2026
 
-- Rebuild the user manual around the original ABC comparison, parameter rationale, Conda installation, executable examples and output interpretation; add a Chinese guide and a workflow diagram.
+- Clarify PACE as a general framework particularly suited to incomplete livestock datasets; expand all six original-ABC comparisons with parameter rationale and worked calculations.
+- Replace the overview diagram with formula comparisons and executable input scenarios; expand Conda prerequisites and the Chinese manual.
+
+- Rebuild the user manual around the original ABC comparison, parameter rationale, Conda installation, executable examples and output interpretation; add a Chinese guide.
 - Provide separate direct-workflow and Snakemake Conda recipes, exact Linux package locks and a Conda-only setup helper.
 - Match filter/QC log wildcards to their outputs so the documented Snakemake workflow can build and execute its DAG.
 

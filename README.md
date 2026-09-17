@@ -1,65 +1,45 @@
 # PACE (Prediction of Activity-based regulatory Connections for Enhancers)
 
-**Enhancer–gene prediction from chromatin activity, contact evidence and promoter annotation, with explicit reporting of missing information.**
+**Predict enhancer–gene links from chromatin activity, promoter contact and gene annotation.**
 
-Author and maintainer: **shenlinyong — 申林用 (Linyong Shen), Northwest A&F University**.
+[Installation](docs/INSTALLATION.md) · [Quick start](docs/QUICKSTART.md) · [Tutorial](docs/TUTORIAL.md) · [ABC comparison](docs/ABC_COMPARISON.md) · [Parameters](docs/PARAMETERS.md) · [中文手册](docs/README_zh.md)
 
-[Install](docs/INSTALLATION.md) · [Quick start](docs/QUICKSTART.md) · [Tutorial](docs/TUTORIAL.md) · [Parameters](docs/PARAMETERS.md) · [中文说明](docs/README_zh.md)
+PACE is a general framework for ranking candidate enhancer–gene links across species using matching genome references and annotations. It combines available activity measurements, adjusts contact evidence by its reliability, and integrates distinct transcription start sites (TSSs). Each prediction includes a relative score and a separate assessment of input evidence.
 
-## What does PACE do?
+These features make PACE particularly well suited to livestock datasets, where assay coverage is often uneven, tissue-matched Hi-C is limited, and promoter annotation is incomplete. The same features apply to other species with comparable data constraints. Pig, cattle and chicken are application examples; the scoring model contains no livestock-specific species restriction.
 
-PACE ranks candidate cis-regulatory links for one species, genome assembly and tissue or cell type at a time. It combines enhancer activity with promoter contact, integrates distinct transcription start sites (TSSs), and reports a relative score alongside the completeness and quality of the supporting inputs. It accepts prepared numerical tables or genomic signal files; neither a training-label set nor a GPU is required.
+## PACE and the original ABC model
 
-The workflow is designed for studies in which livestock tissues have uneven assay coverage, limited matched Hi-C data and incomplete promoter annotation. Pig, cattle and chicken analyses motivate these choices. Other species can be processed with matching reference files; performance in a new species or tissue needs independent evaluation.
+The comparison below refers to [Fulco et al. (2019)](https://doi.org/10.1038/s41588-019-0538-0) and the [NG2019 implementation](https://github.com/EngreitzLab/ABC-Enhancer-Gene-Prediction-20250314-archive/tree/NG2019).
 
-**The output is a ranked set of candidates for follow-up. A PACE score is not a probability of regulation or a calibrated false discovery rate.**
+ABC provides an activity–contact baseline when those inputs can be estimated reliably. PACE extends that formulation to make uneven coverage, variable contact reliability and incomplete annotation explicit in scoring and reporting.
 
-## How does it differ from the original ABC model?
-
-The reference is the **Activity-by-Contact (ABC) model of Fulco et al. (2019)**, which scores an element using its activity–contact product relative to competing elements around a gene. See the [original paper](https://doi.org/10.1038/s41588-019-0538-0) and [NG2019 implementation](https://github.com/EngreitzLab/ABC-Enhancer-Gene-Prediction-20250314-archive/tree/NG2019). Later ABC releases have additional features and should be identified separately in benchmarks.
-
-| Component | Original ABC reference | PACE implementation | Purpose in livestock studies |
+| Component | Original ABC formulation | PACE modification | Why it helps with livestock data |
 | --- | --- | --- | --- |
-| Activity | Geometric combination of accessibility and H3K27ac in the original profile | Scaled, shifted geometric aggregation with explicit missing values and optional measurement quality | Retain an available assay without treating an unmeasured assay as zero |
-| Contact | Measured contact; averaged contact and distance alternatives were already available | Blend observed/expected contact with a distance prior using supplied reliability; record matched, surrogate or prior-only provenance | Use limited contact data while keeping tissue mismatch and missing QC visible |
-| Promoters | Gene annotation supplies the promoter used for scoring | Deduplicate transcript TSSs and combine them with weights summing to one per gene | Represent alternative promoters without rewarding duplicate transcript records |
-| Candidate targets | Gene-centred normalization of activity × contact | Add enhancer-centred target allocation before gene normalization | Account for an enhancer having multiple candidate target genes |
-| Evidence reporting | ABC score and input/output annotations | Separate activity, contact, TSS and catalogue quality; retain unscorable candidates | Make sparse evidence visible when selecting candidates for experiments |
+| **Contact** | Activity is multiplied by the chosen contact estimate; averaged Hi-C and distance alternatives were already considered | Adjust observed/expected contact toward a distance prior according to local reliability | Low-quality or unavailable matched Hi-C has less influence; source and fallback remain visible |
+| **Activity** | The original two-assay profile uses the geometric mean of accessibility and H3K27ac | Combine effective measurements with declared scales and weights; distinguish `NA` from measured `0` | A missing assay does not erase an available measurement or become evidence of inactivity |
+| **Candidate targets** | Normalize activity × contact independently for each gene | First allocate support across an enhancer's candidate genes through $B(E,G)$ | Reduces raw support for broadly shared enhancers, aiming to improve specificity in gene-dense regions |
+| **Promoters** | Contact is defined relative to the selected gene promoter | Deduplicate transcript TSSs and average contacts with gene-level TSS weights | Integrates alternative promoters without inflating support through repeated annotation records |
+| **Evidence** | The relative ABC score summarizes activity–contact support | Report score separately from $Q$, component qualities and reason codes | A candidate can remain available while incomplete evidence is labelled `provisional` |
+| **Unscored candidates** | The normalization is defined over candidate activity–contact products | Use finite support in $\mathcal E^{\mathrm{obs}}(G)$, retain unscored rows and allow independent residual support $U(G)$ | An uncomputable contribution remains missing; omitted regulatory support is explicitly acknowledged |
 
-The target-allocation and multiple-TSS principles draw on [generalized ABC / STARE](https://doi.org/10.1093/bioinformatics/btad062); PACE uses a weighted-average TSS implementation. These are attributed extensions, not claims that every component is new. [The full comparison](docs/ABC_COMPARISON.md) explains the rationale, unchanged settings and limitations.
+For the two models, the normalization rules are
 
-For enhancer $E$ and gene $G$, the score is
+$$
+\mathrm{ABC}(E,G)=\frac{A_{\mathrm{ABC}}(E)C_{\mathrm{ABC}}(E,G)}{\sum_{e\in\mathcal E(G)}A_{\mathrm{ABC}}(e)C_{\mathrm{ABC}}(e,G)},
+$$
 
 $$
 \mathit{PACE}(E,G)=\frac{A(E)C(E,G)B(E,G)^\eta}{\sum_{e\in\mathcal E^{\mathrm{obs}}(G)}A(e)C(e,G)B(e,G)^\eta+U(G)}.
 $$
 
-Here, **A** is activity, **C** is TSS-weighted contact, **B** allocates contact across an enhancer's candidate genes, and **U** is optional, independently estimated residual support. The defaults are $\eta=1$ and unknown $U$, computationally zero and explicitly flagged. RNA can annotate expression context; it is not a multiplicative score weight. [Equations](docs/FORMULA.md) · [Every parameter and its rationale](docs/PARAMETERS.md)
+In PACE, $C(E,G)$ is already reliability-adjusted and averaged across distinct TSSs; it is the adjusted contact $\overline C(E,G)$ in a direct ABC comparison. The default allocation exponent is $\eta=1$. Unknown $U(G)$ is computationally zero and remains flagged; PACE does not estimate missing regulatory support automatically.
 
-## Workflow
+Target allocation and multi-TSS integration build on [generalized ABC / STARE](https://doi.org/10.1093/bioinformatics/btad062). The [comparison guide](docs/ABC_COMPARISON.md) explains all six changes, numerical examples and attribution. Suitability for incomplete data is a design property; improved accuracy requires a matched biological benchmark.
 
-```mermaid
-flowchart LR
-    A[Accessibility and optional H3K27ac] --> B[Candidate intervals and activity]
-    C[Same-assembly GTF annotation] --> D[Distinct transcript TSSs]
-    B --> E[Candidate enhancer-TSS pairs]
-    D --> E
-    F[Distance prior] --> G[Contact and provenance]
-    H[Optional measured contact plus expected contact and QC] --> G
-    E --> G
-    G --> I[TSS aggregation and target allocation]
-    I --> J[Gene-normalized PACE score]
-    B --> K[Input evidence assessment]
-    D --> K
-    G --> K
-    J --> L[All candidates with scores and reason codes]
-    K --> L
-    L --> M[Thresholding and experimental prioritization]
-```
+## Installation
 
-## Install with Conda
-
-Prerequisites: **Linux, Bash, Git and Conda** (for example, [Miniforge](https://github.com/conda-forge/miniforge)). The commands below install Python and all dependencies for the documented direct workflows and tests; packages do not need to be installed one by one.
+Use **Linux, Bash, Git and Conda**. [Miniforge](https://github.com/conda-forge/miniforge#install) supplies Conda. The environment file installs Python and the required packages together.
 
 ```bash
 git clone https://github.com/shenlinyong/PACE.git
@@ -67,16 +47,21 @@ cd PACE
 CONDA_CHANNEL_PRIORITY=strict conda env create -f environment.yml
 conda activate pace
 python scripts/pace.py --help
-bedtools --version
 ```
 
-The environment contains Python 3.11, NumPy, pandas, PyYAML, SciPy, matplotlib, pyBigWig, bedtools, samtools and pytest. MACS2 and Snakemake are needed only for the optional peak-calling workflow. `.hic` and `.cool` readers have separate optional dependencies. See [installation and package roles](docs/INSTALLATION.md), including environment export and troubleshooting.
+The `pace` environment includes Python 3.11, NumPy, pandas, PyYAML, SciPy, matplotlib, pyBigWig, bedtools, samtools, pytest and pip. It supports numerical tables, called peaks and processed genomic signals. A GPU and training labels are unnecessary.
 
-## Run your first example
+| Additional task | Additional packages | Installation |
+| --- | --- | --- |
+| Automated peak calling from aligned reads | MACS2, Snakemake, compatible PuLP and setuptools | [Separate `pace-workflow` Conda environment](docs/INSTALLATION.md#optional-peak-calling-and-snakemake-environment) |
+| Read `.hic` contact files | `hic-straw` | [Optional contact readers](docs/INSTALLATION.md#optional-contact-readers) |
+| Read `.cool` contact files | `cooler` | [Optional contact readers](docs/INSTALLATION.md#optional-contact-readers) |
 
-All commands assume the repository root and an activated environment.
+[Package versions and roles, Linux lock files, installation checks and environment export](docs/INSTALLATION.md)
 
-### 1. Prepared numerical inputs
+## Quick start
+
+Run from the repository root with the `pace` environment active:
 
 ```bash
 python scripts/pace.py \
@@ -91,7 +76,7 @@ Expected console output:
 Wrote 6 gene-level edges; all scores are uncalibrated.
 ```
 
-The nine input enhancer–TSS rows collapse to six enhancer–gene rows. Two rows deliberately remain unscored because their activity is missing. Inspect the main output fields:
+The nine enhancer–TSS input rows become six enhancer–gene rows. Two retain missing scores because their activity was not measured. Inspect the results:
 
 ```bash
 python - <<'PYCODE'
@@ -102,65 +87,68 @@ print(p[['TargetGeneEnsemblID', 'start', 'PACE.Score',
 PYCODE
 ```
 
-### 2. Bundled genomic-read example
+The [quick-start guide](docs/QUICKSTART.md) includes expected scores and filtering commands. The [worked examples](docs/WORKED_EXAMPLES.md) show what changes when an assay or contact measurement is missing.
+
+To run the bundled genomic-read example:
 
 ```bash
 bash example/run_example_direct.sh
 ```
 
-This runs candidate construction, signal quantification, scoring, filtering and QC on supplied synthetic reads. Outputs are written to `example/results/Example_Sample/`; the complete prediction table contains **12,000 enhancer–gene pairs**. The [tutorial](docs/TUTORIAL.md) explains each command and how to replace the inputs with a livestock sample.
+This constructs candidates, quantifies signals, scores pairs and writes filtered predictions and QC to `example/results/Example_Sample/`. The unfiltered table contains **12,000 enhancer–gene pairs**. Both examples use synthetic inputs to demonstrate software behavior.
 
-### 3. Check your installation
+## Run your own data
+
+| Starting data | Required inputs | Use |
+| --- | --- | --- |
+| Quantified measurements | Enhancer coordinates, stable gene IDs, TSSs, positive contact priors, activity or named assay signals | [`scripts/pace.py`](docs/INPUTS.md#quantified-candidate-table) |
+| Called peaks and processed signals | BED/narrowPeak, chromosome sizes, matched GTF/TSS catalogue, accessibility signal | [Step-by-step tutorial](docs/TUTORIAL.md#step-by-step-genomic-file-example) |
+| Aligned accessibility reads | BAM/tagAlign, reference files, sample sheet and YAML configuration | [Snakemake tutorial](docs/TUTORIAL.md#optional-snakemake-workflow) |
+
+Use one assembly throughout and BED0 coordinates for genomic tables. `prepare_tss.py` converts GTF coordinates. Supply `NA` for an unavailable measurement and `0` for measured zero. Measured Hi-C is optional; qualified contact use requires compatible expected contacts, reliability and source metadata. FASTQ alignment and raw Hi-C processing are upstream steps.
+
+For a new species, replace the reference files and review the candidate catalogue, signal scales and contact prior. [The tutorial](docs/TUTORIAL.md#replace-the-example-with-your-species-and-tissue) explains these choices, including livestock-specific preparation considerations.
+
+## Interpret the output
+
+Keep the **unfiltered prediction table** as the analysis record. Apply selection thresholds after scoring so that filtering does not redefine the normalization background.
+
+| Field | Interpretation |
+| --- | --- |
+| `PACE.Score` | Relative support within the supplied gene background; `NA` means unscorable |
+| `contact_gene`, `target_share`, `raw_support` | Adjusted gene contact, enhancer-side allocation and unnormalized support |
+| `TargetGeneTSSs`, `n_tss` | Distinct TSSs included in the gene-level result |
+| `contact_state` | Prior-only, matched, surrogate or contact evidence requiring further QC |
+| `evidence_status`, `evidence_reasons` | Whether input evidence is sufficient, provisional or insufficient, and why |
+| `score_scope`, `unscored_candidates` | Residual-support status and supplied candidates lacking finite support |
+
+A score is neither a regulatory probability nor a calibrated false discovery rate. The example cutoff **0.02** needs independent calibration for the intended species and tissue. `provisional` candidates may still be useful for follow-up; `sufficient_input_evidence` describes the inputs, not functional validation. [Full output reference](docs/IO_FORMATS.md)
+
+## Documentation and verification
+
+| Guide | Contents |
+| --- | --- |
+| [ABC comparison](docs/ABC_COMPARISON.md) | Six modifications, their rationale and relevance to livestock datasets |
+| [Parameters](docs/PARAMETERS.md) | Every setting, default, actual control point and expected effect |
+| [Installation](docs/INSTALLATION.md) | Conda setup, package roles, optional dependencies and exact Linux builds |
+| [Quick start](docs/QUICKSTART.md) / [Tutorial](docs/TUTORIAL.md) | Runnable examples, expected outputs and real-data preparation |
+| [Worked examples](docs/WORKED_EXAMPLES.md) | Missing assays, missing versus zero contact, and allocation ablation |
+| [Inputs](docs/INPUTS.md) / [Outputs](docs/IO_FORMATS.md) | File formats, missing values, scores and evidence states |
+| [Equations](docs/FORMULA.md) / [Notation](docs/NOTATION.md) | Mathematical definitions and their software fields |
+| [Troubleshooting](docs/TROUBLESHOOTING.md) | Installation errors, empty outputs and unexpected scores |
+| [中文手册](docs/README_zh.md) | 中文模型比较、参数说明、安装与使用教程 |
 
 ```bash
 python -m pytest tests -q
 python scripts/smoke_test.py --output-dir results/smoke
 ```
 
-The smoke workflow checks eight commands, including measured zero versus missing contact and agreement with an independent formula calculation. The examples are software fixtures, not biological validation datasets. See [validation scope](VALIDATION.md).
+These checks cover the scoring kernel and small-file execution. [Validation](VALIDATION.md) distinguishes software verification from biological evidence.
 
-## What data do I need?
+## Citation and support
 
-| Starting point | Required inputs | Optional inputs | Entry point |
-| --- | --- | --- | --- |
-| Prepared candidate table | Enhancer coordinates, stable gene ID, TSS, positive contact prior, and activity or named signal columns | Contact observations/expectations/QC, TSS weights, evidence quality | `scripts/pace.py` |
-| Called peaks and genomic signals | Candidate BED or narrowPeak, chromosome sizes, same-assembly GTF/TSS catalogue, accessibility signal | H3K27ac, RNA context, measured contacts with QC | Direct commands in the [tutorial](docs/TUTORIAL.md) |
-| Aligned accessibility reads | BAM/tagAlign, reference files, sample sheet and YAML configuration | H3K27ac and qualified contact inputs | Optional [Snakemake workflow](docs/TUTORIAL.md#optional-snakemake-workflow) |
+Author and maintainer: **shenlinyong, 申林用 (Linyong Shen), Northwest A&F University**.
 
-Use one assembly throughout. Genomic tables use zero-based, half-open intervals; `prepare_tss.py` converts GTF coordinates. Use `NA` for missing measurements and `0` for measured zero. PACE does not perform FASTQ alignment, peak replication assessment, genome liftover or automatic Hi-C expected-curve/QC estimation.
+Cite the PACE repository and the exact commit used; a publication DOI is not assigned in this repository. Cite the underlying [ABC](https://doi.org/10.1038/s41588-019-0538-0) and [generalized ABC](https://doi.org/10.1093/bioinformatics/btad062) methods when discussing those components.
 
-## Read the results
-
-The **unfiltered table** is the primary record. Keep it when reporting results or benchmarking; score filtering must not redefine the normalization background.
-
-| Output | Meaning |
-| --- | --- |
-| `PACE.Score` | Relative support within the supplied candidate set |
-| `contact_gene`, `target_share`, `raw_support` | Components of the score |
-| `TargetGeneTSSs`, `n_tss` | Contributing TSS alternatives |
-| `contact_state` | Whether contact is prior-only, matched, surrogate or unusable without further QC |
-| `evidence_status`, `evidence_reasons` | Input sufficiency and reasons for limitations |
-| `score_scope`, `unscored_candidates` | Residual-support status and missing candidates within the supplied gene background |
-
-`provisional` is expected for distance-only runs or missing quality information. `sufficient_input_evidence` does not establish functional validation. The illustrative score cutoff **0.02** requires calibration before decision use in a new species or tissue. [Complete field definitions and examples](docs/IO_FORMATS.md)
-
-## User manual
-
-| Guide | Contents |
-| --- | --- |
-| [Installation](docs/INSTALLATION.md) | Prerequisites, package roles, Conda environments, optional readers |
-| [Quick start](docs/QUICKSTART.md) | Reproducible first run and expected outputs |
-| [Tutorial](docs/TUTORIAL.md) | Real-sample preparation, direct commands, contacts, filtering and Snakemake |
-| [ABC comparison](docs/ABC_COMPARISON.md) | What changes, why it changes and relevance to livestock data |
-| [Parameters](docs/PARAMETERS.md) | Defaults, actual control points, rationale and calibration needs |
-| [Input specification](docs/INPUTS.md) | Table schemas, sample sheets and missing-value rules |
-| [Output specification](docs/IO_FORMATS.md) | Scores, evidence states, diagnostic fields and files |
-| [Equations](docs/FORMULA.md) | Scoring, QC and limiting cases |
-| [Troubleshooting](docs/TROUBLESHOOTING.md) | Installation and common data errors |
-| [中文说明](docs/README_zh.md) | 中文安装、模型比较与使用导览 |
-
-## Citation, support and licence
-
-For PACE, cite the repository and the exact commit used; a PACE publication DOI is not assigned in this repository. Method sources include Fulco et al., *Nature Genetics* (2019), [doi:10.1038/s41588-019-0538-0](https://doi.org/10.1038/s41588-019-0538-0), and Hecker et al., *Bioinformatics* (2023), [doi:10.1093/bioinformatics/btad062](https://doi.org/10.1093/bioinformatics/btad062).
-
-Report problems through [GitHub Issues](https://github.com/shenlinyong/PACE/issues), with the commit, command, environment and a small reproducible input. PACE is distributed under the [MIT licence](LICENSE); third-party attribution is retained in [AUTHORS.md](AUTHORS.md).
+Report problems through [GitHub Issues](https://github.com/shenlinyong/PACE/issues), including the command, environment and a small reproducible input. PACE uses the [MIT licence](LICENSE); third-party attribution appears in [AUTHORS.md](AUTHORS.md).

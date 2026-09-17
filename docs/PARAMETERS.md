@@ -1,8 +1,21 @@
 # Parameters and their rationale
 
-PACE (Prediction of Activity-based regulatory Connections for Enhancers) uses declared model settings and independently supplied evidence. No default in this table should be interpreted as an optimum learned specifically for domestic animals.
+PACE (Prediction of Activity-based regulatory Connections for Enhancers) uses the same scoring rules across species. Its additional parameters describe available assays, contact reliability, alternative promoters and incomplete candidate support. They make the model particularly useful for incomplete livestock datasets; their defaults are declared starting choices rather than species-trained optima.
 
 **Where a parameter is set matters.** The prepared-table CLI, signal-file calculator and Snakemake wrapper share a scoring kernel but expose different controls. A YAML key is not a substitute for a CLI option or a table column. The tables below describe the actual implementation.
+
+## Start with the data condition
+
+| Data condition | Setting to inspect | Why this setting exists | What to do for the first analysis |
+| --- | --- | --- | --- |
+| A planned assay is unavailable | $m$, assay JSON, $Q_A$ | Separate unmeasured input from a measured zero | Keep the assay declared and use `NA`; do not invent measurements |
+| Assays use different numerical units | $a_i$, $w_i$ | Separate scale from assay importance | Choose fixed positive scales independently; start with equal assay priors |
+| Contact is sparse or from a surrogate | $H$, $D$, $\lambda$, source | Let qualified observations change a distance prior in proportion to reliability | Use the prior when QC is unknown; provide matched expectations and independent reliability when available |
+| Several transcripts share or change promoters | $\pi(G,t)$ | Prevent transcript count from multiplying support | Deduplicate TSSs, then assign uniform weights over the full available catalogue unless independent use data exist |
+| One enhancer has several candidate genes | $B(E,G)$, $\eta$ | Account for enhancer-side target sharing | Use $\eta=1$; compare with 0 as an allocation ablation |
+| Evidence or candidate coverage is incomplete | $Q$, $\mathcal E^{\mathrm{obs}}$, $U$ | Keep score, input sufficiency and unscored support distinct | Preserve unfiltered output; leave unsupported QC and residual support unknown |
+
+These are the model extensions explained in the [six-part ABC comparison](ABC_COMPARISON.md). The cis window, candidate width, peak cap and output cutoff are preparation or selection settings, not livestock-specific innovations. [Worked examples](WORKED_EXAMPLES.md) show the effect of changing input availability and allocation.
 
 ## 1. Activity integration
 
