@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Installation
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) runs locally or on a Linux compute server. The recommended setup uses Conda and the supplied environment files.

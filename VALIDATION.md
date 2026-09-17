@@ -1,3 +1,6 @@
+> This is the retained validation record for the region-based interface.
+> Canonical package verification is documented in [docs/validation.md](docs/validation.md).
+
 # Validation scope
 
 Software verification and biological evaluation answer different questions.

@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Parameters and their rationale
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) uses the same scoring rules across species. Its additional parameters describe available assays, contact reliability, alternative promoters and incomplete candidate support. They make the model particularly useful for incomplete livestock datasets; their defaults are declared starting choices rather than species-trained optima.

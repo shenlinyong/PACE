@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Worked examples: incomplete inputs and score components
 
 These examples use the bundled synthetic table to show how PACE handles missing assays, missing contacts and measured zero. They run entirely from repository files. Activate the `pace` Conda environment and run all commands below from the repository root.

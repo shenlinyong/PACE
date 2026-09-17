@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # PACE compared with the original ABC model
 
 PACE is a general enhancer–gene scoring framework that is particularly well suited to the incomplete data conditions common in livestock studies. Its changes address measurement availability, contact reliability, promoter representation and candidate coverage. None depends on a livestock-specific gene list or species label.

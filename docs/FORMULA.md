@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Scoring equations
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) computes relative enhancer–gene support. [Parameters](PARAMETERS.md) gives the exact defaults and actual configuration interfaces; [Notation](NOTATION.md) maps symbols to software fields.

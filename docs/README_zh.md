@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # PACE（Prediction of Activity-based regulatory Connections for Enhancers）
 
 **结合增强子活性、启动子接触和基因注释，预测增强子–基因调控联系。**

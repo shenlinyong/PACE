@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Computational methods
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) predicts relative support for cis enhancer–gene links using a shared scoring kernel. The [equations](FORMULA.md) are the mathematical specification; [parameter rationale](PARAMETERS.md) identifies defaults and available controls.

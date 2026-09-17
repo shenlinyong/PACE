@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Output specification
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) writes one row per candidate enhancer–gene link after combining its TSS alternatives. Files are tab-separated; a `.gz` output suffix requests gzip compression through pandas.

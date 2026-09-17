@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Running an analysis
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) offers a numerical-table interface and genomic-file adapters. This tutorial starts with files shipped in the repository, then shows how to use a dataset from your species and tissue. Run commands from the repository root with `conda activate pace`.

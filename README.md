@@ -1,4 +1,65 @@
-# PACE (Prediction of Activity-based regulatory Connections for Enhancers)
+# PACE
+
+[![Canonical software tests](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml/badge.svg)](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml)
+
+**Auditable activity–contact support for livestock enhancer–gene research.**
+
+The installable Python package implements the September 2026 canonical-grid contract with
+three evidence regimes: **measured**, **hybrid** and **genome_only**. It keeps quantitative
+signals, evidence provenance, missingness and normalization backgrounds explicit. Author and
+maintainer: **申林用 (Linyong Shen), Northwest A&F University**.
+
+[New software manual](docs/software.md) · [中文说明](README.zh-CN.md) ·
+[Input preparation](docs/input_preparation.md) · [Training](docs/training.md) ·
+[Comparisons](docs/comparison.md) · [Validation](docs/validation.md)
+
+## Installable canonical interface
+
+Python 3.11+; base execution needs NumPy and PyYAML, with no GPU or runtime download.
+
+```bash
+git clone https://github.com/shenlinyong/PACE.git
+cd PACE
+python -m pip install .
+pace-livestock demo --regime measured --out results/demo_measured
+pace-livestock demo --regime hybrid --out results/demo_hybrid
+pace-livestock demo --regime genome_only --out results/demo_genome
+```
+
+For real genomic binary files install `'.[io]'`; for quantitative CNN training/inference install
+`'.[sequence]'`. [Configuration and command reference](docs/software.md#commands).
+
+The score is `A × Cbar × B^eta`, normalized within the actually scoreable candidates of each
+gene; default **eta=0**. The panel stays fixed, true zeros stay zero, required missing contacts
+stay NA, and no arbitrary residual mass is added. `compare` recomputes a common denominator
+from raw support and distinguishes complete from conditional changes. RNA and auxiliary
+marks remain annotations unless explicitly used by an independently fitted classifier.
+
+All bundled examples and weights are **synthetic software fixtures**. Real species/tissue
+weights and independent biological validation are **not supplied**. Software test success does
+not establish individual-effect accuracy. The score is a relative support share, not a causal
+probability or expression fold change. See [scope and limitations](docs/limitations.md).
+
+```bash
+pace-livestock validate --config examples/measured/config.yaml
+pace-livestock run --config examples/measured/config.yaml --out results/measured
+pace-livestock capabilities --config examples/genome_only/config.yaml
+```
+
+Runs export all candidate scores, per-gene denominators, resolved evidence, nine-omics features,
+QC, input/model hashes and actual configuration. Existing output directories are never overwritten.
+The model, [data dictionary](docs/data_dictionary.md), and [parameter reference](docs/parameters.md)
+describe the scientific contract. [CITATION.cff](CITATION.cff) records software authorship; cite the
+exact commit used. No publication DOI or formal software release is implied.
+
+## Existing region-based interface
+
+**Everything below documents the preserved `scripts/pace.py` and `workflow/` interface.** Its
+historical defaults (including eta=1 and missing-assay handling) differ from the canonical package
+above. Its commands and existing analyses remain available for reproduction. Do not apply its
+defaults or thresholds to canonical scores, or compare the two without a new compatible analysis.
+
+### PACE (Prediction of Activity-based regulatory Connections for Enhancers)
 
 **Predict enhancer–gene links from chromatin activity, promoter contact and gene annotation.**
 

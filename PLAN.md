@@ -30,5 +30,9 @@ The existing public repository, `https://github.com/shenlinyong/PACE`, is the up
 
 ## Status
 
-Implementation in progress. Executed checks and remaining limitations will be recorded
-in `docs/validation.md`; the full requirements remain in the supplied development document.
+Implementation and local verification completed. The canonical package, real fitting/adaptation
+paths, offline examples, bilingual guides and CI are present. The local full suite passed 127
+tests; wheel-only offline demos and actual training/inference commands passed. See
+`docs/validation.md` for precise scope and environment, and `docs/limitations.md` for research
+extensions and unavailable real biological assets. GitHub upload and hosted CI verification
+are the remaining delivery steps.

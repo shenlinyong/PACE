@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Troubleshooting
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) reports invalid numerical inputs and preserves missing evidence. Start by checking the command, environment, assembly and unfiltered output.

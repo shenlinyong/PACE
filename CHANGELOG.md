@@ -2,6 +2,19 @@
 
 ## 17 September 2026
 
+### Installable canonical interface
+
+- Add the `pace-livestock` Python package and CLI with measured, hybrid and genome-only modes,
+  strict standard tables, log-stable numerical scoring, provenance and actual denominator IDs.
+- Implement canonical atlas/promoter catalogs, processed genomic adapters, fixed-target genotype
+  windows, safe quantitative CNN training/inference, contact-prior and independent-target fusion fits.
+- Add common-denominator comparisons, variant scenarios, replicate stability, grouped elastic-net
+  learning and explicit functional-label baselines, with synthetic-only examples and task boundaries.
+- Supply wheel packaging, offline demos, bilingual guides, citation metadata and independent tests.
+- Preserve the pre-existing region-based scripts, history and formulas as a separate interface.
+
+### Retained region-interface development
+
 - Clarify PACE as a general framework particularly suited to incomplete livestock datasets; expand all six original-ABC comparisons with parameter rationale and worked calculations.
 - Replace the overview diagram with formula comparisons and executable input scenarios; expand Conda prerequisites and the Chinese manual.
 

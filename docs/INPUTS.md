@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Input specification
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) needs a consistent species, assembly, candidate background and gene-ID namespace. Run one sample/assembly at a time unless explicitly supplying distinct `sample_id` values to the numerical-table interface.

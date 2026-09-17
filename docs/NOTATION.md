@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Mathematical notation and software fields
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) uses $\mathit{PACE}(E,G)$ for the mathematical score. Entity-dependent quantities use function notation.

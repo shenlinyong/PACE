@@ -1,3 +1,6 @@
+> **Interface scope:** This retained guide documents the legacy region-based scripts/workflow.
+> For the installable canonical-grid package and its September 2026 defaults, see [software.md](software.md).
+
 # Quick start
 
 PACE (Prediction of Activity-based regulatory Connections for Enhancers) can score the included numerical fixture without downloading a genome or biological dataset. Start in the repository root after [Conda installation](INSTALLATION.md).
