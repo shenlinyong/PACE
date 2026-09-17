@@ -98,14 +98,14 @@ def tss_contact(contacts, weights) -> float:
     return float(np.sum(c[w > 0] * w[w > 0]))
 
 
-def score(edges: list[dict], *, eta: int = 0) -> tuple[list[dict], list[dict]]:
+def score(edges: list[dict], *, eta: float = 0) -> tuple[list[dict], list[dict]]:
     """Score sparse E–G records carrying A_used and Cbar; never drop an input edge.
 
     All planned genes for each element MUST be present, including missing contacts.
     This pure kernel assumes the catalog and promoter mappings were validated upstream.
     """
-    if eta not in (0, 1):
-        raise PaceError("eta must be 0 or 1")
+    if isinstance(eta, bool) or not isinstance(eta, (int, float)) or not 0 <= eta <= 1:
+        raise PaceError(f"eta must be a finite number in [0, 1], received {eta!r}")
     rows = [dict(r) for r in sorted(edges, key=lambda r: (r["gene_id"], r["element_id"]))]
     seen, by_element, by_gene = set(), defaultdict(list), defaultdict(list)
     for i, row in enumerate(rows):
@@ -142,7 +142,7 @@ def score(edges: list[dict], *, eta: int = 0) -> tuple[list[dict], list[dict]]:
             else:
                 log_b = math.log(contact) - log_csum if eta else 0.0
                 row["B"] = math.exp(log_b) if eta else math.nan
-                row["log_support"] = math.log(a) + math.log(contact) + log_b
+                row["log_support"] = math.log(a) + math.log(contact) + eta * log_b
                 reason = "resolved"
             row["support"] = safe_exp(row["log_support"])
             row["support_status"] = (

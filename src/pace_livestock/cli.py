@@ -9,12 +9,14 @@ import sys
 from . import __version__
 from .errors import PaceError
 from .provenance import clean
+from .run_options import MODES, add_run_options, config_from_args
 
 COMMANDS = {
     "validate": "Validate schemas, provenance, assets and scientific input contracts",
     "capabilities": "Inspect implementation, weights and validation scope",
     "prepare": "Convert genomic files into canonical standard tables",
     "run": "Compute the canonical PACE score in the configured evidence regime",
+    "fit-eta": "Calibrate eta from functional labels and export scores plus a reusable artifact",
     "fit-contact-prior": "Fit a zero-inclusive binned distance prior",
     "train-sequence": "Train the quantitative central-target reference CNN",
     "predict-sequence": "Predict quantitative activity from prepared individual windows",
@@ -30,14 +32,24 @@ COMMANDS = {
 
 
 def main(argv=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] in MODES:
+        argv = ["run", "--mode", argv[0], *argv[1:]]
+    elif argv and argv[0].startswith("-") and argv[0] not in ("--help", "-h", "--version"):
+        argv = ["run", *argv]
     parser = argparse.ArgumentParser(
-        prog="pace-livestock",
+        prog="PACE",
         description="PACE — auditable regulatory support for livestock research",
+        epilog="Direct use: PACE --mode measured|hybrid|genome [options] --out DIR. "
+        "Also: PACE measured|hybrid|genome [options]. See PACE run --help for file options.",
     )
     parser.add_argument("--version", action="version", version=f"PACE {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
     for name, description in COMMANDS.items():
         p = sub.add_parser(name, help=description, description=description)
+        if name in ("run", "fit-eta", "validate", "capabilities"):
+            add_run_options(p, output=name in ("run", "fit-eta"))
+            continue
         p.add_argument(
             "--config", required=True, help="YAML file; input paths resolve relative to this file"
         )
@@ -62,21 +74,25 @@ def dispatch(args):
         from .demo import demo
 
         return demo(args.regime, args.out)
-    if command in ("validate", "capabilities", "run"):
-        from .config import load_config
+    if command in ("validate", "capabilities", "run", "fit-eta"):
         from .evidence.assets import capabilities
         from .pipeline import compute, run
 
+        cfg = config_from_args(args)
+        if command == "fit-eta" and not cfg["allocation"]["labels_path"]:
+            raise PaceError("fit-eta requires --eta-labels or allocation.labels_path")
         if command == "capabilities":
-            return capabilities(load_config(args.config))
+            return capabilities(cfg)
         if command == "validate":
-            result = compute(load_config(args.config))
+            result = compute(cfg)
             return {"valid": True, "n_candidates": len(result["scores"]), "qc": result["qc"]}
-        result = run(args.config, args.out)
+        result = run(cfg, args.out)
         return {
             "output": args.out,
             "n_candidates": len(result["scores"]),
             "n_scoreable": result["qc"]["n_scoreable"],
+            "eta": result["eta_calibration"]["eta"],
+            "eta_status": result["eta_calibration"]["status"],
         }
     if command in (
         "prepare",

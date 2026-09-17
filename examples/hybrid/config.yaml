@@ -27,7 +27,7 @@ contact:
   scale: toy_contact
   mode: observed
 allocation:
-  eta: 0
+  eta: auto
 seed: 17
 sequence:
   model_path: models/sequence

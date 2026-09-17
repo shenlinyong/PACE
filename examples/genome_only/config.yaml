@@ -26,7 +26,7 @@ contact:
   prior_path: models/contact
   allow_prior_fallback: true
 allocation:
-  eta: 0
+  eta: auto
 seed: 17
 sequence:
   model_path: models/sequence

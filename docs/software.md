@@ -58,8 +58,11 @@ biological validation reports are distributed with this package.
 
 ## Commands
 
-Every operation takes `--config FILE --out NEW_DIRECTORY`, except `validate` and `capabilities`,
-which print a report. All registered commands execute real code paths.
+The installed `PACE` command accepts `--mode measured|hybrid|genome`, with optional YAML
+or direct file parameters. Mode subcommands (`PACE measured`, etc.) are equivalent.
+`run`, `fit-eta`, `validate` and `capabilities` accept these same input flags; validate and
+capabilities print reports without an output directory. Other operations take
+`--config FILE --out NEW_DIRECTORY`. See the [direct command guide](cli.md).
 
 | Command | Purpose | Configuration contract |
 |---|---|---|
@@ -71,16 +74,19 @@ which print a report. All registered commands execute real code paths.
 | `train-sequence` | Actual quantitative CNN training | [Model training](training.md) |
 | `fit-contact-prior` | Zero-inclusive distance-bin fit | [Model training](training.md) |
 | `fit-fusion` | Independent-target convex log-space calibration | [Model training](training.md) |
+| `fit-eta` | Continuous bounded functional-label calibration, with a reusable artifact | [Eta calibration](eta_calibration.md) |
 | `compare` | Full and conditional support-share changes | [Comparisons](comparison.md) |
 | `stability` | Common-denominator replicate agreement | [Comparisons](comparison.md) |
 | `variant-effects` | Separate single-variant REF/ALT signal scenarios | [Comparisons](comparison.md) |
 | `train` / `predict-ml` | Grouped elastic-net and frozen inference | [Model training](training.md) |
-| `benchmark` | Negative distance, single-TSS ABC-style, PACE eta 0/1 and external scores | [Comparisons](comparison.md) |
+| `benchmark` | Negative distance, single-TSS ABC-style, PACE eta 0/1, configured continuous eta and external scores | [Comparisons](comparison.md) |
 
 ## Interpretation
 
 The main score is `A × Cbar × B^eta` normalized within the actual scoreable candidates for each
-gene. Default `eta=0`; eta 1 is a separate comparison. The assay panel is fixed for the run.
+gene. Default `eta=auto` uses zero unless suitable functional calibration is supplied.
+All finite exponents in [0,1] are supported; calibration excludes test labels and records
+its scope and fallback decisions. The assay panel is fixed for the run.
 True zeros remain zero, technical absence remains NA, and required positive-pi TSS contacts
 are never dropped to renormalize promoter weights. No arbitrary epsilon or residual support
 is added. Log-space support preserves valid shares when raw products overflow.

@@ -11,7 +11,8 @@ maintainer: **申林用 (Linyong Shen), Northwest A&F University**.
 
 [New software manual](docs/software.md) · [中文说明](README.zh-CN.md) ·
 [Input preparation](docs/input_preparation.md) · [Training](docs/training.md) ·
-[Comparisons](docs/comparison.md) · [Validation](docs/validation.md)
+[Comparisons](docs/comparison.md) · [Validation](docs/validation.md) ·
+[PACE command line](docs/cli.md) · [Continuous eta calibration](docs/eta_calibration.md)
 
 ## Installable canonical interface
 
@@ -21,16 +22,26 @@ Python 3.11+; base execution needs NumPy and PyYAML, with no GPU or runtime down
 git clone https://github.com/shenlinyong/PACE.git
 cd PACE
 python -m pip install .
-pace-livestock demo --regime measured --out results/demo_measured
-pace-livestock demo --regime hybrid --out results/demo_hybrid
-pace-livestock demo --regime genome_only --out results/demo_genome
+PACE --version
+PACE --mode measured --config examples/measured/config.yaml --out results/measured
+PACE --mode hybrid --config examples/hybrid/config.yaml --out results/hybrid
+PACE --mode genome --config examples/genome_only/config.yaml --out results/genome
 ```
+
+`PACE measured`, `PACE hybrid` and `PACE genome` are equivalent mode commands. YAML is
+optional: use `--catalog-dir`, `--activity`, `--contacts`, `--reference`, `--sequence-model`
+and other direct input options listed by `PACE run --help`. `./install.sh` provides an
+isolated prefix installation; see the [command guide](docs/cli.md). `pace` and the original
+`pace-livestock` executable remain aliases. Supplied example configurations are synthetic.
 
 For real genomic binary files install `'.[io]'`; for quantitative CNN training/inference install
 `'.[sequence]'`. [Configuration and command reference](docs/software.md#commands).
 
 The score is `A × Cbar × B^eta`, normalized within the actually scoreable candidates of each
-gene; default **eta=0**. The panel stays fixed, true zeros stay zero, required missing contacts
+gene. Default `--eta auto` uses **eta=0** without suitable functional calibration data.
+`--eta-labels` estimates a continuous exponent in [0,1] from eligible train/calibration labels;
+`--eta-model` reuses the frozen result. Test labels never fit eta. The panel stays fixed,
+true zeros stay zero, required missing contacts
 stay NA, and no arbitrary residual mass is added. `compare` recomputes a common denominator
 from raw support and distinguishes complete from conditional changes. RNA and auxiliary
 marks remain annotations unless explicitly used by an independently fitted classifier.

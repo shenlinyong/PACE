@@ -1,4 +1,5 @@
-> This is the supplied September 2026 scientific contract. For actual implementation and
+> This is the September 2026 scientific contract, updated for continuous eta calibration.
+> The initial binary-only eta rule is superseded by [the calibration specification](eta_calibration.md). For implementation and
 > test status, see [software.md](software.md), [validation.md](validation.md) and [limitations.md](limitations.md).
 
 # PACE：家养动物增强子—基因调控预测模型
@@ -31,6 +32,10 @@ S(E,G)=A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta},
 \boxed{\mathrm{PACE}(E,G)=\frac{S(E,G)}{\displaystyle\sum_{e\in\mathcal E^{score}(G)}S(e,G)}}.
 \]
 
+这里的 \(\eta\) 是本次实际使用的参数：自动模式没有适用功能校准时为0；
+提供适用功能训练/校准数据时为约束估计 \(\widehat\eta\in[0,1]\)。也可显式固定连续数值。
+估计目标、适用性检查与测试集隔离见[连续分配校准](eta_calibration.md)。
+
 \[
 A_\star(E)=\prod_{m\in\mathcal M}x_{\star,m}(E)^{1/|\mathcal M|},\qquad
 \overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t),
@@ -49,7 +54,7 @@ B(E,G)=\frac{\overline C(E,G)}{\displaystyle\sum_{H\in\mathcal G(E)}\overline C(
 | pi | 同一基因启动子权重，非负、和为1，不依赖E |
 | r | 接触观测权重，范围[0,1]，来源明确 |
 | B | 同一元件在固定候选基因集合中的接触分配，不是边界强度或真实资源守恒 |
-| eta | 首次实现限定0或1；默认0，1用于预先指定的对照 |
+| eta | 连续范围[0,1]；自动模式无适用功能标签时为0，有适用训练/校准数据时估计并冻结；测试集不参与 |
 | E_score(G) | 原定候选宇宙中，本模式能够计算支持的单元集合 |
 | G(E) | 固定候选基因集合，不随本次分数或表达阈值临时改变 |
 
@@ -137,7 +142,7 @@ TSS以gene、chrom、tss0、strand精确去重；多个转录本同TSS只算一�
 
 E–G distance_bp定义为元件锚点到可信TSS的最小绝对距离，接触仍按每个E–TSS距离计算。默认仅顺式联系。
 
-B分母始终使用原定G(E)。eta=1若有必要联系未知，B不可评分，影响该E对全部相关基因的结果；完整报告这类覆盖损失。不能因某个基因缺数据而缩小B分母。B可能惩罚真实共享增强子，因此默认eta=0。全部已知接触均0时支持0的规则见第2节。
+B分母始终使用原定G(E)。eta>0若有必要联系未知，B不可评分，影响该E对全部相关基因的结果；完整报告这类覆盖损失。不能因某个基因缺数据而缩小B分母。B可能惩罚真实共享增强子，因此没有适用校准时eta=0。全部已知接触均0时支持0的规则见第2节。
 
 ## 7. 缺失、实际分母与跨样本比较
 
@@ -264,7 +269,7 @@ precision/recall的运行阈值由训练/校准集冻结；测试集PR曲线可�
 |---|---|
 | estimand / target_level | 主输出bulk_proxy；individual/population_mean显式指定 |
 | regime | measured/hybrid/genome_only，用户选择并校验实际来源 |
-| eta | 0；1是预注册对照 |
+| eta | 自动模式缺乏适用功能校准时为0；可估计或预先指定[0,1]中的连续值 |
 | activity_panel | 五种合法组合之一，运行内固定 |
 | unit_width / grid_offset | 默认500 bp/0；改变后独立catalog及匹配训练 |
 | pi | 可靠起始证据；否则去重可信TSS等权 |

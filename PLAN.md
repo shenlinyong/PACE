@@ -30,6 +30,16 @@ The existing public repository, `https://github.com/shenlinyong/PACE`, is the up
 
 ## Status
 
+Software 0.2.0 implements continuous, functional-label-calibrated eta and the
+`PACE` executable with direct options for measured, hybrid and genome-only runs.
+All 153 local tests pass. Direct flag-only modes, actual prefix installation,
+fractional-score references, split-leakage rejection and frozen calibration reuse
+have been exercised. Acceptance and numerical decisions are in
+[the revision note](notes/impl_eta_cli.md). Packaging and hosted checks are recorded
+in [validation](docs/validation.md) and the linked GitHub workflow.
+
+The completed initial delivery below is the historical 0.1.0 baseline.
+
 Implementation and local verification completed. The canonical package, real fitting/adaptation
 paths, offline examples, bilingual guides and CI are present. The local full suite passed 127
 tests; wheel-only offline demos and actual training/inference commands passed. See

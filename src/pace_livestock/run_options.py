@@ -1,0 +1,177 @@
+"""Direct file options for the public PACE executable; YAML remains optional."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from .config import DEFAULTS, load_config
+from .errors import PaceError
+
+MODES = {
+    "measured": "measured",
+    "hybrid": "hybrid",
+    "genome": "genome_only",
+    "genome_only": "genome_only",
+}
+PATH_OPTIONS = {
+    "units": ("inputs", "units"),
+    "promoters": ("inputs", "promoters"),
+    "candidates": ("inputs", "candidates"),
+    "samples": ("inputs", "samples"),
+    "sources": ("inputs", "sources"),
+    "evidence": ("inputs", "evidence"),
+    "activity": ("inputs", "observed_activity"),
+    "contacts": ("inputs", "observed_contacts"),
+    "resolved_activity": ("inputs", "resolved_activity"),
+    "resolved_contacts": ("inputs", "resolved_contacts"),
+    "predictions": ("inputs", "predictions"),
+    "features": ("inputs", "features"),
+    "expression": ("inputs", "expression"),
+    "methylation": ("inputs", "methylation"),
+    "reference": ("genome", "reference_path"),
+    "vcf": ("genome", "variant_path"),
+    "callable": ("genome", "callability_path"),
+    "ploidy": ("genome", "ploidy_path"),
+    "sequence_model": ("sequence", "model_path"),
+    "contact_prior": ("contact", "prior_path"),
+    "fusion_model": ("fusion", "calibrator_path"),
+    "ml_model": ("multiomics", "model_path"),
+    "eta_labels": ("allocation", "labels_path"),
+    "eta_model": ("allocation", "calibrator_path"),
+}
+VALUE_OPTIONS = {
+    "species": ("context", "species"),
+    "assembly": ("context", "assembly"),
+    "tissue": ("context", "context_id"),
+    "eta": ("allocation", "eta"),
+    "eta_min_genes": ("allocation", "minimum_genes"),
+    "panel": ("activity", "panel"),
+    "contact_mode": ("contact", "mode"),
+    "contact_scale": ("contact", "scale"),
+    "contact_reliability": ("contact", "reliability"),
+    "reliability_source": ("contact", "reliability_source"),
+    "allow_prior_fallback": ("contact", "allow_prior_fallback"),
+    "sample_id": ("genome", "sample_id"),
+    "individual_id": ("genome", "individual_id"),
+    "unrecorded_site_policy": ("genome", "unrecorded_site_policy"),
+    "catalog_profile": ("catalog", "profile"),
+    "unit_width": ("catalog", "width_bp"),
+    "grid_offset": ("catalog", "offset_bp"),
+    "include_promoters": ("catalog", "include_promoter_units"),
+}
+
+
+def add_run_options(parser: argparse.ArgumentParser, *, output: bool = True) -> None:
+    parser.add_argument(
+        "--config", help="Optional YAML; relative paths are relative to the YAML file"
+    )
+    parser.add_argument(
+        "--mode", "--regime", choices=list(MODES), help="Evidence mode (required without --config)"
+    )
+    if output:
+        parser.add_argument(
+            "-o",
+            "--out",
+            required=True,
+            help="New output directory; existing paths are never overwritten",
+        )
+    context = parser.add_argument_group("sample and biological context")
+    for flag in ("species", "assembly", "tissue", "sample-id", "individual-id", "run-id"):
+        context.add_argument("--" + flag)
+    context.add_argument("--target-level", choices=["individual", "population_mean"])
+    context.add_argument(
+        "--profile",
+        choices=["research", "validated", "demonstration"],
+        help="Default: research; synthetic assets require demonstration",
+    )
+    context.add_argument("--seed", type=int)
+    files = parser.add_argument_group("canonical input tables and genomic assets")
+    files.add_argument(
+        "--catalog-dir",
+        help="Read available <table>.tsv[.gz] files from this directory; explicit file options take precedence",
+    )
+    for flag, (section, key) in PATH_OPTIONS.items():
+        aliases = ["--" + flag.replace("_", "-")]
+        if flag == "activity":
+            aliases.append("--observed-activity")
+        if flag == "contacts":
+            aliases.append("--observed-contacts")
+        files.add_argument(
+            *aliases, help=f"{section}.{key}; paths are relative to the working directory"
+        )
+    model = parser.add_argument_group("scoring and calibration")
+    model.add_argument("--eta", help="auto (default; falls back to 0) or a fixed number in [0,1]")
+    model.add_argument(
+        "--eta-min-genes",
+        type=int,
+        help="Minimum informative genes for automatic fitting (default: 3)",
+    )
+    model.add_argument("--panel", nargs="+", choices=["ATAC", "DNase", "H3K27ac"])
+    model.add_argument("--contact-mode", choices=["observed", "prior_only", "shrinkage"])
+    model.add_argument("--contact-scale")
+    model.add_argument("--contact-reliability", type=float)
+    model.add_argument("--reliability-source")
+    model.add_argument(
+        "--allow-prior-fallback", action=argparse.BooleanOptionalAction, default=None
+    )
+    model.add_argument("--unrecorded-site-policy", choices=["require_callable", "assume_reference"])
+    catalog = parser.add_argument_group("candidate universe")
+    catalog.add_argument("--catalog-profile", choices=["canonical_grid", "provided_regions"])
+    catalog.add_argument("--unit-width", type=int)
+    catalog.add_argument("--grid-offset", type=int)
+    catalog.add_argument("--include-promoters", action=argparse.BooleanOptionalAction, default=None)
+
+
+def config_from_args(args: argparse.Namespace) -> dict:
+    if not args.config and not args.mode:
+        raise PaceError("Specify --mode measured|hybrid|genome or --config; see PACE run --help")
+    overrides = {}
+
+    def put(section, key, value):
+        overrides.setdefault(section, {})[key] = value
+
+    if args.catalog_dir:
+        root = Path(args.catalog_dir).resolve()
+        if not root.is_dir():
+            raise PaceError(f"--catalog-dir is not a directory: {root}")
+        for name in DEFAULTS["inputs"]:
+            plain, zipped = root / f"{name}.tsv", root / f"{name}.tsv.gz"
+            if plain.exists() and zipped.exists():
+                raise PaceError(f"Ambiguous catalog table: both {plain.name} and {zipped.name}")
+            if plain.exists() or zipped.exists():
+                put("inputs", name, str(plain if plain.exists() else zipped))
+    for option, (section, key) in PATH_OPTIONS.items():
+        value = getattr(args, option)
+        if value is not None:
+            put(section, key, str(Path(value).resolve()))
+    for option, (section, key) in VALUE_OPTIONS.items():
+        value = getattr(args, option)
+        if value is not None:
+            put(section, key, value)
+    for option, key in [
+        ("run_id", "run_id"),
+        ("target_level", "target_level"),
+        ("profile", "execution_profile"),
+        ("seed", "seed"),
+    ]:
+        if getattr(args, option) is not None:
+            overrides[key] = getattr(args, option)
+    if args.mode:
+        overrides["regime"] = MODES[args.mode]
+        if MODES[args.mode] == "genome_only" and args.contact_mode is None and not args.config:
+            put("contact", "mode", "prior_only")
+    if args.ml_model:
+        put("multiomics", "mode", "ml")
+    if args.eta_labels or args.eta_model:
+        if args.eta is None:
+            put("allocation", "eta", "auto")
+        # A CLI calibration source explicitly replaces the other source from YAML.
+        if args.eta_labels and not args.eta_model:
+            put("allocation", "calibrator_path", None)
+        if args.eta_model and not args.eta_labels:
+            put("allocation", "labels_path", None)
+    if args.eta is not None and args.eta != "auto" and not (args.eta_labels or args.eta_model):
+        put("allocation", "labels_path", None)
+        put("allocation", "calibrator_path", None)
+    return load_config(args.config, overrides=overrides)

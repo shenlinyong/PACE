@@ -29,9 +29,11 @@ jobs:
           python -m venv /tmp/pace-wheel
           /tmp/pace-wheel/bin/python -m pip install dist/*.whl
           cd /tmp
-          /tmp/pace-wheel/bin/pace-livestock demo --regime measured --out wheel-measured
-          /tmp/pace-wheel/bin/pace-livestock demo --regime hybrid --out wheel-hybrid
-          /tmp/pace-wheel/bin/pace-livestock demo --regime genome_only --out wheel-genome
+          /tmp/pace-wheel/bin/PACE --version
+          /tmp/pace-wheel/bin/PACE demo --regime measured --out wheel-measured
+          /tmp/pace-wheel/bin/PACE demo --regime hybrid --out wheel-hybrid
+          /tmp/pace-wheel/bin/PACE demo --regime genome_only --out wheel-genome
+          /tmp/pace-wheel/bin/PACE measured --config wheel-measured/inputs/config.yaml --eta 0.5 --out wheel-fractional
   minimum-core:
     runs-on: ubuntu-latest
     steps:

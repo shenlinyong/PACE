@@ -77,7 +77,7 @@ def create_example(destination, regime):
         "catalog": {"include_promoter_units": False},
         "activity": {"panel": ["ATAC", "H3K27ac"]},
         "contact": {"scale": "toy_contact", "mode": "observed"},
-        "allocation": {"eta": 0},
+        "allocation": {"eta": "auto"},
         "seed": 17,
     }
     if regime != "genome_only":

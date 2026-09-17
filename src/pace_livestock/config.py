@@ -63,7 +63,13 @@ DEFAULTS = {
         "reliability_source": None,
     },
     "promoters": {"weights": "provided"},
-    "allocation": {"eta": 0, "missing_policy": "fixed_gene_set"},
+    "allocation": {
+        "eta": "auto",
+        "missing_policy": "fixed_gene_set",
+        "labels_path": None,
+        "calibrator_path": None,
+        "minimum_genes": 3,
+    },
     "sequence": {"model_path": None, "max_n_fraction": 0.05},
     "fusion": {"calibrator_path": None, "quality_stratum": "default"},
     "genome": {
@@ -120,9 +126,14 @@ def strict_keys(data: dict, allowed, name: str) -> None:
         raise PaceError(f"{name}: unknown keys {sorted(extra)}")
 
 
-def load_config(path: str | Path) -> dict:
-    path = Path(path).resolve()
-    user = load_yaml(path)
+def load_config(path: str | Path | None = None, *, overrides: dict | None = None) -> dict:
+    base = Path(path).resolve().parent if path is not None else Path.cwd()
+    user = load_yaml(path) if path is not None else {}
+    for key, value in (overrides or {}).items():
+        if isinstance(value, dict) and isinstance(user.get(key, {}), dict):
+            user.setdefault(key, {}).update(value)
+        else:
+            user[key] = value
     strict_keys(user, DEFAULTS, "config")
     cfg = copy.deepcopy(DEFAULTS)
     for key, value in user.items():
@@ -165,8 +176,16 @@ def load_config(path: str | Path) -> dict:
     for section, key, values in choices:
         if cfg[section][key] not in values:
             raise PaceError(f"{section}.{key}: expected one of {sorted(values)}")
-    if cfg["allocation"]["eta"] not in (0, 1) or isinstance(cfg["allocation"]["eta"], bool):
-        raise PaceError("allocation.eta must be 0 or 1")
+    allocation = cfg["allocation"]
+    if allocation["eta"] != "auto":
+        allocation["eta"] = number(allocation["eta"], "allocation.eta", minimum=0, maximum=1)
+        if allocation["labels_path"] or allocation["calibrator_path"]:
+            raise PaceError("Use allocation.eta=auto with functional labels or a frozen calibrator")
+    if allocation["labels_path"] and allocation["calibrator_path"]:
+        raise PaceError("Provide eta labels OR a frozen eta calibrator, not both")
+    allocation["minimum_genes"] = integer(
+        allocation["minimum_genes"], "allocation.minimum_genes", minimum=2
+    )
     integer(cfg["catalog"]["width_bp"], "catalog.width_bp", minimum=1)
     integer(cfg["catalog"]["offset_bp"], "catalog.offset_bp")
     integer(cfg["seed"], "seed")
@@ -210,12 +229,20 @@ def load_config(path: str | Path) -> dict:
         raise PaceError(
             "provided_regions supports measured data only; no compatible sequence target is defined"
         )
-    for section in ("inputs", "contact", "sequence", "fusion", "genome", "multiomics"):
+    for section in (
+        "inputs",
+        "contact",
+        "sequence",
+        "fusion",
+        "genome",
+        "multiomics",
+        "allocation",
+    ):
         for key, value in cfg[section].items():
             if value is not None and (section == "inputs" or key.endswith("_path")):
                 if not isinstance(value, str):
                     raise PaceError(f"{section}.{key}: expected a path string")
-                cfg[section][key] = str((path.parent / value).resolve())
+                cfg[section][key] = str((base / value).resolve())
     return cfg
 
 

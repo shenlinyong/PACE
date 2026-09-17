@@ -131,6 +131,11 @@ so two source revisions sharing a package version remain distinguishable.
 
 ## Output-only fields
 
+`eta_calibration.json` records the numeric exponent, status, applicability scope and
+calibration provenance. `run_manifest.json` repeats it under `allocation`, and the
+comparison contract stores the numeric eta. Functional eta calibration uses a dedicated
+element-level table; see [its schema](eta_calibration.md#required-functional-label-table).
+
 `scores.tsv.gz` retains all candidates with A_used, Cbar, B, support, log_support, denominator,
 log_denominator, pace_score, scoreable, support_status, normalization_status, actual normalization
 ID, distance_bp, n_tss, sources, structural_status and reasons. Raw overflow is NA with a finite

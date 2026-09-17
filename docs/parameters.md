@@ -57,7 +57,10 @@ contact:
 promoters:
   weights: provided
 allocation:
-  eta: 0
+  eta: auto
+  labels_path: null
+  calibrator_path: null
+  minimum_genes: 3
   missing_policy: fixed_gene_set
 sequence:
   model_path: null
@@ -92,7 +95,9 @@ seed: 17
 
 | Parameter | Meaning and boundary |
 |---|---|
-| eta | 0 or 1 only; 0 is the default and skips B completely |
+| eta | `auto` (default) or a finite number in [0,1]; auto falls back to 0 without suitable functional calibration; 0 skips B completely |
+| allocation.labels_path / calibrator_path | Mutually exclusive functional calibration TSV or frozen eta JSON; see [calibration](eta_calibration.md) |
+| allocation.minimum_genes | At least 2; default 3 informative genes. An engineering guard, not a biological sample-size claim |
 | panel | ATAC, DNase, H3K27ac, ATAC+H3K27ac or DNase+H3K27ac; no per-edge fallback |
 | catalog profile | canonical_grid requires aligned equal-width nonoverlapping units; provided_regions is measured-only |
 | include_promoter_units | checks that trusted TSS cells occur in the catalog; the small hand-calculation example explicitly disables it |

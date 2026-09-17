@@ -88,9 +88,25 @@ def benchmark_command(path, out):
             "Repeated functional assays for one edge need a predeclared label aggregation"
         )
     methods = {}
+    calibration = None
+    if run_cfg["allocation"]["labels_path"] or run_cfg["allocation"]["calibrator_path"]:
+        calibrated = compute(run_cfg)
+        calibration = calibrated["eta_calibration"]
+        if any(
+            r["gene_id"] in calibration.get("fit_genes", [])
+            or r["element_id"] in calibration.get("fit_element_ids", [])
+            or r.get("group_id") in calibration.get("fit_group_ids", [])
+            for r in mapped
+        ):
+            raise PaceError(
+                "Benchmark functional labels overlap eta fitting genes, elements or groups"
+            )
+        methods["PACE_calibrated"] = calibrated["scores"]
+    elif run_cfg["allocation"]["eta"] not in ("auto", 0, 1):
+        methods["PACE_fixed_eta"] = compute(run_cfg)["scores"]
     for eta in (0, 1):
         c = copy.deepcopy(run_cfg)
-        c["allocation"]["eta"] = eta
+        c["allocation"].update(eta=eta, labels_path=None, calibrator_path=None)
         methods[f"PACE_eta{eta}"] = compute(c)["scores"]
     # ABC-style single physical TSS: choose smallest tss0, then promoter_id, before evaluation.
     from ..schemas import load_tables
@@ -101,7 +117,7 @@ def benchmark_command(path, out):
         selected.setdefault(p["gene_id"], p["promoter_id"])
     # Reuse resolved per-TSS contacts; this is an explicit ABC-style baseline, not an external reproduction.
     base_cfg = copy.deepcopy(run_cfg)
-    base_cfg["allocation"]["eta"] = 0
+    base_cfg["allocation"].update(eta=0, labels_path=None, calibrator_path=None)
     resolved = compute(base_cfg)
     contact = {
         (r["element_id"], r["promoter_id"]): r["resolved_value"]
@@ -233,6 +249,7 @@ def benchmark_command(path, out):
                 "n_labels": len(mapped),
                 "n_excluded": len(rejected),
                 "input_profile": run_cfg["execution_profile"],
+                "eta_calibration": calibration,
                 "biological_validation_claim": "none_for_synthetic_data"
                 if run_cfg["execution_profile"] == "demonstration"
                 else "task_and_dataset_specific_only",

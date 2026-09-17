@@ -1,7 +1,18 @@
 # Training and calibration
 
-Model fitting is separate from scoring. Inference never refits weights, scales, medians,
-quantiles, thresholds or calibration parameters. All distributed weights are synthetic.
+Frozen-model inference never refits weights, scales, medians, quantiles or thresholds.
+Eta is the explicit exception: providing `--eta-labels` requests its fitting during a run;
+`--eta-model` instead reuses a frozen estimate. All distributed weights are synthetic.
+
+## Continuous allocation eta
+
+`PACE fit-eta --config run.yaml --eta-labels functional_labels.tsv --out results/eta`
+fits a bounded continuous exponent from applicable training/calibration perturbations.
+The same behavior is available in a normal run with `--eta-labels`. Without suitable
+data, automatic eta remains zero with an explicit fallback reason. Freeze
+`results/eta/eta_calibration.json` with `--eta-model` for subsequent compatible runs.
+The [calibration specification](eta_calibration.md) defines the label schema, convex
+ranking objective, conservative information requirements and split-isolation rules.
 
 ## Quantitative sequence CNN
 

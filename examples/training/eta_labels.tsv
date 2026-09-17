@@ -1,0 +1,5 @@
+label_id	element_id	gene_id	species	assembly	context_id	target_level	perturbation_type	effect_direction	label_status	split	group_id	assay_id	source_id
+eta_G1_positive	E1	G1	synthetic	toy_assembly	toy_tissue	individual	synthetic_inhibition	down	enhancing_positive	calibration	G1	toy_assay	toy_source
+eta_G1_negative	E2	G1	synthetic	toy_assembly	toy_tissue	individual	synthetic_inhibition	none	powered_negative	calibration	G1	toy_assay	toy_source
+eta_G2_positive	E3	G2	synthetic	toy_assembly	toy_tissue	individual	synthetic_inhibition	down	enhancing_positive	calibration	G2	toy_assay	toy_source
+eta_G2_negative	E2	G2	synthetic	toy_assembly	toy_tissue	individual	synthetic_inhibition	none	powered_negative	calibration	G2	toy_assay	toy_source

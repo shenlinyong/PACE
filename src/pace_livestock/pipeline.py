@@ -116,7 +116,17 @@ def compute(cfg: dict):
                 "pace_ml_probability": math.nan,
             }
         )
-    scores, summary = score(edges, eta=cfg["allocation"]["eta"])
+    from .learning.allocation import calibration_scope, resolve_eta
+
+    scale_contract = sorted(
+        {
+            (r["assay"], r["unit"], r.get("normalization_id"), r["window_id"])
+            for r in resolved_a
+            if r["unit"] is not None
+        }
+    )
+    allocation = resolve_eta(edges, cfg, calibration_scope(cfg, tables, assets, scale_contract))
+    scores, summary = score(edges, eta=allocation["eta"])
     features, roles = multiomics_features(tables, scores, resolved_a, cfg)
     if cfg["multiomics"]["mode"] == "ml":
         if not cfg["multiomics"]["model_path"]:
@@ -144,6 +154,9 @@ def compute(cfg: dict):
             ):
                 roles[layer] = "active_ml"
     qc = {
+        "allocation": {
+            k: allocation[k] for k in ("eta", "status", "reason", "reuse") if k in allocation
+        },
         "resolved_evidence_summary": evidence_summary(resolved_a, resolved_c),
         "multiomics_roles": roles,
         "n_candidates": len(scores),
@@ -161,13 +174,6 @@ def compute(cfg: dict):
         "interpretation": "PACE is a composition of regulatory support, not a causal probability or expression effect.",
     }
     ids = universe_ids(tables, cfg)
-    scale_contract = sorted(
-        {
-            (r["assay"], r["unit"], r.get("normalization_id"), r["window_id"])
-            for r in resolved_a
-            if r["unit"] is not None
-        }
-    )
     contract = {
         **ids,
         "estimand": cfg["estimand"],
@@ -176,7 +182,7 @@ def compute(cfg: dict):
         "panel": sorted(cfg["activity"]["panel"]),
         "scales": scale_contract,
         "contact_scale": cfg["contact"]["scale"],
-        "eta": cfg["allocation"]["eta"],
+        "eta": allocation["eta"],
         "catalog_profile": cfg["catalog"]["profile"],
         "contact_near_diagonal_bp": cfg["contact"]["near_diagonal_bp"],
         "contact_near_diagonal_policy": cfg["contact"]["near_diagonal_policy"],
@@ -210,6 +216,7 @@ def compute(cfg: dict):
         "asset_hashes": {k: a["manifest_sha256"] for k, a in assets.items()},
         "universe_ids": ids,
         "config_hash": digest(cfg),
+        "allocation": allocation,
     }
     evidence, sources = evidence_catalog(tables, resolved_a, resolved_c, assets, cfg)
     return {
@@ -222,11 +229,12 @@ def compute(cfg: dict):
         "sources": sources,
         "qc": qc,
         "manifest": manifest,
+        "eta_calibration": allocation,
     }
 
 
 def run(config_path, out):
-    cfg = load_config(config_path)
+    cfg = config_path if isinstance(config_path, dict) else load_config(config_path)
     # Validation/computation occurs before publication; failed runs leave no success directory.
     result = compute(cfg)
     with output_directory(out) as dest:
@@ -242,6 +250,7 @@ def run(config_path, out):
         write_table(dest / "multiomics_features.tsv.gz", result["features"], fields=None)
         write_json(dest / "qc_report.json", result["qc"])
         write_json(dest / "run_manifest.json", result["manifest"])
+        write_json(dest / "eta_calibration.json", result["eta_calibration"])
         (dest / "resolved_config.yaml").write_text(
             yaml.safe_dump(cfg, sort_keys=True), encoding="utf-8"
         )

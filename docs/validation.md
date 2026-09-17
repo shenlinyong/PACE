@@ -9,9 +9,12 @@ benchmarks were supplied in this task.
 
 | Check | Observed result |
 |---|---|
-| Complete repository test suite | **127 passed**, including retained region-interface tests |
-| Canonical package statement coverage | **78.5%** (2,011 of 2,561 statements); a diagnostic, not a biological-quality score |
-| Independent mathematical fixtures | Exact rational eta 0/1 scores, activity, multi-TSS, fusion, bulk-order and CpG examples passed |
+| Complete repository test suite | **153 passed** for software 0.2.0, including retained region-interface tests |
+| Canonical package statement coverage | Initial 0.1.0 baseline: **78.5%** (2,011 of 2,561 statements); not remeasured for 0.2.0 and not a biological-quality score |
+| Independent mathematical fixtures | Exact rational eta 0/1 and hand-derived eta=0.5 scores; analytic interior eta optimum at 0.5; activity, multi-TSS, fusion, bulk-order and CpG examples passed |
+| Functional eta calibration | Bounded endpoints, known interior optimum, fallback, train/test isolation, frozen reuse and scope rejection passed |
+| Direct executable | All three modes ran with file flags alone and no YAML, including paths with spaces and explicit overrides |
+| Prefix installer | Actual isolated installation with install.sh, PACE entry-point execution and shell syntax checks passed |
 | Missingness/denominators | True zero, missing assay/contact, fixed B universe, partial/common normalization and overflow passed |
 | Real small-file IO | bigWig missing/negative signal, sparse cool queries, BED/GTF, stranded CpG and RNA mappings passed |
 | Sequence handling | REF, GT, ploidy, phase sets, callability, multiallelic SNV, fixed-target indel and reported SV checks passed |
@@ -39,6 +42,7 @@ the complete suite passed. No legacy mathematical function was changed to make t
 | E: common denominator, full/conditional Delta, compositional interpretation | evaluation/compare.py | pipeline counterexamples and actual compare/stability commands |
 | F: priors, independent-target fusion | evidence/contact.py, evidence/fusion.py, operations.py | test_canonical_operations.py |
 | G: labels, groups, fixed transforms, elastic net, calibration | learning/model.py | test_canonical_learning.py |
+| User revision: continuous eta, functional fitting and direct PACE executable | learning/allocation.py, run_options.py, cli.py | test_canonical_allocation.py, test_canonical_cli.py |
 | H: functional-label baselines, coverage and AP | evaluation/benchmark.py, metrics.py | operation and metric tests |
 | I/J: packaging, offline use, preserved history, documentation | pyproject.toml, CI, demos, bilingual guides | local distribution test and GitHub workflow |
 

@@ -60,6 +60,12 @@ complete compatible individual runs and the `compare` command.
 
 ## Functional-label benchmark
 
+When the run config supplies eta calibration labels or a frozen artifact, the benchmark
+adds `PACE_calibrated` alongside the endpoint baselines. It rejects functional evaluation
+labels sharing fitting genes, elements or groups. A fixed continuous exponent adds
+`PACE_fixed_eta`. Freeze eta before between-animal comparisons; separate refits can
+confound evidence changes with parameter changes. See [eta calibration](eta_calibration.md).
+
 ```yaml
 run_config: examples/measured/config.yaml
 labels: functional_labels.tsv

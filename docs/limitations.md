@@ -17,6 +17,7 @@ independent individual-effect validation or enhancer–gene perturbation validat
 | SV/CNV | Flags reported input SV effects; does not discover unreported SVs or reconstruct complex dosage |
 | Nine omics | Standard tables and track/count/interval adapters; annotation by default, named features in independent ML |
 | Functional labels | First implementation uses unambiguous one-to-one region/unit mappings; multi-tile labels are excluded and reported |
+| Continuous eta | Bounded within-gene ranking fit with explicit information/split checks; no claim of an optimal biological exponent, confidence interval or held-out improvement |
 | Probability calibration | Specific to independent supplied labels and their sampling design; no universal causal probability |
 | Contact uncertainty | Explicit observed/prior/shrinkage point estimates; no Poisson–Gamma or posterior sampling |
 | Statistical uncertainty | Replicate consistency and coverage; no invented small-sample confidence intervals |

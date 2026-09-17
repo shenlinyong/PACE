@@ -14,12 +14,13 @@ cd PACE
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install .
-pace-livestock demo --regime measured --out results/demo_measured
-pace-livestock demo --regime hybrid --out results/demo_hybrid
-pace-livestock demo --regime genome_only --out results/demo_genome
+PACE --version
+PACE --mode measured --config examples/measured/config.yaml --out results/measured
+PACE --mode hybrid --config examples/hybrid/config.yaml --out results/hybrid
+PACE --mode genome --config examples/genome_only/config.yaml --out results/genome
 ```
 
-三个 demo 均离线运行，使用明确标记的合成数据和固定测试权重。基础安装不需要 GPU。
+三个示例均离线运行，使用明确标记的合成数据和固定测试权重。基础安装不需要 GPU。
 读取 bigWig、cool/mcool、BCF 使用 `pip install '.[io]'`；CNN 训练和推理使用
 `pip install '.[sequence]'`。安装依赖可能需要网络，运行示例不下载数据或模型。
 
@@ -29,7 +30,14 @@ pace-livestock run --config examples/measured/config.yaml --out results/measured
 pace-livestock capabilities --config examples/genome_only/config.yaml
 ```
 
-所有相对路径以配置文件所在目录为基准；已有输出目录不会被静默覆盖。
+也可以用 `./install.sh --prefix "$HOME/.local" --python python3` 安装独立环境。
+`PACE measured`、`PACE hybrid`、`PACE genome` 与 `--mode` 写法等价。
+YAML 可省略，直接指定 `--catalog-dir`、`--activity`、`--contacts`、`--reference`、
+`--sequence-model` 等参数；完整真实数据示例见[命令行手册](docs/cli.md)。
+`PACE run --help` 显示全部参数，原 `pace-livestock` 命令继续可用。
+
+YAML 内路径以配置文件所在目录为基准，命令行路径以当前目录为基准；
+命令行参数覆盖配置值，已有输出目录不会被静默覆盖。
 
 ## 三种模式
 
@@ -40,7 +48,10 @@ pace-livestock capabilities --config examples/genome_only/config.yaml
 | genome_only | atlas/启动子候选、参考 FASTA、适用定量权重和接触先验；个体化另需 VCF/BCF、可调用区间、倍性及可靠相位 |
 
 主流程统一为：逐检测层得到 bulk 边际信号 → 活性几何均值 → 多 TSS 接触 → 可选分配 → 基因内归一化。
-默认 `eta=0`。H3K27ac-only 等单层模式可以显式配置，双层运行中缺少一层不会自动变成单层。
+默认 `--eta auto`：没有适用功能标签时实际 `eta=0`；通过 `--eta-labels` 提供标签时，
+从训练/校准数据自动估计连续 `0≤eta≤1`，测试集不参与估计。`--eta-model` 可冻结复用，
+也可用 `--eta 0.35` 等数值预先指定。详见[公式与校准说明](docs/eta_calibration.md)。
+H3K27ac-only 等单层模式可以显式配置，双层运行中缺少一层不会自动变成单层。
 RNA、H3K4me1、H3K4me3、H3K27me3、CTCF 和甲基化默认是注释；有功能标签时可以进入独立分类器。
 
 ## 读懂结果
@@ -51,6 +62,7 @@ RNA、H3K4me1、H3K4me3、H3K27me3、CTCF 和甲基化默认是注释；有功�
 - `multiomics_features.tsv.gz`：附加组学注释及角色。
 - `qc_report.json` / `report.md`：能力、覆盖、不可支持变异和解释边界。
 - `run_manifest.json` / `resolved_config.yaml`：输入与模型哈希、环境、参数和随机种子。
+- `eta_calibration.json`：实际 eta、拟合/回退原因、标签来源、适用范围及冻结复用记录。
 
 技术缺失是 NA，真实零是 0。`partial` 分数只针对可测子集；分数和为 1 不表示数据完整。
 PACE 不是因果概率，也不直接预测表达变化。增强子自身支持不变时，其他候选变化仍可改变它的份额。
