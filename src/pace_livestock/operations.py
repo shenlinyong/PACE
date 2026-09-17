@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+import yaml
+
 from .catalog import candidate_edges, canonical_units
 from .config import load_config, operation_config
 from .errors import PaceError
@@ -33,7 +35,12 @@ def asset_metadata(cfg, kind):
 
 def fit_contact_command(path, out):
     required = ASSET_KEYS | {"data", "scale", "resolution", "bin_edges", "d_ref", "d_min"}
-    cfg = operation_config(path, allowed=required, required=required, paths=["data"])
+    cfg = operation_config(
+        path,
+        allowed=required | {"normalization_id", "balancing", "window_id"},
+        required=required,
+        paths=["data"],
+    )
     rows = read_table(
         cfg["data"], required=["bin_pair_id", "distance_bp", "contact_value", "split", "region_id"]
     )
@@ -58,6 +65,7 @@ def fit_contact_command(path, out):
         **fitted,
         "scale": cfg["scale"],
         "resolution": integer(cfg["resolution"], "resolution", minimum=1),
+        **{key: cfg.get(key) for key in ("normalization_id", "balancing", "window_id")},
         "training_regions": sorted(r for r, split in region_splits.items() if split == "train"),
     }
     residuals = [
@@ -180,6 +188,7 @@ def fit_fusion_command(path, out):
 
 
 def prepare_genome_command(path, out, *, predict=False):
+    from .sequence.binding import bind_predictions, genome_binding_id
     from .sequence.genome import prepare_windows
     from .sequence.model import predict_windows
 
@@ -195,8 +204,12 @@ def prepare_genome_command(path, out, *, predict=False):
             "prepare-genome/predict-sequence requires a model manifest defining windows"
         )
     windows, _ = prepare_windows(cfg, tables["units"], input_length=asset["input_length"])
+    binding_id = genome_binding_id(cfg, tables["units"], asset)
     with output_directory(out) as dest:
-        rows = [{k: v for k, v in r.items() if k != "sequences"} for r in windows]
+        rows = [
+            {**{k: v for k, v in r.items() if k != "sequences"}, "genome_binding_id": binding_id}
+            for r in windows
+        ]
         write_table(dest / "windows.tsv", rows)
         with (dest / "haplotypes.fa").open("w", encoding="utf-8") as stream:
             for row in windows:
@@ -205,7 +218,12 @@ def prepare_genome_command(path, out, *, predict=False):
         if predict:
             write_table(
                 dest / "predictions.tsv",
-                predict_windows(windows, asset, max_n_fraction=cfg["sequence"]["max_n_fraction"]),
+                bind_predictions(
+                    predict_windows(
+                        windows, asset, max_n_fraction=cfg["sequence"]["max_n_fraction"]
+                    ),
+                    binding_id,
+                ),
             )
         write_json(
             dest / "manifest.json",
@@ -218,6 +236,7 @@ def prepare_genome_command(path, out, *, predict=False):
                 "input_length": asset["input_length"],
                 "output_window": asset["output_window"],
                 "reference_only": cfg["genome"]["variant_path"] is None,
+                "genome_binding_id": binding_id,
             },
         )
     return rows
@@ -280,6 +299,30 @@ def prepare_command(path, out):
                 ("transcript_mapping", transcripts),
             ):
                 write_table(dest / f"{name}.tsv", rows)
+            write_table(
+                dest / "chrom_sizes.tsv",
+                [{"chrom": chrom, "length": length} for chrom, length in sorted(sizes.items())],
+            )
+            (dest / "run_catalog_config.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "catalog": {
+                            "profile": "canonical_grid",
+                            "width_bp": cfg.get("width", 500),
+                            "offset_bp": cfg.get("offset", 0),
+                            "include_promoter_units": cfg.get("include_promoters", True),
+                            "chrom_sizes_path": "chrom_sizes.tsv",
+                            "candidate_radius_bp": cfg.get("radius", 5_000_000),
+                        },
+                        "inputs": {
+                            name: f"{name}.tsv"
+                            for name in ("units", "promoters", "region_membership", "candidates")
+                        },
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
             write_json(
                 dest / "preparation_report.json",
                 {
@@ -350,6 +393,7 @@ def prepare_command(path, out):
                 "sample_id",
                 "source_id",
                 "scale",
+                "normalization_id",
             },
             required=[
                 "contact",
@@ -381,7 +425,16 @@ def prepare_command(path, out):
             balanced=cfg["balanced"],
             missing_pixels_are_zero=cfg["missing_pixels_are_zero"],
         )
-        rows = [{**r, **{k: cfg[k] for k in ("sample_id", "source_id", "scale")}} for r in rows]
+        rows = [
+            {
+                **r,
+                **{k: cfg[k] for k in ("sample_id", "source_id", "scale")},
+                "normalization_id": cfg.get("normalization_id"),
+                "balancing": "balanced" if cfg["balanced"] else "unbalanced",
+                "window_id": "bin_pair",
+            }
+            for r in rows
+        ]
         name = "observed_contacts.tsv"
     elif kind == "bed_features":
         cfg = operation_config(
@@ -394,6 +447,7 @@ def prepare_command(path, out):
                 "evidence_id",
                 "feature_prefix",
                 "entity_type",
+                "motif_strands",
             },
             required=["bed", "units", "source_id", "evidence_id", "feature_prefix"],
             paths=["bed", "units"],
@@ -403,12 +457,15 @@ def prepare_command(path, out):
 
         units = read_table(cfg["units"], required=["element_id", "chrom", "start", "end"])
         peaks = read_bed(cfg["bed"], source_id=cfg["source_id"])
+        if type(cfg.get("motif_strands", False)) is not bool:
+            raise PaceError("motif_strands must be a YAML boolean")
         rows = interval_features(
             units,
             peaks,
             evidence_id=cfg["evidence_id"],
             feature_prefix=cfg["feature_prefix"],
             entity_type=cfg.get("entity_type", "element"),
+            motif_strands=cfg.get("motif_strands", False),
         )
         name = "features.tsv"
     elif kind == "methylation":

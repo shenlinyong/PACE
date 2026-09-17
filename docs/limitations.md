@@ -15,9 +15,9 @@ independent individual-effect validation or enhancer–gene perturbation validat
 | Phase and ploidy | Explicit haploid/diploid; unphased heterozygotes and disconnected local PS blocks are unresolved |
 | Callability | Callable BED or explicit reference-assumption policy; no automatic gVCF confidence-block conversion |
 | SV/CNV | Flags reported input SV effects; does not discover unreported SVs or reconstruct complex dosage |
-| Nine omics | Standard tables and track/count/interval adapters; annotation by default, named features in independent ML |
+| Multiomics | Standard tables and track/count/interval adapters; annotation by default, named features in independent ML |
 | Functional labels | First implementation uses unambiguous one-to-one region/unit mappings; multi-tile labels are excluded and reported |
-| Continuous eta | Bounded within-gene ranking fit with explicit information/split checks; no claim of an optimal biological exponent, confidence interval or held-out improvement |
+| Continuous eta | Bounded candidate fit with grouped out-of-fold AP selection and stability gates; internal selection does not establish external biological accuracy |
 | Probability calibration | Specific to independent supplied labels and their sampling design; no universal causal probability |
 | Contact uncertainty | Explicit observed/prior/shrinkage point estimates; no Poisson–Gamma or posterior sampling |
 | Statistical uncertainty | Replicate consistency and coverage; no invented small-sample confidence intervals |
@@ -30,7 +30,6 @@ or structural relationships can reduce coverage. A complete denominator only mea
 candidate was handled, not that every biological enhancer was discovered. Conditional comparisons
 describe their common measurable subset and must not be represented as complete genetic effects.
 
-The supplied documents describe future research extensions; they do not mean those extensions
-already exist. Unsupported extensions have no fake-success command. Full posterior inference,
+Potential research extensions do not imply implemented capabilities. Unsupported extensions have no fake-success command. Full posterior inference,
 copy-resolved support, arbitrary assembly mapping and de novo contact-network training remain
 explicit research extensions.

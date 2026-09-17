@@ -22,7 +22,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m pip install . pytest build
       - name: Core, schema, genotype, command and public-documentation tests
-        run: python -m pytest tests/test_canonical_*.py --ignore=tests/test_canonical_sequence.py -q
+        run: python -m pytest tests --ignore=tests/test_canonical_sequence.py -q
       - name: Build and test wheel outside checkout
         run: |
           python -m build
@@ -42,7 +42,7 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install 'numpy==1.26.4' 'PyYAML==6.0.3' pytest .
-      - run: python -m pytest tests/test_canonical_*.py --ignore=tests/test_canonical_sequence.py -q
+      - run: python -m pytest tests --ignore=tests/test_canonical_sequence.py -q
   extras:
     runs-on: ubuntu-latest
     strategy:
@@ -57,7 +57,7 @@ jobs:
       - if: matrix.extra == 'sequence'
         run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: python -m pip install ".[${{ matrix.extra }}]" pytest
-      - run: python -m pytest tests/test_canonical_*.py -q
+      - run: python -m pytest tests -q
   regression:
     runs-on: ubuntu-latest
     steps:
@@ -68,5 +68,36 @@ jobs:
       - run: python -m pip install '.[dev,io,ml]'
       - run: python -m pytest tests -q
       - run: python scripts/check_public_docs.py
-      - run: ruff check src/pace_livestock tests/test_canonical_*.py scripts/check_public_docs.py scripts/pace.py
-      - run: ruff format --check src/pace_livestock tests/test_canonical_*.py scripts/check_public_docs.py scripts/pace.py
+      - run: ruff check src/pace_livestock tests scripts/check_public_docs.py scripts/pace.py
+      - run: ruff format --check src/pace_livestock tests scripts/check_public_docs.py scripts/pace.py
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --tag pace:ci .
+      - name: Run three modes in the container as the host user
+        run: |
+          mkdir container-results
+          docker run --rm pace:ci --version
+          for regime in measured hybrid genome_only; do
+            docker run --rm --user "$(id -u):$(id -g)" \
+              -v "$PWD/container-results:/work" pace:ci \
+              demo --regime "$regime" --out "/work/$regime"
+          done
+  conda:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniforge-version: latest
+          environment-file: environment.yml
+          activate-environment: pace
+          auto-activate-base: false
+      - name: Run installed Conda entry point and examples
+        shell: bash -el {0}
+        run: |
+          PACE --version
+          for regime in measured hybrid genome_only; do
+            PACE demo --regime "$regime" --out "conda-results/$regime"
+          done

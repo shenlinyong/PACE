@@ -137,5 +137,27 @@ PACE fit-eta --config examples/measured/config.yaml \
   --out results/check_eta
 ```
 
-最后一个例子只有两个合成基因，因此显式使用 2；真实分析默认要求至少三个
-有信息基因，仍需独立数据判断统计稳定性。仓库不附带已验证的真实家养动物权重。
+最后一个例子只有两个合成基因，因此显式使用 2；真实分析默认要求至少三个有信息基因；
+还需足够独立分组、每折训练信息和稳定的留出增益。这个小示例应返回零回退，
+不能用来证明非零参数获得了验证。仓库不附带已验证的真实家养动物权重。
+
+## 显式测量与注释参数
+
+`PACE run --help` 是当前参数的直接查询入口。新增 CLI 与 YAML 对应关系：
+
+| CLI | YAML |
+|---|---|
+| `--chrom-sizes` | catalog.chrom_sizes_path |
+| `--candidate-radius` | catalog.candidate_radius_bp |
+| `--contact-resolution` | contact.resolution |
+| `--contact-normalization` | contact.normalization_id |
+| `--contact-balancing` | contact.balancing |
+| `--contact-window` | contact.window_id |
+| `--reference-cpg` | methylation.reference_cpg_path |
+| `--methylation-min-coverage` | methylation.minimum_coverage |
+| `--promoter-upstream` / `--promoter-downstream` | methylation.promoter_upstream_bp / promoter_downstream_bp |
+| `--eta-min-groups` | allocation.minimum_groups |
+| `--eta-validation-folds` | allocation.validation_folds |
+
+`--catalog-dir` 会读取 prepare 导出的 run_catalog_config.yaml 中的目录参数；
+显式 CLI 参数随后覆盖。完整真实配置和逐项解释见[中文手册](USER_GUIDE.zh-CN.md)。

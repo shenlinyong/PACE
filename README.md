@@ -2,18 +2,91 @@
 
 [![Software tests](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml/badge.svg)](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml)
 
-**Activity–contact support for livestock enhancer–gene research.**
+**Activity–contact modelling for livestock enhancer–gene research.**
 
-PACE combines quantitative activity, promoter contact and optional target allocation
-into a gene-normalized relative support score. The same model powers **measured**,
-**hybrid** and **genome-only** analysis. Developed by **申林用 (Linyong Shen,
-shenlinyong), Northwest A&F University (西北农林科技大学)**.
+PACE combines quantitative regulatory activity and contact to a gene's physical
+promoters into a relative support score. It supports measured, hybrid and
+sequence-only evidence with explicit quality, missingness and provenance checks.
+Author and maintainer: **申林用 (Linyong Shen, shenlinyong), Northwest A&F University**.
 
-[中文说明](README.zh-CN.md) · [Formula](docs/FORMULA.md) · [Command line](docs/cli.md) ·
-[Input preparation](docs/input_preparation.md) · [Training](docs/training.md) ·
-[Validation](docs/validation.md)
+[中文完整使用说明](docs/USER_GUIDE.zh-CN.md) · [中文首页](README.zh-CN.md) ·
+[Installation: Conda / pip / Docker](docs/INSTALLATION.md) ·
+[Three-mode tutorial](docs/TUTORIAL.md) · [Equations](docs/```math
+\boxed{
+\mathrm{PACE}(E,G)=
+\frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
+{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
+ A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
+}
+```.md)
 
-## Current formula
+## Download and install
+
+The commands below run on a Linux server with Git and Conda installed:
+
+```bash
+git clone https://github.com/shenlinyong/PACE.git
+cd PACE
+conda env create -f environment.yml
+conda activate pace
+PACE --version
+```
+
+Alternatively, use Python >=3.11 in an isolated environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install '.[io,ml]'
+```
+
+Or build the included Docker image locally:
+
+```bash
+docker build -t pace:local .
+docker run --rm pace:local --version
+```
+
+Real CNN inference/training requires the optional `sequence` dependencies. The
+[installation guide](docs/INSTALLATION.md) includes wget source downloads, CPU
+PyTorch, Docker volume mounts and development installation. No published PyPI
+package, registry image or validated livestock weight download is assumed.
+
+## Run the bundled examples
+
+From the repository root, after installation:
+
+```bash
+PACE measured --config examples/measured/config.yaml --out results/measured
+PACE hybrid --config examples/hybrid/config.yaml --out results/hybrid
+PACE genome --config examples/genome_only/config.yaml --out results/genome
+```
+
+These are complete **synthetic** fixtures that run offline without a GPU. They
+check installation and demonstrate the workflow; they are not biological models.
+Choose a new output directory each time. `PACE`, `pace` and `pace-livestock` are
+aliases for the same implementation.
+
+For your own data, read the [step-by-step tutorial](docs/TUTORIAL.md),
+[three complete project configurations](docs/USER_GUIDE.zh-CN.md), and
+[input preparation guide](docs/input_preparation.md). Paths in YAML resolve from
+the YAML file's directory; direct CLI paths resolve from the working directory.
+
+## Choose the evidence mode
+
+| Mode | Activity | Contact | Requirements beyond the candidate catalog |
+|---|---|---|---|
+| `measured` | Qualified observed signals in a fixed assay panel | Observations, or an explicitly configured applicable prior | Actual sample/source metadata and quantitative measurements |
+| `hybrid` | Qualified observations and applicable quantitative predictions; calibrated fusion where available | Observations, prior or explicit reliability shrinkage | Matching sequence model and, for fusion, a matching calibrator |
+| `genome` / `genome_only` | Quantitative predictions from reference or individual sequences | Applicable distance prior | Matching trained weights, reference and prior; individual work also requires genotypes, callability and ploidy |
+
+Every mode uses fixed candidate units, distinct physical TSSs, the same activity
+panel throughout a run and the same scoring kernel. RNA, H3K4me1, H3K4me3,
+H3K27me3, H3K9me3, CTCF and WGBS/RRBS have [explicit interfaces](docs/MULTIOMICS.md).
+They are annotations by default and may enter a separately validated classifier;
+they are not arbitrary multipliers in the primary score.
+
+## The model
 
 ```math
 \boxed{
@@ -24,91 +97,76 @@ shenlinyong), Northwest A&F University (西北农林科技大学)**.
 }
 ```
 
-The denominator contains only the support of the actually scoreable candidates of
-that gene. The fixed activity panel uses an equal geometric mean; contact is
-reliability-adjusted and averaged over distinct TSSs using declared promoter weights.
-`B` is the contact share over an element's fixed candidate-gene set.
+The numerator is the current unit's activity × multi-TSS contact × optional
+allocation factor. The denominator sums the same support across this gene's
+actually scoreable planned candidates. Activity is the equal geometric mean of
+the selected quantitative ATAC/DNase/H3K27ac signals. TSS contact uses fixed promoter
+weights and compatible measurement scales. Optional allocation describes how an
+unit's contact is distributed across its fixed candidate genes.
 
-Default `--eta auto` uses **eta=0** when applicable functional calibration is absent
-or has insufficient information. `--eta-labels` estimates a continuous value in
-**[0,1]** from eligible training/calibration perturbations; test labels never fit eta.
-`--eta-model` reuses a frozen calibration. A predeclared `--eta 0.35` is also valid.
-At eta=0, B is skipped. True zeros stay zero; required missing evidence stays NA.
-A zero gene-support total gives NA. [Definitions and boundary cases](docs/FORMULA.md).
+Automatic allocation uses a numerical exponent of zero without sufficient
+applicable functional labels and successful grouped validation. An accepted
+estimate lies in [0,1]. Details are in [calibration](docs/eta_calibration.md).
 
-## Install and run
+The [equation manual](docs/```math
+\boxed{
+\mathrm{PACE}(E,G)=
+\frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
+{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
+ A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
+}
+```.md) provides **the fully expanded total formula,
+fully expanded formulas for all three modes, every symbol, and a numerical example**.
+A score is a relative support share, not a causal probability or expression effect.
+Missing evidence stays NA; observed zeros stay zero. No arbitrary denominator
+pseudocount or gene-expression multiplier is added.
 
-Python 3.11 or newer is required:
+## Inspect the output before interpreting a score
 
-```bash
-git clone https://github.com/shenlinyong/PACE.git
-cd PACE
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install .
-PACE --version
-PACE run --help
-```
-
-An isolated prefix installation is available through `./install.sh`; see
-[installation](docs/INSTALLATION.md). Install `'.[io]'` for bigWig/cool/BCF adapters
-or `'.[sequence]'` for real CNN training/inference. The command aliases `PACE`,
-`pace` and `pace-livestock` all use the same implementation.
-
-These commands run the bundled **synthetic** fixtures:
-
-```bash
-PACE measured --config examples/measured/config.yaml --out results/measured
-PACE hybrid --config examples/hybrid/config.yaml --out results/hybrid
-PACE genome --config examples/genome_only/config.yaml --out results/genome
-```
-
-YAML is optional: `PACE --mode measured|hybrid|genome` accepts direct file options,
-including `--catalog-dir`, `--activity`, `--contacts`, `--reference`,
-`--sequence-model`, `--contact-prior` and genotype options.
-The [command guide](docs/cli.md) contains complete real-input command templates.
-CLI paths resolve from the working directory; YAML paths resolve from the YAML file.
-Existing output directories are never overwritten.
-
-## Choose a mode
-
-| Mode | Activity evidence | Contact evidence | Required assets |
-|---|---|---|---|
-| `measured` | Qualified measurements for a fixed assay panel | Qualified observations or an explicit compatible prior | No sequence model required |
-| `hybrid` | Measurements and applicable quantitative sequence predictions | Observations and/or prior | Sequence weights for prediction; matching calibrator for fusion |
-| `genome` / `genome_only` | Quantitative reference or individual sequence predictions | Compatible contact prior | Species, assembly, tissue and target-matched weights and prior |
-
-All modes use the same canonical units, bulk marginal aggregation and numerical
-kernel. RNA, auxiliary marks and methylation are annotations by default; an
-independent classifier may use named features when suitable functional labels exist.
-They are not extra multipliers in the primary formula.
-
-## Read the results
-
-| Output | Contents |
+| File | What to inspect |
 |---|---|
-| `scores.tsv.gz` | All candidate edges, activity/contact/allocation, support, score, missingness and normalization status |
-| `gene_summary.tsv` | Actual gene denominators and candidate coverage |
-| `resolved_activity.tsv`, `resolved_contacts.tsv` | Measurements, predictions, fusion and prior provenance |
-| `eta_calibration.json` | Actual eta, fit/fallback status, eligible labels and reusable scope |
-| `qc_report.json`, `run_manifest.json`, `resolved_config.yaml` | QC, input/model/software hashes, environment and configuration |
+| `scores.tsv.gz` | Every candidate, `pace_score`, activity, contact, support/log support, missing reasons and normalization status |
+| `gene_summary.tsv` | Planned/scoreable candidates, coverage and actual denominator |
+| `resolved_activity.tsv`, `resolved_contacts.tsv` | Source selection, prediction/fusion/prior, scale and status |
+| `multiomics_features.tsv.gz` | RNA, auxiliary marks, methylation and other named annotations |
+| `evidence.tsv`, `sources.tsv` | Traceable source and derived evidence identities |
+| `eta_calibration.json` | Actual parameter, fitting/validation decision or fallback reason |
+| `qc_report.json`, `report.md` | Coverage, limitations and unavailable evidence |
+| `run_manifest.json`, `resolved_config.yaml` | Input/model hashes, environment, configuration and scientific contracts |
+| `ml_feature_contract.json` | Measurement and feature semantics required by a compatible classifier |
 
-PACE is a **relative support share**, not a causal probability or expression effect.
-Partial normalization may sum to one while omitting unscoreable candidates. Use
-`PACE compare` to recompute a common denominator for compatible sample comparisons.
-There is no universal link threshold or built-in biologically optimal livestock prior.
+Both complete and partial score sets can sum to one. `partial` means conditional
+on the remaining scoreable candidates, not repaired missing data. Use
+[`PACE compare`](docs/comparison.md) to recompute a common background when comparing
+runs. Changes in relative support alone do not establish activity or expression
+changes. There is no universal PACE significance threshold.
 
-The repository supplies functioning training/inference code and synthetic tests.
-**Validated real livestock weights and independent biological performance evidence
-are not bundled.** See [limitations](docs/limitations.md).
+## Why the design is useful for livestock
 
-## Documentation and citation
+The framework declares species, assembly and tissue; handles incomplete assay
+panels without treating missing data as zeros; averages distinct promoters;
+separates technical replicates from animals; and checks contact resolution and
+normalization before combining data. Genomic reconstruction requires explicit
+chromosome ploidy, callability and actual carried alleles. Frozen model scope and
+grouped functional validation limit inappropriate reuse and repeated-locus leakage.
+These are practical responses to heterogeneous livestock data, not evidence of
+universal cross-species performance.
 
-[Model details](docs/model.md) · [Parameters](docs/parameters.md) ·
-[Data dictionary](docs/data_dictionary.md) · [Eta calibration](docs/eta_calibration.md) ·
-[Comparisons](docs/comparison.md) · [Worked calculations](docs/WORKED_EXAMPLES.md) ·
-[Troubleshooting](docs/TROUBLESHOOTING.md) · [Contributing](CONTRIBUTING.md)
+**The repository includes working software and synthetic examples, but no
+independently validated real livestock weights or general biological accuracy
+claim.** Measured data analysis can be used without a sequence model. A new
+individual's WGS is informative for this workflow only when an applicable model
+and candidate atlas already exist. A species with no functional training data
+requires separately validated transfer. See [limitations](docs/limitations.md).
 
-Record the exact software commit in research outputs. Authorship is recorded in
-[CITATION.cff](CITATION.cff); no software-paper DOI is claimed. Superseded interfaces
-are available through Git history, with their [migration context](docs/migration.md).
+## Documentation and reproducibility
+
+- [All parameters and defaults](docs/parameters.md), [CLI](docs/cli.md), [table dictionary](docs/data_dictionary.md).
+- [Input preparation](docs/input_preparation.md), [multiomics interfaces](docs/MULTIOMICS.md), [training](docs/training.md).
+- [Comparisons and benchmarks](docs/comparison.md), [worked calculations](docs/WORKED_EXAMPLES.md), [troubleshooting](docs/TROUBLESHOOTING.md).
+- [Validation](docs/validation.md), [contributing](CONTRIBUTING.md), [citation](CITATION.cff), [MIT license](LICENSE).
+
+Record the exact commit with `git rev-parse HEAD`. Save the configuration, manifest,
+QC and all model identities with the analysis. File reproducible issues through
+[GitHub Issues](https://github.com/shenlinyong/PACE/issues). No software-paper DOI is
+claimed by this repository.

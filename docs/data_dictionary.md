@@ -146,3 +146,24 @@ negative infinity). The reader recovers that zero without conflating it with mis
 an applicable model. An uncalibrated classifier only fills its score. Gene totals, coverage and
 actual denominator identities are reported in gene_summary.tsv. Comparison fields are documented
 in [comparison.md](comparison.md); all deltas are right minus left.
+
+## Additional contracts used by the current implementation
+
+- Contact observations and resolved rows retain `resolution`, `normalization_id`,
+  `balancing` and `window_id` when available. A prior used with observations must
+  match their measurement contract; a different field label is not a conversion.
+- Individual imported predictions, and reference imports with a supplied FASTA,
+  require the matching `genome_binding_id`; retain the original genomic inputs.
+- `expression.status` governs usability: only qualified observed RNA enters numeric
+  features. A residual number in an invalid row is not a valid measurement.
+- Raw methylation counts remain the `inputs.methylation` format. Optional run
+  reference denominators use `entity_type,entity_id,n_cpg` for element/promoter
+  windows; missing reference counts leave coverage unavailable.
+- `ml_feature_contract.json` is a structured JSON object exported by scoring, copied
+  as a mapping into non-synthetic classifier training configuration. It records
+  feature semantics, not the specific individual identity.
+- `genome_binding_id` is an input-consistency identity, not a security signature or
+  accuracy certificate.
+
+See [multiomics interfaces](MULTIOMICS.md), [input preparation](input_preparation.md)
+and [training](training.md) for how these fields are created.

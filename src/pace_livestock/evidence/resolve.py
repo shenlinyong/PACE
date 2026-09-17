@@ -7,7 +7,8 @@ from collections import defaultdict
 
 from ..core import bulk_mean
 from ..errors import PaceError
-from ..io.variants import is_structural
+from ..io.tables import integer, number
+from ..io.variants import relationship_affected
 from ..provenance import digest
 from .contact import distance_prior, shrink
 from .fusion import resolve_signal
@@ -39,7 +40,17 @@ def aggregate_observations(rows, samples, value_column, *, minimum_callable=0):
     return (float(bulk_mean(donor_means)) if donor_means else math.nan, sorted(set(used_samples)))
 
 
-def resolve_activity(t, cfg, *, predictions, sequence_asset=None, fusion_asset=None):
+def resolve_activity(
+    t,
+    cfg,
+    *,
+    predictions,
+    sequence_asset=None,
+    fusion_asset=None,
+    windows=None,
+    genome_binding_id=None,
+):
+    window_by_element = {w["element_id"]: w for w in (windows or [])}
     samples = {r["sample_id"]: r for r in t["samples"]}
     if cfg["target_level"] == "individual" and len({r["donor_id"] for r in t["samples"]}) > 1:
         raise PaceError("target_level=individual cannot combine observations from multiple donors")
@@ -174,6 +185,19 @@ def resolve_activity(t, cfg, *, predictions, sequence_asset=None, fusion_asset=N
                 row = validate_imported_activity(
                     imported[key], cfg, sequence_asset, fusion_asset, expected_window
                 )
+            if row["evidence_type"] in ("sequence_prediction", "fused"):
+                window = window_by_element.get(unit["element_id"])
+                if window:
+                    row["structural_status"] = window["structural_status"]
+                    if window["status"] != "resolved":
+                        # Imported values cannot override independently checked
+                        # callability, phasing, target geometry or SV failures.
+                        row["resolved_value"] = math.nan
+                        row["predicted_value"] = math.nan
+                        row["resolution_status"] = "unresolved"
+                        row["reason"] = window["reason"]
+                if genome_binding_id:
+                    row["genome_binding_id"] = genome_binding_id
             result.append(row)
     # Freeze normalization across units, not merely across sources at a single unit.
     for assay in cfg["activity"]["panel"]:
@@ -213,7 +237,82 @@ def validate_imported_activity(row, cfg, sequence_asset, fusion_asset, expected_
     return row
 
 
+def contact_measurement_contract(t, cfg, *, prior_asset=None):
+    """Freeze the measurement definition before pooling or comparing contacts.
+
+    A scale name alone does not make different Hi-C resolutions interchangeable.
+    Optional normalization/balancing/window identifiers remain unspecified for
+    legacy tables, but an unspecified value never matches an explicitly different
+    measurement definition. Config values can declare the contract for every row.
+    """
+    fields = ("resolution", "scale", "normalization_id", "balancing", "window_id")
+    declared = {field: cfg["contact"].get(field) for field in fields}
+    sources = {row["source_id"]: row for row in t.get("sources", [])}
+
+    def normalize(row, *, source, fallback=None):
+        result = {}
+        for field in fields:
+            value = row.get(field)
+            if value is None:
+                value = declared[field]
+            if value is None and fallback is not None:
+                value = fallback[field]
+            if field == "resolution" and value is not None:
+                value = integer(value, f"{source}.resolution", minimum=1)
+            if declared[field] is not None and value != declared[field]:
+                raise PaceError(f"Contact {field} differs from the run measurement contract")
+            result[field] = value
+        return result
+
+    observed = []
+    for row in t["observed_contacts"]:
+        source_normalization = sources.get(row.get("source_id"), {}).get("normalization_id")
+        row_normalization = row.get("normalization_id") or declared["normalization_id"]
+        if (
+            source_normalization is not None
+            and row_normalization is not None
+            and source_normalization != row_normalization
+        ):
+            raise PaceError("Contact normalization_id differs from its declared source")
+        observed.append(
+            normalize(
+                {**row, "normalization_id": row_normalization or source_normalization},
+                source="observed contact",
+            )
+        )
+    contracts = {tuple(row[field] for field in fields) for row in observed}
+    if len(contracts) > 1:
+        raise PaceError(
+            "Incompatible observed contact resolution/scale/normalization/balancing/window; "
+            "harmonize contacts before aggregation"
+        )
+    observed_contract = observed[0] if observed else None
+    prior_contract = normalize(prior_asset, source="contact prior") if prior_asset else None
+    if prior_contract and prior_asset.get("resolution") is None:
+        raise PaceError("Contact prior must declare its fitted resolution")
+    if observed_contract and prior_contract and observed_contract != prior_contract:
+        raise PaceError(
+            "Contact prior resolution/scale/normalization/balancing/window does not match "
+            "observed contacts"
+        )
+    baseline = observed_contract or prior_contract
+    imported_contracts = []
+    for row in t["resolved_contacts"]:
+        imported = normalize(row, source="imported contact", fallback=baseline)
+        if imported["resolution"] is None:
+            raise PaceError("Imported contact requires a declared resolution")
+        if baseline is not None and imported != baseline:
+            raise PaceError("Imported contact measurement contract differs from run contacts")
+        imported_contracts.append(imported)
+    if len({tuple(row[field] for field in fields) for row in imported_contracts}) > 1:
+        raise PaceError("Imported contacts have incompatible measurement contracts")
+    if baseline is None and imported_contracts:
+        baseline = imported_contracts[0]
+    return {"contract_version": 1, **(baseline or normalize({}, source="contact"))}
+
+
 def resolve_contacts(t, cfg, *, prior_asset=None, variants=None):
+    measurement = contact_measurement_contract(t, cfg, prior_asset=prior_asset)
     samples = {r["sample_id"]: r for r in t["samples"]}
     units = {r["element_id"]: r for r in t["units"]}
     promoters = defaultdict(list)
@@ -278,12 +377,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None, variants=None):
                 between = variants.query(
                     unit["chrom"], min(unit["start"], p["tss0"]), max(unit["end"], p["tss0"] + 1)
                 )
-                affected = [
-                    v
-                    for v in between
-                    if any(a is None or a != 0 for a in v["gt"])
-                    and (is_structural(v) or any(len(a) != len(v["ref"]) for a in v["alts"]))
-                ]
+                affected = [v for v in between if relationship_affected(v)]
                 if affected:
                     value, reason, structural = (
                         math.nan,
@@ -316,6 +410,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None, variants=None):
                 if math.isfinite(value) or reason != "resolved"
                 else "missing_contact",
                 "scale": cfg["contact"]["scale"],
+                **{k: v for k, v in measurement.items() if k != "contract_version"},
                 "distance_bp": distance,
                 "structural_status": structural,
             }
@@ -323,6 +418,52 @@ def resolve_contacts(t, cfg, *, prior_asset=None, variants=None):
                 imported_row = dict(imported[key])
                 if imported_row["scale"] != cfg["contact"]["scale"]:
                     raise PaceError("Imported contact scale mismatch")
+                imported_source = imported_row["evidence_type"]
+                allowed_sources = (
+                    {"contact_prior"}
+                    if mode == "prior_only"
+                    else {"fused"}
+                    if mode == "shrinkage"
+                    else {"observed", "aggregate"}
+                )
+                if (near and cfg["contact"]["near_diagonal_policy"] == "prior_or_unresolved") or (
+                    mode == "observed" and cfg["contact"]["allow_prior_fallback"]
+                ):
+                    allowed_sources.add("contact_prior")
+                if imported_source not in allowed_sources:
+                    raise PaceError(
+                        "Imported contact evidence conflicts with contact.mode/fallback policy"
+                    )
+                if imported_row["resolution_status"] == "resolved":
+                    imported_weight = number(
+                        imported_row["reliability"],
+                        "imported contact reliability",
+                        minimum=0,
+                        maximum=1,
+                    )
+                    expected_weight = (
+                        0.0
+                        if imported_source == "contact_prior"
+                        else 1.0
+                        if imported_source in ("observed", "aggregate")
+                        else r
+                    )
+                    if imported_weight != expected_weight:
+                        raise PaceError(
+                            "Imported contact reliability conflicts with the declared evidence policy"
+                        )
+                    expected_mode = (
+                        "prior_only"
+                        if imported_weight == 0
+                        else "observed"
+                        if imported_weight == 1
+                        else "shrinkage"
+                    )
+                    if imported_row["resolved_mode"] != expected_mode:
+                        raise PaceError(
+                            "Imported contact resolved_mode conflicts with its reliability"
+                        )
+                    imported_row["reliability"] = imported_weight
                 if imported_row["evidence_type"] in ("contact_prior", "fused") and (
                     not prior_asset or imported_row["prior_id"] != prior_asset["model_id"]
                 ):
@@ -333,9 +474,22 @@ def resolve_contacts(t, cfg, *, prior_asset=None, variants=None):
                 ):
                     raise PaceError("genome_only contact imports must use the declared prior")
                 imported_row["distance_bp"] = distance
+                imported_row.update(
+                    {k: v for k, v in measurement.items() if k != "contract_version"}
+                )
                 imported_row["structural_status"] = structural
                 if imported_row["resolution_status"] != "resolved" or structural != "not_assessed":
                     imported_row["resolved_value"] = math.nan
+                    imported_row["resolution_status"] = "unresolved"
+                    if structural != "not_assessed":
+                        imported_row["reason"] = reason
+                if near and (
+                    cfg["contact"]["near_diagonal_policy"] == "unresolved"
+                    or imported_row["evidence_type"] != "contact_prior"
+                ):
+                    imported_row["resolved_value"] = math.nan
+                    imported_row["resolution_status"] = "unresolved"
+                    imported_row["reason"] = "near_diagonal_unresolved"
                 row = imported_row
             output.append(row)
     return sorted(output, key=lambda r: (r["element_id"], r["promoter_id"]))

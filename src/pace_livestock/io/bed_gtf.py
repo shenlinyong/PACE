@@ -36,6 +36,7 @@ def read_bed(path, *, source_id: str, aliases=None):
                     "end": end,
                     "region_id": fields[3] if len(fields) > 3 else f"{chrom}:{start}-{end}",
                     "source_id": source_id,
+                    **({"strand": fields[5]} if len(fields) > 5 else {}),
                 }
             )
     return rows

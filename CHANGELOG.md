@@ -1,4 +1,45 @@
-# PACE changes
+# Changelog
+
+## 0.3.0
+
+### Scientific input and scoring checks
+
+- Check contact resolution, normalization, balancing and measurement windows before
+  pooling observations, applying a prior, importing resolved contacts or comparing runs.
+- Preserve finite log support when an ordinary floating-point support underflows.
+- Keep legitimate chromosome-boundary exclusions consistent between catalog
+  preparation and loading. Preserve catalog identity when files are relocated.
+- Use only the alleles selected by a sample's genotype, and check both ends of a
+  reported breakend. Do not treat an unused alternative allele as a structural change.
+- Bind exported sequence predictions to their reference, sample, variants,
+  callability, ploidy, target coordinates, model and processing policy. Revalidate
+  imported evidence and retain invalid-window masks.
+
+### Learning and multi-omics
+
+- Require independent grouped validation before accepting an automatically fitted
+  nonzero allocation exponent; otherwise retain zero. Old unvalidated allocation
+  artifacts must be refitted.
+- Keep repeated perturbations and edges together in actual cross-validation folds.
+- Bind ML assets to feature definitions, candidate rules and evidence policies;
+  return explicit out-of-scope results for incompatible inputs.
+- Exclude failed RNA observations, aggregate repeated annotations by donor, and
+  preserve complete feature-to-evidence provenance.
+- Add promoter methylation summaries, reference CpG coverage, configurable coverage
+  thresholds, and separate WGBS/RRBS features. Expose BED motif strand features.
+
+### Installation and use
+
+- Add a Docker build and a Conda environment with common genomic IO dependencies.
+- Replace the quick-start and model documentation with executable examples,
+  mode-specific configurations, input preparation instructions, expanded equations
+  and a Chinese user manual.
+- Extend continuous integration to the regression suite, wheel installation,
+  Docker and Conda workflows.
+
+The bundled data and weights remain synthetic software examples. This release
+does not establish predictive accuracy for a livestock species or tissue. Existing
+run outputs without the new measurement contracts should be rerun before comparison.
 
 ## 0.2.1 — 2026-09-17
 

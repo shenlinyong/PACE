@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .config import DEFAULTS, load_config
+from .config import DEFAULTS, load_config, load_yaml
 from .errors import PaceError
 
 MODES = {
@@ -39,6 +39,8 @@ PATH_OPTIONS = {
     "ml_model": ("multiomics", "model_path"),
     "eta_labels": ("allocation", "labels_path"),
     "eta_model": ("allocation", "calibrator_path"),
+    "chrom_sizes": ("catalog", "chrom_sizes_path"),
+    "reference_cpg": ("methylation", "reference_cpg_path"),
 }
 VALUE_OPTIONS = {
     "species": ("context", "species"),
@@ -46,9 +48,15 @@ VALUE_OPTIONS = {
     "tissue": ("context", "context_id"),
     "eta": ("allocation", "eta"),
     "eta_min_genes": ("allocation", "minimum_genes"),
+    "eta_min_groups": ("allocation", "minimum_groups"),
+    "eta_validation_folds": ("allocation", "validation_folds"),
     "panel": ("activity", "panel"),
     "contact_mode": ("contact", "mode"),
     "contact_scale": ("contact", "scale"),
+    "contact_resolution": ("contact", "resolution"),
+    "contact_normalization": ("contact", "normalization_id"),
+    "contact_balancing": ("contact", "balancing"),
+    "contact_window": ("contact", "window_id"),
     "contact_reliability": ("contact", "reliability"),
     "reliability_source": ("contact", "reliability_source"),
     "allow_prior_fallback": ("contact", "allow_prior_fallback"),
@@ -59,6 +67,10 @@ VALUE_OPTIONS = {
     "unit_width": ("catalog", "width_bp"),
     "grid_offset": ("catalog", "offset_bp"),
     "include_promoters": ("catalog", "include_promoter_units"),
+    "candidate_radius": ("catalog", "candidate_radius_bp"),
+    "methylation_min_coverage": ("methylation", "minimum_coverage"),
+    "promoter_upstream": ("methylation", "promoter_upstream_bp"),
+    "promoter_downstream": ("methylation", "promoter_downstream_bp"),
 }
 
 
@@ -108,8 +120,18 @@ def add_run_options(parser: argparse.ArgumentParser, *, output: bool = True) -> 
         help="Minimum informative genes for automatic fitting (default: 3)",
     )
     model.add_argument("--panel", nargs="+", choices=["ATAC", "DNase", "H3K27ac"])
+    model.add_argument("--eta-min-groups", type=int)
+    model.add_argument("--eta-validation-folds", type=int)
     model.add_argument("--contact-mode", choices=["observed", "prior_only", "shrinkage"])
     model.add_argument("--contact-scale")
+    model.add_argument(
+        "--contact-resolution",
+        type=int,
+        help="Common contact resolution in bp; inputs and prior must match",
+    )
+    model.add_argument("--contact-normalization")
+    model.add_argument("--contact-balancing")
+    model.add_argument("--contact-window")
     model.add_argument("--contact-reliability", type=float)
     model.add_argument("--reliability-source")
     model.add_argument(
@@ -120,7 +142,24 @@ def add_run_options(parser: argparse.ArgumentParser, *, output: bool = True) -> 
     catalog.add_argument("--catalog-profile", choices=["canonical_grid", "provided_regions"])
     catalog.add_argument("--unit-width", type=int)
     catalog.add_argument("--grid-offset", type=int)
+    catalog.add_argument(
+        "--candidate-radius",
+        type=int,
+        help="Declared cis candidate radius in bp (default: 5000000)",
+    )
     catalog.add_argument("--include-promoters", action=argparse.BooleanOptionalAction, default=None)
+    omics = parser.add_argument_group("methylation annotation")
+    omics.add_argument("--methylation-min-coverage", type=int)
+    omics.add_argument(
+        "--promoter-upstream",
+        type=int,
+        help="Upstream methylation window in transcription direction",
+    )
+    omics.add_argument(
+        "--promoter-downstream",
+        type=int,
+        help="Downstream methylation window in transcription direction",
+    )
 
 
 def config_from_args(args: argparse.Namespace) -> dict:
@@ -135,6 +174,12 @@ def config_from_args(args: argparse.Namespace) -> dict:
         root = Path(args.catalog_dir).resolve()
         if not root.is_dir():
             raise PaceError(f"--catalog-dir is not a directory: {root}")
+        metadata = root / "run_catalog_config.yaml"
+        if metadata.is_file():
+            for key, value in load_yaml(metadata).get("catalog", {}).items():
+                if key.endswith("_path") and value:
+                    value = str((root / value).resolve())
+                put("catalog", key, value)
         for name in DEFAULTS["inputs"]:
             plain, zipped = root / f"{name}.tsv", root / f"{name}.tsv.gz"
             if plain.exists() and zipped.exists():

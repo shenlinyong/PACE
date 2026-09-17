@@ -7,7 +7,7 @@ from collections import defaultdict
 
 from .errors import PaceError
 from .io.tables import integer, number, read_table, unique
-from .provenance import digest
+from .provenance import digest, file_hash
 
 SCHEMAS = {
     "units": "element_id chrom start end anchor0 element_roles canonical_catalog_id",
@@ -29,6 +29,16 @@ SCHEMAS = {
 }
 STATUSES = {"observed", "unmeasured", "low_coverage", "unmappable", "invalid", "not_applicable"}
 EVIDENCE_TYPES = {"observed", "sequence_prediction", "contact_prior", "fused", "aggregate"}
+CONTACT_ASSAYS = {
+    "Hi-C",
+    "HiC",
+    "Micro-C",
+    "Capture-C",
+    "Capture-Hi-C",
+    "PCHi-C",
+    "HiChIP",
+    "PLAC-seq",
+}
 
 
 def load_tables(cfg: dict) -> dict[str, list[dict]]:
@@ -69,6 +79,13 @@ def validate_tables(t: dict, cfg: dict) -> None:
     sources = {r["source_id"] for r in t["sources"]}
     evidence_rows = {r["evidence_id"]: r for r in t["evidence"]}
     evidence = set(evidence_rows)
+    chrom_sizes = {}
+    if cfg["catalog"].get("chrom_sizes_path"):
+        size_rows = read_table(cfg["catalog"]["chrom_sizes_path"], required=["chrom", "length"])
+        unique(size_rows, ("chrom",), "chromosome sizes")
+        chrom_sizes = {
+            r["chrom"]: integer(r["length"], "chromosome length", minimum=1) for r in size_rows
+        }
     promoter_coords = {}
     gene_coords, pi_sums = defaultdict(set), defaultdict(float)
     for row in t["units"]:
@@ -77,6 +94,8 @@ def validate_tables(t: dict, cfg: dict) -> None:
         start, end = row["start"], row["end"]
         if start >= end or row["anchor0"] != (start + end - 1) // 2:
             raise PaceError(f"units {row['element_id']}: invalid half-open interval or anchor")
+        if chrom_sizes and (row["chrom"] not in chrom_sizes or end > chrom_sizes[row["chrom"]]):
+            raise PaceError("Unit lies outside the declared chromosome bounds")
         if cfg["catalog"]["profile"] == "canonical_grid":
             width, offset = cfg["catalog"]["width_bp"], cfg["catalog"]["offset_bp"]
             if end - start != width or (start - offset) % width:
@@ -88,6 +107,10 @@ def validate_tables(t: dict, cfg: dict) -> None:
         raise PaceError("units: mixed canonical_catalog_id values")
     for row in t["promoters"]:
         row["tss0"] = integer(row["tss0"], "promoters.tss0")
+        if chrom_sizes and (
+            row["chrom"] not in chrom_sizes or row["tss0"] >= chrom_sizes[row["chrom"]]
+        ):
+            raise PaceError("Promoter TSS lies outside the declared chromosome bounds")
         row["pi"] = number(row["pi"], "promoters.pi", minimum=0, maximum=1)
         if row["strand"] not in ("+", "-"):
             raise PaceError("promoters.strand must be + or -")
@@ -113,6 +136,12 @@ def validate_tables(t: dict, cfg: dict) -> None:
             raise PaceError(f"Unknown candidate unit or gene: {row}")
         if units[row["element_id"]]["chrom"] != next(iter(gene_coords[row["gene_id"]]))[0]:
             raise PaceError("Only cis candidate links are supported")
+        distance = min(
+            abs(units[row["element_id"]]["anchor0"] - coord[1])
+            for coord in gene_coords[row["gene_id"]]
+        )
+        if distance > cfg["catalog"].get("candidate_radius_bp", 5_000_000):
+            raise PaceError("Candidate lies outside catalog.candidate_radius_bp")
     if len({r["candidate_universe_id"] for r in t["candidates"]}) != 1:
         raise PaceError("candidates: mixed candidate_universe_id values")
     for row in t["samples"] + t["sources"]:
@@ -146,6 +175,10 @@ def validate_tables(t: dict, cfg: dict) -> None:
                 if not all(row[k] for k in ("unit", "normalization_id", "window_id")):
                     raise PaceError("Activity requires unit, normalization_id and window_id")
             else:
+                if samples[row["sample_id"]]["assay"] not in CONTACT_ASSAYS:
+                    raise PaceError(
+                        "Contact observation requires a chromosome-contact assay sample"
+                    )
                 if row["promoter_id"] not in promoter_coords or row["source_id"] not in sources:
                     raise PaceError("Contact has unknown promoter/source")
                 row["resolution"] = integer(row["resolution"], "contact.resolution", minimum=1)
@@ -188,7 +221,17 @@ def validate_tables(t: dict, cfg: dict) -> None:
             if parent and parent not in evidence:
                 raise PaceError(f"Unknown parent_evidence_id {parent}")
     for row in t["expression"]:
+        if row["gene_id"] not in genes:
+            raise PaceError("Expression has unknown gene_id")
+        if samples[row["sample_id"]]["assay"] not in ("RNA", "RNA-seq"):
+            raise PaceError("Expression sample requires assay RNA or RNA-seq")
+        if row["status"] not in STATUSES:
+            raise PaceError("Expression has invalid status")
         row["tpm"] = number(row["tpm"], "expression.tpm", minimum=0, missing=True)
+        if row["status"] == "observed" and not math.isfinite(row["tpm"]):
+            raise PaceError("Observed expression requires a finite TPM")
+        if row["status"] != "observed":
+            row["tpm"] = math.nan
     known_features = {
         "element": set(units),
         "promoter": set(promoter_coords),
@@ -222,11 +265,15 @@ def validate_tables(t: dict, cfg: dict) -> None:
         cells = {(r["chrom"], r["start"], r["end"]) for r in t["units"]}
         width, offset = cfg["catalog"]["width_bp"], cfg["catalog"]["offset_bp"]
         if cfg["catalog"]["profile"] == "canonical_grid":
+            from .catalog import canonical_cell_bounds
+
             for row in t["promoters"]:
-                start = (row["tss0"] - offset) // width * width + offset
-                if (row["chrom"], start, start + width) not in cells:
+                start, end = canonical_cell_bounds(row["tss0"], width=width, offset=offset)
+                if row["chrom"] in chrom_sizes and (start < 0 or end > chrom_sizes[row["chrom"]]):
+                    continue
+                if (row["chrom"], start, end) not in cells:
                     raise PaceError(
-                        "Promoter unit absent: prepare the catalog or explicitly set include_promoter_units=false"
+                        "Promoter unit absent: prepare the catalog and provide catalog.chrom_sizes_path for valid boundary exclusions, or explicitly set include_promoter_units=false"
                     )
 
 
@@ -234,7 +281,10 @@ def universe_ids(t: dict, cfg: dict) -> dict:
     return {
         "canonical_catalog_id": digest(
             {
-                "definition": cfg["catalog"],
+                "definition": {k: v for k, v in cfg["catalog"].items() if k != "chrom_sizes_path"},
+                "reference_sizes_sha256": file_hash(cfg["catalog"]["chrom_sizes_path"])
+                if cfg["catalog"].get("chrom_sizes_path")
+                else None,
                 "units": sorted(
                     (r["element_id"], r["chrom"], r["start"], r["end"]) for r in t["units"]
                 ),

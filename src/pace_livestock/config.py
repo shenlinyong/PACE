@@ -44,6 +44,8 @@ DEFAULTS = {
         "width_bp": 500,
         "offset_bp": 0,
         "include_promoter_units": True,
+        "chrom_sizes_path": None,
+        "candidate_radius_bp": 5_000_000,
     },
     "activity": {
         "panel": ["ATAC", "H3K27ac"],
@@ -61,6 +63,10 @@ DEFAULTS = {
         "allow_prior_fallback": False,
         "reliability": None,
         "reliability_source": None,
+        "resolution": None,
+        "normalization_id": None,
+        "balancing": None,
+        "window_id": None,
     },
     "promoters": {"weights": "provided"},
     "allocation": {
@@ -69,6 +75,9 @@ DEFAULTS = {
         "labels_path": None,
         "calibrator_path": None,
         "minimum_genes": 3,
+        "minimum_groups": 3,
+        "validation_folds": 5,
+        "minimum_positive_fraction": 0.8,
     },
     "sequence": {"model_path": None, "max_n_fraction": 0.05},
     "fusion": {"calibrator_path": None, "quality_stratum": "default"},
@@ -84,6 +93,12 @@ DEFAULTS = {
         "sv_assessed": False,
     },
     "multiomics": {"mode": "annotate", "model_path": None},
+    "methylation": {
+        "minimum_coverage": 1,
+        "promoter_upstream_bp": 2000,
+        "promoter_downstream_bp": 500,
+        "reference_cpg_path": None,
+    },
     "comparison": {
         "full_delta_requires_complete": True,
         "allow_conditional_intersection": True,
@@ -186,19 +201,64 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
     allocation["minimum_genes"] = integer(
         allocation["minimum_genes"], "allocation.minimum_genes", minimum=2
     )
-    integer(cfg["catalog"]["width_bp"], "catalog.width_bp", minimum=1)
-    integer(cfg["catalog"]["offset_bp"], "catalog.offset_bp")
-    integer(cfg["seed"], "seed")
-    integer(cfg["contact"]["near_diagonal_bp"], "contact.near_diagonal_bp")
+    for key in ("minimum_groups", "validation_folds"):
+        allocation[key] = integer(allocation[key], f"allocation.{key}", minimum=3)
+    allocation["minimum_positive_fraction"] = number(
+        allocation["minimum_positive_fraction"],
+        "allocation.minimum_positive_fraction",
+        minimum=0.5,
+        maximum=1,
+    )
+    if allocation["minimum_positive_fraction"] <= 0.5:
+        raise PaceError("allocation.minimum_positive_fraction must be greater than 0.5")
+    cfg["catalog"]["width_bp"] = integer(cfg["catalog"]["width_bp"], "catalog.width_bp", minimum=1)
+    cfg["catalog"]["offset_bp"] = integer(cfg["catalog"]["offset_bp"], "catalog.offset_bp")
+    if cfg["catalog"]["offset_bp"] >= cfg["catalog"]["width_bp"]:
+        raise PaceError("catalog.offset_bp must be smaller than catalog.width_bp")
+    cfg["catalog"]["candidate_radius_bp"] = integer(
+        cfg["catalog"]["candidate_radius_bp"], "catalog.candidate_radius_bp", minimum=1
+    )
+    cfg["seed"] = integer(cfg["seed"], "seed")
+    cfg["contact"]["near_diagonal_bp"] = integer(
+        cfg["contact"]["near_diagonal_bp"], "contact.near_diagonal_bp"
+    )
+    if cfg["contact"]["resolution"] is not None:
+        cfg["contact"]["resolution"] = integer(
+            cfg["contact"]["resolution"], "contact.resolution", minimum=1
+        )
+    for key in ("scale", "normalization_id", "balancing", "window_id", "reliability_source"):
+        value = cfg["contact"][key]
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            raise PaceError(f"contact.{key} must be a nonempty string or null")
+    if cfg["contact"]["scale"] is None:
+        raise PaceError("contact.scale must name the contact measurement scale")
     if cfg["contact"]["reliability"] is not None:
-        number(cfg["contact"]["reliability"], "contact.reliability", minimum=0, maximum=1)
-    number(
+        cfg["contact"]["reliability"] = number(
+            cfg["contact"]["reliability"], "contact.reliability", minimum=0, maximum=1
+        )
+    cfg["activity"]["minimum_callable_fraction"] = number(
         cfg["activity"]["minimum_callable_fraction"],
         "minimum_callable_fraction",
         minimum=0,
         maximum=1,
     )
-    number(cfg["sequence"]["max_n_fraction"], "max_n_fraction", minimum=0, maximum=1)
+    cfg["sequence"]["max_n_fraction"] = number(
+        cfg["sequence"]["max_n_fraction"], "max_n_fraction", minimum=0, maximum=1
+    )
+    for key in ("minimum_coverage", "promoter_upstream_bp", "promoter_downstream_bp"):
+        cfg["methylation"][key] = integer(
+            cfg["methylation"][key],
+            f"methylation.{key}",
+            minimum=1 if key == "minimum_coverage" else 0,
+        )
+    if (
+        not cfg["methylation"]["promoter_upstream_bp"]
+        + cfg["methylation"]["promoter_downstream_bp"]
+    ):
+        raise PaceError("Methylation promoter window must have a positive width")
+    cfg["comparison"]["minimum_common_units"] = integer(
+        cfg["comparison"]["minimum_common_units"], "comparison.minimum_common_units", minimum=2
+    )
     for section, key in [
         ("catalog", "include_promoter_units"),
         ("contact", "allow_prior_fallback"),
@@ -237,12 +297,18 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         "genome",
         "multiomics",
         "allocation",
+        "catalog",
+        "methylation",
     ):
         for key, value in cfg[section].items():
             if value is not None and (section == "inputs" or key.endswith("_path")):
                 if not isinstance(value, str):
                     raise PaceError(f"{section}.{key}: expected a path string")
                 cfg[section][key] = str((base / value).resolve())
+    if cfg["genome"]["variant_path"] and not cfg["genome"]["reference_path"]:
+        raise PaceError(
+            "genome.variant_path requires genome.reference_path for individual validation, including imported predictions"
+        )
     return cfg
 
 

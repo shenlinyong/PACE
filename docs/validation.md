@@ -1,67 +1,55 @@
-# Current software verification
+# Verification and release acceptance
 
-Executed local checks on **2026-09-17** for software **0.2.1**. The tests use synthetic
-fixtures, including actual small genomic file formats. They verify software behavior;
-no real livestock weights, independent functional benchmark or individual-effect
-accuracy is claimed.
+Software tests check implementation behavior with synthetic inputs and small real
+file formats. They do not establish biological accuracy for an animal species,
+tissue, breed or individual. The package includes no independently validated
+livestock weights or claimed functional benchmark result.
 
-## Executed checks
+## Reproduce the software checks
 
-| Check | Result |
+From an editable installation with `dev,io,sequence,ml` dependencies:
+
+```bash
+python -m pytest -q
+python scripts/check_public_docs.py
+python -m ruff check .
+```
+
+The exact passing count depends on the checked-out revision. Use the test log for
+that revision and the [CI run](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml),
+not an earlier release's count. Required extras should be installed when evaluating
+the complete suite; inspect skips as well as failures.
+
+## Regression coverage
+
+| Area | Important invariant |
 |---|---|
-| Current test suite | **113 passed** |
-| Numerical references | Hand-derived endpoint and fractional eta scores, known interior calibration optimum, activity, TSS, fusion, bulk-order and CpG calculations pass |
-| Evidence and normalization | Missingness/zero distinction, fixed panel and B universe, partial/common denominators and overflow checks pass |
-| Calibration | Context and split isolation, zero fallback, bounded fitting, frozen reuse, incompatible scope and invalid artifact rejection pass |
-| Genomic IO | Small bigWig and sparse cooler fixtures, BED/GTF, CpG, RNA and variant/callability behavior pass |
-| Sequence and ML | Actual CNN gradient/update/save/load and grouped classifier/preprocessing checks pass |
-| Installed command | Three direct-file modes, file paths with spaces, YAML overrides and output protection pass |
-| Compatibility launchers | scripts/pace.py invokes the same fractional-scoring implementation; setup.sh delegates to the current installer |
-| Public documentation | Main displayed equations match FORMULA.md; documented defaults match configuration; relative links resolve; retired model terms, trees and incompatible math markup are rejected |
-| Source style | Ruff lint/format, shell syntax and git patch checks pass |
+| Core formula | Hand-derived activity, TSS, allocation and fractional exponent results; fixed candidate sets |
+| Numerical comparison | Finite log support survives raw product underflow/overflow and round trips |
+| Contact integrity | Mixed resolution or declared measurement contracts cannot be silently pooled or compared as full biological deltas |
+| Automatic allocation | Zero fallback, grouped held-out selection, stability and calibration confirmation; test-label exclusion |
+| Classifier | Connected repeated entities cannot leak across tuning folds; feature scope must match inference |
+| Genomic reconstruction | Only carried alleles matter; missing GT, unsupported geometry and both BND endpoints remain conservative |
+| External predictions | Genomic binding is checked and imports cannot restore invalid windows |
+| Omics | Invalid RNA cannot enter ML; extra marks and methylation have resolvable evidence identities |
+| CpG features | Element/promoter windows, coverage thresholds, reference CpG denominators and WGBS/RRBS separation |
+| Catalog preparation | End-of-chromosome partial windows are explicitly handled by the generated configuration |
+| User interface | Three modes, CLI/YAML paths, transactional outputs, consistent defaults and resolvable documentation links |
 
-The preceding mixed-interface suite had 153 tests. This revision retains its 105
-current-model tests, removes 48 tests together with the retired implementation, and
-adds eight public-documentation/launcher checks, including two rendering regressions.
-No current-model test was removed.
+## Installation checks
 
-One cooler 0.10.4 warning concerns NumPy timedelta construction; it does not change
-the tested outputs. The local environment uses Python 3.13.12, NumPy 2.5.3 and
-PyYAML 6.0.3, with optional IO and sequence dependencies installed. The
-[recorded dependency snapshot](../requirements-tested-python313.txt) identifies the
-research environment; it is not a claim that every dependency is required for scoring.
+CI configurations cover supported Python environments, optional IO/sequence
+adapters, source/wheel distribution, Conda installation and the three Docker
+example modes. A configured job is not evidence that its latest execution passed:
+inspect the workflow attached to the exact commit. Local environments without
+Conda or Docker cannot substitute a source-file inspection for an actual build.
 
-## Verification map
+## Biological validation
 
-| Contract | Implementation | Test modules |
-|---|---|---|
-| Primary formula and evidence | core/scoring.py, config.py, schemas.py, pipeline.py | canonical_core, canonical_pipeline |
-| Continuous eta | learning/allocation.py | canonical_allocation |
-| Genomic inputs and units | catalog/, io/, sequence/genome.py | canonical_adapters, canonical_genome |
-| Quantitative model and supervised learning | sequence/, learning/model.py | canonical_sequence, canonical_learning |
-| Preparation, comparison and evaluation | operations.py, evaluation/ | canonical_operations, canonical_pipeline |
-| Public commands and documentation | cli.py, run_options.py, scripts/check_public_docs.py | canonical_cli, canonical_documentation |
-
-Each numerical assertion names an independent mathematical expectation or invariant.
-Small synthetic training runs test correct optimization and persistence rather than
-an arbitrary accuracy target. [Worked examples](WORKED_EXAMPLES.md) and the
-[review](../PACE_Review_and_Validation.md) give the reference calculations.
-
-## Distribution and hosted checks
-
-Source and wheel distributions use the same PACE package. Distribution acceptance
-runs all three modes outside the checkout, verifies the installed source fingerprint,
-and exercises eta fitting and frozen reuse. The
-[GitHub workflow](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml) checks
-Python 3.11–3.13, minimum core dependencies, IO/sequence/ML extras, current regression,
-public documentation and installed-wheel behavior. Its status is attached to each
-source commit; a previous commit's result is not validation of a new revision.
-
-## Biological validation still required
-
-Cross-locus quantitative prediction, within-locus individual changes and enhancer–gene
-link prediction are separate tasks. Each requires suitable independent evidence,
-applicable sampling and explicit coverage accounting. QTL association is auxiliary
-support, not functional ground truth. No historical dataset counts, unbundled study
-results or synthetic checks establish current-model biological performance.
-See [limitations](limitations.md).
+Quantitative assay prediction, within-locus individual effects and functional
+regulatory-link prediction require separate appropriate validation. Use independent
+animals, loci or experimental groups according to the intended claim. Include
+coverage and unavailable tested positives; avoid selecting parameters with the
+final test set. Association/QTL and contact data used as inputs are not independent
+functional ground truth. More details: [training](training.md),
+[comparison and benchmark](comparison.md), [limitations](limitations.md).

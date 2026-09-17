@@ -7,6 +7,14 @@ from ..errors import PaceError
 from ..provenance import digest
 
 
+def canonical_cell_bounds(tss0: int, *, width: int, offset: int = 0):
+    """Return the full reference-grid cell without clipping boundary cells."""
+    if width <= 0 or not 0 <= offset < width or tss0 < 0:
+        raise PaceError("Grid requires a nonnegative coordinate, width > 0 and 0 <= offset < width")
+    start = (tss0 - offset) // width * width + offset
+    return start, start + width
+
+
 def canonical_units(
     regions: list[dict],
     chrom_sizes: dict[str, int],
@@ -18,7 +26,7 @@ def canonical_units(
 ):
     if width <= 0 or not 0 <= offset < width:
         raise PaceError("Grid requires width > 0 and 0 <= offset < width")
-    cells, memberships, excluded = {}, set(), []
+    cells, memberships, excluded = {}, set(), set()
     intervals = list(regions)
     if include_promoters:
         intervals += [
@@ -39,9 +47,7 @@ def canonical_units(
         for index in range((start - offset) // width, (end - 1 - offset) // width + 1):
             left, right = offset + index * width, offset + (index + 1) * width
             if left < 0 or right > chrom_sizes[chrom]:
-                excluded.append(
-                    {"chrom": chrom, "start": left, "end": right, "reason": "incomplete_unit"}
-                )
+                excluded.add((chrom, left, right))
                 continue
             key = chrom, left, right
             cells.setdefault(key, set()).add(region.get("role", "enhancer"))
@@ -63,7 +69,11 @@ def canonical_units(
         {"region_id": r, "element_id": e, "source_id": s, "membership_rule": "overlap_at_least_1bp"}
         for r, e, s in sorted(memberships)
     ]
-    return units, membership, excluded
+    excluded_rows = [
+        {"chrom": chrom, "start": left, "end": right, "reason": "incomplete_unit"}
+        for chrom, left, right in sorted(excluded)
+    ]
+    return units, membership, excluded_rows
 
 
 def candidate_edges(units: list[dict], promoters: list[dict], *, radius: int = 5_000_000):

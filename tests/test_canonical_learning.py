@@ -92,6 +92,17 @@ def learning_fixture(tmp_path, *, calibrate=True):
         calibrate=calibrate,
         is_synthetic=True,
         context=context,
+        feature_contract={
+            "target_level": "individual",
+            "estimand": "bulk_proxy",
+            "activity_panel": ["ATAC", "H3K27ac"],
+            "activity_scales": [
+                ["ATAC", "normalized", "toy", "w500"],
+                ["H3K27ac", "normalized", "toy", "w500"],
+            ],
+            "contact_definition": {"scale": "normalized", "resolution_bp": 500},
+            "candidate_construction": {"profile": "canonical_grid", "radius_bp": 5000000},
+        },
     )
     path = tmp_path / "training.yaml"
     path.write_text(yaml.safe_dump(config))
@@ -116,7 +127,12 @@ def test_train_calibrate_save_predict(tmp_path):
         for x in r
     ]
     predictions = predict_score_rows(
-        r, features, tmp_path / "model", execution_profile="demonstration", context=context
+        r,
+        features,
+        tmp_path / "model",
+        execution_profile="demonstration",
+        context=context,
+        feature_contract=yaml.safe_load(path.read_text())["feature_contract"],
     )
     # Identical core features; the actually fitted extra assay must affect inference.
     assert predictions[1]["pace_ml_score"] > predictions[0]["pace_ml_score"]

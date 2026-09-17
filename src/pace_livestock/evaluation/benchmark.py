@@ -40,6 +40,7 @@ def predict_ml_command(path, out):
         cfg["model"],
         execution_profile=manifest["execution_profile"],
         context=manifest["comparison_contract"]["context"],
+        feature_contract=manifest.get("ml_feature_contract"),
     )
     with output_directory(out) as dest:
         write_table(dest / "predictions.tsv", predictions)

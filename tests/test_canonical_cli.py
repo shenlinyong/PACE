@@ -107,7 +107,9 @@ def test_alias_override_paths_and_version(tmp_path):
     assert resolved["inputs"]["observed_activity"] == str(new_activity)
     assert resolved["inputs"]["units"] == str(root / "units.tsv")
     assert json.loads(result.stdout)["eta"] == 0.35
-    assert invoke("--version").stdout.startswith("PACE 0.2.")
+    from pace_livestock import __version__
+
+    assert invoke("--version").stdout.strip() == f"PACE {__version__}"
 
 
 def test_cli_errors_and_output_protection(tmp_path):
@@ -129,4 +131,6 @@ def test_installed_executable():
     assert executable.is_file(), "Install this revision with pip install -e . to create PACE"
     result = subprocess.run([str(executable), "--version"], capture_output=True, text=True)
     assert result.returncode == 0
-    assert result.stdout.startswith("PACE 0.2.")
+    from pace_livestock import __version__
+
+    assert result.stdout.strip() == f"PACE {__version__}"

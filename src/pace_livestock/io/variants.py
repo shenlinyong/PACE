@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import re
 from bisect import bisect_left
 from collections import defaultdict
 from pathlib import Path
@@ -143,10 +144,14 @@ def read_variants(path, *, sample_id=None):
                     "filter": fields[6],
                 }
             )
+    if sample_index is None:
+        raise PaceError("VCF needs a #CHROM header and selected sample")
     return rows
 
 
 def _choose_sample(names, sample):
+    if len(set(names)) != len(names):
+        raise PaceError("VCF sample names must be unique")
     if sample is None and len(names) == 1:
         return names[0]
     if sample not in names:
@@ -155,22 +160,93 @@ def _choose_sample(names, sample):
 
 
 def is_structural(variant, *, max_indel=50):
+    """Classify alleles carried by the selected sample, not every ALT in the record."""
     return any(
         a.startswith("<")
-        or any(c in a for c in "[]*")
+        or any(c in a for c in "[]*.")
         or abs(len(a) - len(variant["ref"])) > max_indel
-        for a in variant["alts"]
+        for a in selected_alts(variant)
     )
 
 
-class VariantIndex:
-    """Interval index; prefix maximum ends handles spanning structural variants."""
+def selected_alts(variant):
+    """Return only called non-reference alleles; missing GT remains unknown.
 
-    def __init__(self, variants):
+    Callers must handle ``None`` in GT separately. It must never be converted to
+    reference or used as an ALT index.
+    """
+    gt = variant.get("gt", ())
+    if not gt:
+        raise PaceError("VCF record requires a selected sample genotype")
+    if any(a is not None and (a < 0 or a > len(variant["alts"])) for a in gt):
+        raise PaceError("VCF genotype allele index outside ALT list")
+    return tuple(variant["alts"][a - 1] for a in sorted({a for a in gt if a}))
+
+
+def relationship_affected(variant):
+    """Whether a reported call prevents using unchanged reference distances.
+
+    Unknown/filtered calls cannot establish that the relationship is intact.
+    SNVs and unselected alternate alleles do not change genomic distance.
+    """
+    alts = selected_alts(variant)
+    return (
+        any(a is None for a in variant["gt"])
+        or variant.get("filter", "PASS") not in ("PASS", ".")
+        or is_structural(variant)
+        or any(len(a) != len(variant["ref"]) for a in alts)
+    )
+
+
+def breakend_endpoints(variant):
+    """Return remote zero-based BND endpoints relevant to the selected genotype.
+
+    With a missing genotype, possible remote endpoints are retained solely to
+    mark uncertainty; this does not assert that the sample carries the BND.
+    """
+    selected = selected_alts(variant)
+    alleles = variant["alts"] if any(a is None for a in variant["gt"]) else selected
+    endpoints = set()
+    for allele in alleles:
+        if not any(c in allele for c in "[]"):
+            continue
+        match = re.fullmatch(
+            r"(?:[ACGTNacgtn]+)?([\[\]])([^\[\]]+):([1-9][0-9]*)\1(?:[ACGTNacgtn]+)?",
+            allele,
+        )
+        if match is None:
+            raise PaceError(f"Malformed VCF breakend ALT: {allele}")
+        endpoints.add((match.group(2), int(match.group(3)) - 1))
+    return sorted(endpoints)
+
+
+class VariantIndex:
+    """Index selected calls and both BND endpoints, including spanning SVs."""
+
+    def __init__(self, variants, *, include_remote_breakends=True):
         self.rows, self.starts, self.max_ends = {}, {}, {}
         by_chrom = defaultdict(list)
         for row in variants:
-            by_chrom[row["chrom"]].append(row)
+            # END may describe an ALT absent from the sample (e.g. C,<DEL> with
+            # GT=1/1). It must not make that sample's SNV span the unused deletion.
+            end = (
+                row["end"]
+                if is_structural(row) or any(a is None for a in row["gt"])
+                else row["pos0"] + len(row["ref"])
+            )
+            by_chrom[row["chrom"]].append({**row, "end": end})
+            for chrom, pos0 in breakend_endpoints(row) if include_remote_breakends else []:
+                by_chrom[chrom].append(
+                    {
+                        **row,
+                        "chrom": chrom,
+                        "pos0": pos0,
+                        "end": pos0 + 1,
+                        "remote_breakend": True,
+                        "source_chrom": row["chrom"],
+                        "source_pos0": row["pos0"],
+                    }
+                )
         for chrom, rows in by_chrom.items():
             rows.sort(key=lambda x: (x["pos0"], x["end"]))
             self.rows[chrom], self.starts[chrom] = rows, [x["pos0"] for x in rows]

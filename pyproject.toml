@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pace-livestock"
-version = "0.2.1"
+version = "0.3.0"
 description = "PACE: auditable activity-contact regulatory support for livestock research"
 readme = "README.md"
 requires-python = ">=3.11"

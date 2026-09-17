@@ -8,7 +8,14 @@ from collections import defaultdict
 from ..errors import PaceError
 from ..io.bed_gtf import read_bed
 from ..io.tables import integer, read_table, unique
-from ..io.variants import Reference, VariantIndex, is_structural, read_variants
+from ..io.variants import (
+    Reference,
+    VariantIndex,
+    breakend_endpoints,
+    is_structural,
+    read_variants,
+    selected_alts,
+)
 
 
 class Callability:
@@ -85,7 +92,7 @@ def build_window(
             return unresolved("missing_genotype")
         if any(a < 0 or a > len(v["alts"]) for a in v["gt"]):
             raise PaceError("VCF genotype allele index outside ALT list")
-        if is_structural(v) and any(v["gt"]):
+        if is_structural(v):
             result["structural_status"] = "reported_sv_unsupported"
             return unresolved("reported_sv_unsupported")
         if pos < left or end > right:
@@ -129,7 +136,7 @@ def build_window(
         sequence = base
         for v in reversed(local):
             allele = v["gt"][h]
-            alt = v["ref"] if allele == 0 else v["alts"][allele - 1]
+            alt = v["ref"] if allele == 0 else v["alts"][allele - 1].upper()
             i = v["pos0"] - left
             sequence = sequence[:i] + alt + sequence[i + len(v["ref"]) :]
         sequence = sequence[crop_start : crop_start + input_length]
@@ -138,7 +145,7 @@ def build_window(
         result["sequences"].append(sequence)
     result["mapping_status"] = (
         "fixed_target_flanking_indel"
-        if any(len(a) != len(v["ref"]) for v in local for a in v["alts"])
+        if any(len(a) != len(v["ref"]) for v in local for a in selected_alts(v))
         else "identity_or_snv"
     )
     return result
@@ -174,9 +181,16 @@ def prepare_windows(cfg: dict, units: list[dict], *, input_length: int):
             if (
                 v["chrom"] not in reference.sizes
                 or v["pos0"] < 0
+                or v["end"] <= v["pos0"]
                 or v["end"] > reference.sizes[v["chrom"]]
+                or v["pos0"] + len(v["ref"]) > reference.sizes[v["chrom"]]
             ):
                 raise PaceError("VCF coordinates or chromosome names do not match reference")
+            if reference.fetch(v["chrom"], v["pos0"], v["pos0"] + len(v["ref"])) != v["ref"]:
+                raise PaceError(f"VCF REF mismatch at {v['chrom']}:{v['pos0'] + 1}")
+            for chrom, pos0 in breakend_endpoints(v):
+                if chrom not in reference.sizes or not 0 <= pos0 < reference.sizes[chrom]:
+                    raise PaceError("VCF remote breakend does not match reference")
         for unit in units:
             ploidy = 1 if reference_only else ploidies.get(unit["chrom"])
             if ploidy not in (1, 2):
@@ -189,9 +203,9 @@ def prepare_windows(cfg: dict, units: list[dict], *, input_length: int):
             while True:
                 local = index.query(unit["chrom"], left - margin, right + margin)
                 needed = sum(
-                    max(abs(len(a) - len(v["ref"])) for a in v["alts"])
+                    max((abs(len(a) - len(v["ref"])) for a in selected_alts(v)), default=0)
                     for v in local
-                    if not is_structural(v) and any(v["gt"])
+                    if not is_structural(v) and all(a is not None for a in v["gt"])
                 )
                 if needed <= margin:
                     break
@@ -214,6 +228,10 @@ def prepare_windows(cfg: dict, units: list[dict], *, input_length: int):
                 reference_only=reference_only,
                 context_margin=margin,
             )
+            if item["status"] == "resolved" and any(
+                s.count("N") / len(s) > cfg["sequence"]["max_n_fraction"] for s in item["sequences"]
+            ):
+                item.update(status="unresolved", reason="excess_unknown_bases", sequences=[])
             if item["structural_status"] == "not_assessed" and genome["sv_assessed"]:
                 item["structural_status"] = "no_reported_sv_in_window"
             output.append(item)

@@ -60,8 +60,9 @@ pace-livestock predict-sequence --config individual_run.yaml --out predictions/i
 
 External quantitative adapters can import `inputs.predictions` with an `external_table`
 manifest; source-model hash, output type, species/assembly/context, target level, assay, signal
-unit, normalization and target window are required. Predictions and raw sequence inputs cannot
-be supplied together. Peak probabilities and logits are rejected as quantitative intensity.
+unit, normalization and target window are required. Imported predictions with a supplied
+reference or individual genome must retain the matching genomic input configuration
+and genome_binding_id; the software independently rechecks windows and binding. Peak probabilities and logits are rejected as quantitative intensity.
 The manifest schema and fully working synthetic assets are visible in `examples/*/models/`.
 
 ## Contact prior
@@ -76,6 +77,9 @@ target_level: individual
 is_synthetic: false
 scale: balanced_contact_protocol_1
 resolution: 5000
+normalization_id: hic_norm_protocol_1
+balancing: balanced
+window_id: bin_pair
 bin_edges: [5000, 10000, 20000, 50000, 100000, 500000, 5000000]
 d_ref: 10000
 d_min: 5000
@@ -128,7 +132,29 @@ penalties: [[0.01, 0.01], [0.1, 0.01]]
 folds: 3
 seed: 17
 calibrate: true
+# feature_contract: insert the full mapping exported by the representative run
 ```
+
+The YAML block is a template, not runnable until its paths and `feature_contract`
+are supplied. For a non-synthetic model the full feature contract is required.
+Copy the mapping from a compatible scoring run's `ml_feature_contract.json` into
+training YAML; do not write a path string where a mapping is expected. For example:
+
+```bash
+python - <<'PYTHON'
+import json, yaml
+from pathlib import Path
+config = yaml.safe_load(Path('classifier.yaml').read_text())
+config['feature_contract'] = json.loads(Path('results/measured/ml_feature_contract.json').read_text())
+Path('classifier_with_contract.yaml').write_text(yaml.safe_dump(config, sort_keys=False))
+PYTHON
+PACE train --config classifier_with_contract.yaml --out models/classifier
+```
+
+The contract includes activity panels/scales, contact resolution and normalization,
+candidate definitions, target/estimand and auxiliary feature preprocessing.
+[The bundled training config](../examples/training/learning.yaml) demonstrates a
+complete synthetic contract.
 
 Prepare one-to-one label mappings before assembling this table. Required columns:
 `element_id,gene_id,assayed_region_id,mapping_count,group_id,split,label_status,effect_direction,
@@ -139,7 +165,8 @@ have `label_status=enhancing_positive,effect_direction=down`; negatives must be 
 are excluded and exported. These status labels assert the user's experiment-specific effect,
 significance and power rules; PACE does not invent those rules from a p value.
 
-Group, edge and perturbation-region identities cannot cross splits. Grouped tuning refits
+Group, edge and perturbation-region identities cannot cross splits. Within training,
+connected repeated entities also stay together across tuning folds. Grouped tuning refits
 preprocessing inside each training fold; infeasible groups/classes cause an error. A single
 predeclared penalty pair permits research fitting without pretending cross-validation occurred.
 Core-missing edges are excluded; only extra features can be imputed. Training medians/IQR,
@@ -159,6 +186,9 @@ model: models/classifier
 features: results/measured/multiomics_features.tsv.gz
 ```
 
-Inference checks regime, evidence-source and context scope. Extra features must have unambiguous
+Inference checks the complete feature contract, regime, evidence-source and context scope.
+Mismatches return out_of_scope with unavailable scores/probabilities. Old unbound models
+are research-ineligible; a demonstration-only legacy score is explicitly unverified.
+Synthetic probabilities, where present, are labelled synthetic_demonstration_only. Extra features must have unambiguous
 entity-qualified names, and repeated annotation measurements need declared aggregation before
 pivoting into a learning feature. Gene TPM is off by default; use it only as an explicit ablation.

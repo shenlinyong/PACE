@@ -32,7 +32,14 @@ def load_run(path):
         ):
             if field in r:
                 r[field] = number(r[field], field, missing=True)
-        if r["support"] == 0:
+        # Finite logarithms are authoritative: exp(log_support) may underflow to
+        # zero even though the relative support remains perfectly measurable.
+        # Genuine zeros lose -inf in TSV and are recovered from an explicit state.
+        if (
+            math.isnan(r["log_support"])
+            and r["support"] == 0
+            and (r.get("support_status") == "zero_support" or r.get("reason") == "zero_support")
+        ):
             r["log_support"] = -math.inf
     return rows, read_json(path / "run_manifest.json")
 
@@ -144,13 +151,27 @@ def compare_runs(
     a, ma = load_run(left_path)
     b, mb = load_run(right_path)
     ca, cb = ma["comparison_contract"], mb["comparison_contract"]
+    if any("contact_measurement_contract" not in contract for contract in (ca, cb)):
+        raise PaceError(
+            "Comparison requires a recorded contact measurement contract; rerun legacy results"
+        )
     different = {k for k in set(ca) | set(cb) if ca.get(k) != cb.get(k)}
     allowed = {"eta"} if allow_eta_difference else set()
     if allow_evidence_difference:
         allowed.add("evidence_policy")
     if different - allowed:
         raise PaceError(f"Incompatible comparison contracts: {sorted(different - allowed)}")
-    return compare_rows(a, b, minimum_common=minimum_common, full_compatible=not different), ma, mb
+    return (
+        compare_rows(
+            a,
+            b,
+            minimum_common=minimum_common,
+            full_compatible=not different,
+            absolute_compatible=not different,
+        ),
+        ma,
+        mb,
+    )
 
 
 def compare_command(config_path, out):

@@ -26,7 +26,9 @@ def variant_effects_command(path, out):
     if not run_cfg["genome"]["reference_path"]:
         raise PaceError("Variant scenarios require a reference FASTA")
     variants = read_variants(cfg["variants"], sample_id=cfg.get("sample_id"))
-    index = VariantIndex(variants)
+    # Scenario alleles are substitutions at the physical VCF record, not at a
+    # synthetic remote endpoint used to mask individual contact relationships.
+    index = VariantIndex(variants, include_remote_breakends=False)
     output = []
     with Reference(run_cfg["genome"]["reference_path"]) as reference:
         for unit in tables["units"]:

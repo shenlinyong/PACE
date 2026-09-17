@@ -12,7 +12,7 @@ from .config import load_config
 from .core import activity, score, tss_contact
 from .errors import PaceError
 from .evidence.assets import capabilities, load_asset
-from .evidence.resolve import resolve_activity, resolve_contacts
+from .evidence.resolve import contact_measurement_contract, resolve_activity, resolve_contacts
 from .io.tables import write_table
 from .provenance import digest, environment, file_hash, output_directory, software_hash, write_json
 from .reporting import evidence_catalog, evidence_summary, multiomics_features
@@ -20,6 +20,8 @@ from .schemas import load_tables, universe_ids
 
 
 def compute(cfg: dict):
+    if cfg["genome"]["variant_path"] and not cfg["genome"]["reference_path"]:
+        raise PaceError("Individual variants require a reference, including imported predictions")
     tables = load_tables(cfg)
     if cfg["regime"] == "measured":
         available = {r["assay"] for r in tables["observed_activity"] + tables["resolved_activity"]}
@@ -45,19 +47,30 @@ def compute(cfg: dict):
             assets[kind] = load_asset(path, cfg, kind=kind)
     if cfg["regime"] == "genome_only" and "sequence" not in assets:
         raise PaceError("genome_only requires a quantitative sequence asset")
+    if cfg["genome"]["variant_path"] and "sequence" not in assets:
+        raise PaceError(
+            "genome.variant_path requires a compatible sequence asset; variants cannot be silently ignored"
+        )
     predictions, windows, variants = tables["predictions"], [], None
+    genome_binding = None
     if assets.get("sequence") and cfg["genome"]["reference_path"]:
+        from .sequence.binding import bind_predictions, genome_binding_id, validate_import_binding
         from .sequence.genome import prepare_windows
         from .sequence.model import predict_windows
 
-        if predictions:
-            raise PaceError("Provide either sequence inputs or precomputed predictions, not both")
         windows, variants = prepare_windows(
             cfg, tables["units"], input_length=assets["sequence"]["input_length"]
         )
-        predictions = predict_windows(
-            windows, assets["sequence"], max_n_fraction=cfg["sequence"]["max_n_fraction"]
-        )
+        genome_binding = genome_binding_id(cfg, tables["units"], assets["sequence"])
+        if predictions or tables["resolved_activity"]:
+            validate_import_binding(predictions, tables["resolved_activity"], genome_binding)
+        if not predictions and not tables["resolved_activity"]:
+            predictions = bind_predictions(
+                predict_windows(
+                    windows, assets["sequence"], max_n_fraction=cfg["sequence"]["max_n_fraction"]
+                ),
+                genome_binding,
+            )
     elif assets.get("sequence") and not predictions and not tables["resolved_activity"]:
         raise PaceError("Sequence asset needs reference input or manifest-matched predictions")
     if cfg["regime"] == "genome_only" and not (predictions or tables["resolved_activity"]):
@@ -68,6 +81,8 @@ def compute(cfg: dict):
         predictions=predictions,
         sequence_asset=assets.get("sequence"),
         fusion_asset=assets.get("fusion"),
+        windows=windows,
+        genome_binding_id=genome_binding,
     )
     resolved_c = resolve_contacts(
         tables, cfg, prior_asset=assets.get("contact_prior"), variants=variants
@@ -123,9 +138,55 @@ def compute(cfg: dict):
             (r["assay"], r["unit"], r.get("normalization_id"), r["window_id"])
             for r in resolved_a
             if r["unit"] is not None
-        }
+        },
+        key=lambda row: tuple("" if v is None else str(v) for v in row),
     )
+    contact_contract = contact_measurement_contract(
+        tables, cfg, prior_asset=assets.get("contact_prior")
+    )
+    ml_contract = {
+        "target_level": cfg["target_level"],
+        "estimand": cfg["estimand"],
+        "activity_panel": sorted(cfg["activity"]["panel"]),
+        "activity_scales": [list(row) for row in scale_contract],
+        "contact_definition": {
+            **contact_contract,
+            "resolution_bp": contact_contract["resolution"],
+            "mode": cfg["contact"]["mode"],
+            "near_diagonal_bp": cfg["contact"]["near_diagonal_bp"],
+            "near_diagonal_policy": cfg["contact"]["near_diagonal_policy"],
+            "allow_prior_fallback": cfg["contact"]["allow_prior_fallback"],
+        },
+        "candidate_construction": {
+            "profile": cfg["catalog"]["profile"],
+            "window_bp": cfg["catalog"]["width_bp"],
+            "offset_bp": cfg["catalog"]["offset_bp"],
+            "radius_bp": cfg["catalog"].get("candidate_radius_bp", 5_000_000),
+            "include_promoter_units": cfg["catalog"]["include_promoter_units"],
+            "promoter_weights": cfg["promoters"]["weights"],
+        },
+        "auxiliary_feature_policy": {
+            "replicate_aggregation": cfg["activity"]["replicate_aggregation"],
+            "methylation": {
+                k: v for k, v in cfg["methylation"].items() if k != "reference_cpg_path"
+            },
+            "reference_cpg_sha256": file_hash(cfg["methylation"]["reference_cpg_path"])
+            if cfg["methylation"]["reference_cpg_path"]
+            else None,
+        },
+    }
     allocation = resolve_eta(edges, cfg, calibration_scope(cfg, tables, assets, scale_contract))
+    ml_contract["allocation_eta"] = allocation["eta"]
+    ml_contract["evidence_policy"] = {
+        "regime": cfg["regime"],
+        "contact_reliability": cfg["contact"]["reliability"],
+        "contact_reliability_source": cfg["contact"]["reliability_source"],
+        "minimum_callable_fraction": cfg["activity"]["minimum_callable_fraction"],
+        "quality_stratum": cfg["fusion"]["quality_stratum"],
+        "max_n_fraction": cfg["sequence"]["max_n_fraction"],
+        "unrecorded_site_policy": cfg["genome"]["unrecorded_site_policy"],
+        "asset_hashes": {k: a["manifest_sha256"] for k, a in assets.items()},
+    }
     scores, summary = score(edges, eta=allocation["eta"])
     features, roles = multiomics_features(tables, scores, resolved_a, cfg)
     if cfg["multiomics"]["mode"] == "ml":
@@ -139,6 +200,7 @@ def compute(cfg: dict):
             cfg["multiomics"]["model_path"],
             execution_profile=cfg["execution_profile"],
             context=cfg["context"],
+            feature_contract=ml_contract,
         )
         for row in features:
             if row["role"] == "annotation_only":
@@ -182,6 +244,7 @@ def compute(cfg: dict):
         "panel": sorted(cfg["activity"]["panel"]),
         "scales": scale_contract,
         "contact_scale": cfg["contact"]["scale"],
+        "contact_measurement_contract": contact_contract,
         "eta": allocation["eta"],
         "catalog_profile": cfg["catalog"]["profile"],
         "contact_near_diagonal_bp": cfg["contact"]["near_diagonal_bp"],
@@ -217,8 +280,12 @@ def compute(cfg: dict):
         "universe_ids": ids,
         "config_hash": digest(cfg),
         "allocation": allocation,
+        "ml_feature_contract": ml_contract,
+        "genome_binding_id": genome_binding,
     }
-    evidence, sources = evidence_catalog(tables, resolved_a, resolved_c, assets, cfg)
+    evidence, sources = evidence_catalog(
+        tables, resolved_a, resolved_c, assets, cfg, features=features
+    )
     return {
         "scores": scores,
         "gene_summary": summary,
@@ -230,6 +297,7 @@ def compute(cfg: dict):
         "qc": qc,
         "manifest": manifest,
         "eta_calibration": allocation,
+        "predictions": predictions,
     }
 
 
@@ -251,6 +319,9 @@ def run(config_path, out):
         write_json(dest / "qc_report.json", result["qc"])
         write_json(dest / "run_manifest.json", result["manifest"])
         write_json(dest / "eta_calibration.json", result["eta_calibration"])
+        write_json(dest / "ml_feature_contract.json", result["manifest"]["ml_feature_contract"])
+        if result["predictions"]:
+            write_table(dest / "predictions.tsv", result["predictions"])
         (dest / "resolved_config.yaml").write_text(
             yaml.safe_dump(cfg, sort_keys=True), encoding="utf-8"
         )

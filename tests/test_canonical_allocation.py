@@ -118,8 +118,10 @@ def test_label_fit_and_test_value_invariance(cfg):
     first = fit_from_labels(edges(), rows + [held], cfg)
     changed = {**held, "label_status": "powered_negative", "effect_direction": "none"}
     second = fit_from_labels(edges(), rows + [changed], cfg)
-    # Both usable genes have positive delta_logB, so their ranking loss decreases up to eta=1.
-    assert first["eta"] == second["eta"] == 1
+    # Both genes favor eta=1 in the training loss, but shared elements leave no
+    # independent validation groups. Automatic deployment must retain eta=0.
+    assert first["eta"] == second["eta"] == 0
+    assert first["candidate_eta"] == second["candidate_eta"] == 1
     assert first["fit_label_ids"] == second["fit_label_ids"]
     assert first["excluded_counts"]["held_out_test"] == 1
 

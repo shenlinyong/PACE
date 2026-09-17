@@ -1,27 +1,28 @@
-# Repository delivery and future releases
+# Maintainer release checklist
 
-The authorized target is the existing public repository `https://github.com/shenlinyong/PACE`.
-Development preserves Git history while keeping one current scientific implementation. The installable canonical package is
-versioned independently from the public name PACE. Uploading code is not a formal GitHub release,
-PyPI publication or DOI registration.
+PACE source is maintained at [shenlinyong/PACE](https://github.com/shenlinyong/PACE).
+A source commit, package version, GitHub release, container publication and software
+DOI are separate records. Refer to an artifact as published only after it actually
+exists at the stated location.
 
-Before pushing, run the documented tests and wheel/demo checks, review the staged diff, and
-verify that only code, documentation and small synthetic fixtures are included. The repository
-ignores generated results, private input directories, local environments and large model formats.
+Before submitting a release commit:
+
+1. Run the regression suite with the required optional dependencies, the public
+   documentation checker, lint and distribution checks.
+2. Run all three example modes from the installed wheel; check Conda and Docker
+   jobs for that commit.
+3. Review the diff for unintended files, generated results, private data and large
+   model assets. Include only redistributable source, documents and fixtures.
+4. Record the tested environment and known limitations in the release notes.
+5. Push without rewriting existing history, then inspect hosted CI and the published
+   documentation. Tag a release only after its acceptance checks pass.
 
 ```bash
 git status --short
 git diff --check
-git push origin main
+python scripts/check_public_docs.py
 ```
 
-No force push or history rewrite is needed. Existing branches are retained. A future release
-should pin its source commit and runtime environment, rerun CI, review real model cards and
-licenses separately, then create an authorized tag/archive. The package name `pace-livestock`
-was not present at the PyPI JSON endpoint during this development session (2026-09-17); that
-check does not reserve the name or publish the package.
-
-The source tree, source distribution and wheel use the same `pace_livestock` implementation,
-including its self-contained demo generator. Retired implementations are available through
-Git history only. Check public documentation with `python scripts/check_public_docs.py` before
-publication, and verify the published default-branch files after pushing.
+Pin source commit and dependencies for a scientific analysis. Real biological
+model assets need their own model cards, validation data scope and redistribution
+licenses; software regression success cannot replace those checks.

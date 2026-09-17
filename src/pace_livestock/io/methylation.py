@@ -5,10 +5,11 @@ from bisect import bisect_left
 from collections import defaultdict
 
 from ..errors import PaceError
-from .tables import integer, unique
+from .tables import integer, read_table, unique
 
 
 def summarize_methylation(counts, regions, *, minimum_coverage=1, reference_cpg=None):
+    minimum_coverage = integer(minimum_coverage, "methylation.minimum_coverage", minimum=1)
     unique(counts, ("chrom", "dyad_start0", "sample_id", "assay"), "CpG dyads (already merged)")
     groups = defaultdict(list)
     for row in counts:
@@ -27,14 +28,18 @@ def summarize_methylation(counts, regions, *, minimum_coverage=1, reference_cpg=
     samples = sorted({(r["sample_id"], r["assay"]) for r in counts})
     output = []
     for region in regions:
+        start = integer(region["start"], "methylation region start")
+        end = integer(region["end"], "methylation region end", minimum=1)
+        if end <= start:
+            raise PaceError("Methylation region end must exceed start")
         for sample, assay in samples:
             positions, values = indexed.get((sample, assay, region["chrom"]), ([], []))
-            sub = values[
-                bisect_left(positions, region["start"]) : bisect_left(positions, region["end"])
-            ]
+            sub = values[bisect_left(positions, start) : bisect_left(positions, end)]
             covered = [(m, n) for _, m, n in sub if n >= minimum_coverage and n > 0]
             total = sum(n for m, n in covered)
             n_ref = None if reference_cpg is None else reference_cpg.get(region["element_id"])
+            if n_ref is not None:
+                n_ref = integer(n_ref, "reference CpG count")
             if n_ref is not None and n_ref < len(sub):
                 raise PaceError("Observed CpG count exceeds supplied reference CpG count")
             status = (
@@ -64,6 +69,56 @@ def summarize_methylation(counts, regions, *, minimum_coverage=1, reference_cpg=
                 }
             )
     return output
+
+
+def promoter_methylation_regions(promoters, *, upstream_bp=2000, downstream_bp=500):
+    """Strand-aware half-open windows, including the TSS base exactly once.
+
+    The window contains ``upstream_bp + downstream_bp + 1`` bases before
+    left-edge clipping. These are annotation windows, not contact bins.
+    """
+    upstream_bp = integer(upstream_bp, "methylation.promoter_upstream_bp")
+    downstream_bp = integer(downstream_bp, "methylation.promoter_downstream_bp")
+    regions = {}
+    for row in promoters:
+        tss = integer(row["tss0"], "promoter tss0")
+        if row["strand"] not in ("+", "-"):
+            raise PaceError("Promoter methylation requires explicit + or - strand")
+        left, right = (
+            (upstream_bp, downstream_bp) if row["strand"] == "+" else (downstream_bp, upstream_bp)
+        )
+        region = {
+            "element_id": row["promoter_id"],
+            "chrom": row["chrom"],
+            "start": max(0, tss - left),
+            "end": tss + right + 1,
+        }
+        previous = regions.setdefault(row["promoter_id"], region)
+        if previous != region:
+            raise PaceError("Physical promoter_id has inconsistent methylation windows")
+    return list(regions.values())
+
+
+def load_reference_cpg(path):
+    """Read explicit denominators for elements and physical promoter windows.
+
+    Preferred columns are entity_type/entity_id/n_cpg. Legacy
+    element_id/n_cpg files are restricted to element annotations.
+    Missing rows mean an unknown denominator, never zero CpGs.
+    """
+    if not path:
+        return {}
+    result = {}
+    for row in read_table(path, required=["n_cpg"]):
+        kind = row.get("entity_type") or "element"
+        identifier = row.get("entity_id") or row.get("element_id")
+        if kind not in ("element", "promoter") or not identifier:
+            raise PaceError("reference_cpg requires element/promoter entity_type and entity_id")
+        key = kind, identifier
+        if key in result:
+            raise PaceError(f"Duplicate reference CpG denominator: {key}")
+        result[key] = integer(row["n_cpg"], "n_cpg")
+    return result
 
 
 def merge_stranded_cpg(rows, reference):

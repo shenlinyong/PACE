@@ -31,7 +31,10 @@ cells are included once. Candidate generation binary-searches local cis neighbor
 pace-livestock prepare --config prepare_catalog.yaml --out prepared/catalog
 ```
 
-This writes units, promoters, candidates, region membership and transcript mappings. It does
+This writes units, promoters, candidates, region membership, transcript mappings,
+chrom_sizes.tsv and run_catalog_config.yaml. Merge that exported catalog block
+into the run configuration (or use --catalog-dir, which imports the metadata),
+so excluded terminal cells retain their reference-boundary justification. It does
 not invent quantitative values for the new windows: extract tracks again or provide genuinely
 precomputed matching quantities. Add samples.tsv and sources.tsv with the scientific context
 before scoring. `provided_regions` is a distinct measured-only profile for user-defined regions;
@@ -60,8 +63,8 @@ tracks. Supply promoter-window intervals with a distinct target identifier for p
 map their values to `entity_type=promoter` in features.tsv. Do not reuse the central element
 window label for a different promoter quantification protocol.
 
-The Python `interval_features` adapter extracts peak overlap and CTCF interval occupancy from
-BED sources; motif orientation requires an explicit strand-bearing motif table. Its output is
+The `kind: bed_features` preparation command (and Python `interval_features` adapter)
+extracts peak overlap and CTCF interval occupancy from BED sources; motif orientation requires an explicit strand-bearing motif table and `motif_strands: true`. Its output is
 annotation evidence, never an extra contact multiplier. Gene-level promoter features use fixed
 pi weights and report missing pi mass; they are not renormalized over observed promoters.
 
@@ -77,6 +80,7 @@ missing_pixels_are_zero: true
 sample_id: animal1_HiC
 source_id: contact_source
 scale: balanced_contact_protocol_1
+normalization_id: hic_norm_protocol_1
 ```
 
 The pairs table contains `element_id,promoter_id,chrom,anchor0,tss0`. The unit anchor is
@@ -119,6 +123,12 @@ be supplied directly as expression.tsv; it is not distributed back to transcript
 invent TSS usage. Default TSS weights are equal across trusted physical TSSs. Measured CAGE or
 other suitable initiation evidence can supply explicit pi values.
 
+For automatic element **and promoter** methylation annotations during scoring,
+pass the raw CpG table as `inputs.methylation` and use the run's `methylation` block
+for minimum coverage, strand-aware promoter windows and reference CpG denominators.
+The standalone summary above is not itself a valid raw counts input. See the
+[complete multiomics guide](MULTIOMICS.md) for exact formats.
+
 ## Individual sequence inputs
 
 The run configuration's genome block names an uncompressed A/C/G/T/N FASTA, normalized VCF
@@ -134,3 +144,19 @@ use the separately labelled single-variant scenario command when appropriate. Sh
 outside the output target may use additional verified context to preserve a fixed central
 target. Target-changing indels and altered E–TSS geometry remain unavailable for full scoring.
 Known SVs affect input windows and E–TSS intervals. Absent SV input evidence is `not_assessed`.
+
+### Reusing quantitative predictions safely
+
+`PACE prepare-genome` emits sequence windows and a manifest with `genome_binding_id`.
+`PACE predict-sequence` emits predictions carrying the same binding. An external
+adapter must predict those exact windows and preserve their binding; it must also
+provide a compatible quantitative sequence-model manifest. When reimporting a
+bound table, keep the reference, variants, sample, callability, ploidy, model and
+policies unchanged and set `inputs.predictions` to that table. The pipeline checks
+the binding and independently resolves structural validity.
+
+A VCF without the required reference/model context is rejected. Invalid windows
+cannot be restored by imported resolved activity. Only ALT alleles selected by the
+individual GT affect reconstruction; missing GT remains unknown, and both parsed
+BND endpoints are conservatively checked. These provenance checks do not verify
+the scientific accuracy of the external predictor.
