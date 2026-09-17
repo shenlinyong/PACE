@@ -98,7 +98,7 @@ rule filter_predictions:
     resources:
         mem_mb = determine_mem_mb
     log:
-        os.path.join(RESULTS_DIR, "{biosample}", "logs", "filter_predictions.log")
+        os.path.join(RESULTS_DIR, "{biosample}", "logs", f"filter_predictions_{FILTERED_PREDICTION_FILE_FORMAT_TEMPLATE}.log")
     shell:
         """
         python {params.scripts_dir}/pace_filter.py \

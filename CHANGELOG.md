@@ -2,6 +2,10 @@
 
 ## 17 September 2026
 
+- Rebuild the user manual around the original ABC comparison, parameter rationale, Conda installation, executable examples and output interpretation; add a Chinese guide and a workflow diagram.
+- Provide separate direct-workflow and Snakemake Conda recipes, exact Linux package locks and a Conda-only setup helper.
+- Match filter/QC log wildcards to their outputs so the documented Snakemake workflow can build and execute its DAG.
+
 - Use PACE consistently as the software and model name; the mathematical score is italic PACE(E,G).
 - Replace the separate prediction implementations with the validated shared scoring kernel.
 - Preserve observed zero, missing measurements and unknown input quality as separate states.

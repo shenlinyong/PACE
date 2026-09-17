@@ -1,5 +1,5 @@
 """
-PACE: Predicting Activity-Contact for Enhancer-promoter
+PACE (Prediction of Activity-based regulatory Connections for Enhancers)
 Snakemake Workflow
 
 Author: Linyong Shen @ Northwest A&F University
@@ -87,7 +87,7 @@ rule predictions_only:
 # Information messages
 onstart:
     print("\n" + "="*60)
-    print("PACE: Predicting Activity-Contact for Enhancer-promoter")
+    print("PACE (Prediction of Activity-based regulatory Connections for Enhancers)")
     print("="*60)
     print(f"Number of samples: {len(BIOSAMPLES_CONFIG)}")
     print(f"Output directory: {RESULTS_DIR}")

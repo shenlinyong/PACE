@@ -20,7 +20,7 @@ rule generate_qc_plot_and_summary:
     resources:
         mem_mb = determine_mem_mb
     log:
-        os.path.join(RESULTS_DIR, "{biosample}", "logs", "qc.log")
+        os.path.join(RESULTS_DIR, "{biosample}", "logs", f"qc_{FILTERED_PREDICTION_FILE_FORMAT_TEMPLATE}.log")
     shell:
         """
         mkdir -p {params.output_dir}

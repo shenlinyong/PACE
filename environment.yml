@@ -1,6 +1,4 @@
-# Optional environment for the aligned-read Snakemake workflow.
-# Use environment.yml for quantified tables and direct signal-file commands.
-name: pace-workflow
+name: pace
 channels:
   - conda-forge
   - bioconda
@@ -17,7 +15,3 @@ dependencies:
   - samtools>=1.19,<2
   - pytest>=8,<10
   - pip>=24
-  - macs2>=2.2.9,<3
-  - snakemake-minimal=7.32.4
-  - pulp=2.7
-  - setuptools<81

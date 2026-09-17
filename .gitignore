@@ -26,5 +26,5 @@ models/*.pkl
 # Snakemake
 .snakemake/
 
-# Keep example results (they are documentation), but ignore user runs
-!example/results/
+# Keep bundled example inputs, but exclude generated example results.
+example/results/

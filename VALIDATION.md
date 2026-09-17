@@ -12,7 +12,9 @@ Run `python scripts/smoke_test.py --output-dir results/smoke` for the eight-comm
 
 The bundled five-step read example also completed successfully, producing 12,000 unfiltered enhancer–gene predictions. Its generated outputs are not tracked as biological evidence.
 
-The earlier workspace validation comprised 56 tests, including 12 analysis-specific tests outside this software repository. This repository ships the original 44 standalone software cases plus four legacy-expression regression cases. Its own passing test count must be obtained from the command above, rather than inferred from the larger workspace suite.
+The documented Conda recipes were installed on Linux x86-64 with Python 3.11. The recommended environment passed all 48 tests and the eight-command smoke workflow. Eleven executable blocks from the quick start and tutorial ran successfully; the two prediction interfaces agreed on all 12,000 tutorial links. The optional Snakemake environment completed its nine-job synthetic aligned-read workflow, including MACS2, prediction, filtering and QC. Exact resolved packages are recorded in the Linux lock files referenced by [Installation](docs/INSTALLATION.md).
+
+The workflow check uses small synthetic data. It does not establish performance on all genome sizes, sequencing protocols, schedulers or real contact-matrix formats.
 
 ## Biological scope
 
@@ -20,4 +22,4 @@ The associated analysis used 10,356 human development records, 1,986 historicall
 
 The livestock analysis used distance-prior scoring for 49,962,511 candidate pairs and retained 603,804 distal links at a descriptive 0.02 cutoff. Genetic-support comparisons, contact sensitivity and reporter-locus reanalysis have their own limitations. These data, large prediction maps and manuscript materials are not bundled as software test fixtures.
 
-Scores and evidence indices are not calibrated probabilities. Current tests do not validate a complete FASTQ-to-prediction run, all Snakemake scheduling, or every real binary Hi-C/Cooler pathway. No data-repository DOI is implied by this software release.
+Scores and evidence indices are not calibrated probabilities. The software does not align FASTQ reads, and the synthetic workflow check does not validate every real binary Hi-C/Cooler pathway. No data-repository DOI is implied by this software release.
