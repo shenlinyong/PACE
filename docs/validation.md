@@ -10,7 +10,7 @@ benchmarks were supplied in this task.
 | Check | Observed result |
 |---|---|
 | Complete repository test suite | **127 passed**, including retained region-interface tests |
-| Canonical package statement coverage | **78.5%** (2,008 of 2,558 statements); a diagnostic, not a biological-quality score |
+| Canonical package statement coverage | **78.5%** (2,011 of 2,561 statements); a diagnostic, not a biological-quality score |
 | Independent mathematical fixtures | Exact rational eta 0/1 scores, activity, multi-TSS, fusion, bulk-order and CpG examples passed |
 | Missingness/denominators | True zero, missing assay/contact, fixed B universe, partial/common normalization and overflow passed |
 | Real small-file IO | bigWig missing/negative signal, sparse cool queries, BED/GTF, stranded CpG and RNA mappings passed |
@@ -61,6 +61,8 @@ recorded in [requirements-tested-python313.txt](../requirements-tested-python313
 The core CI matrix covers Python 3.11–3.13 and separately tests minimum core dependencies;
 IO, sequence, ML and legacy regression jobs are separate. Current hosted results are linked
 from the [Actions workflow](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml).
+The initial hosted run [35223670168](https://github.com/shenlinyong/PACE/actions/runs/35223670168)
+completed all eight jobs successfully; subsequent source revisions trigger the same checks.
 
 ## Scientific validation still required
 

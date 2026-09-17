@@ -14,7 +14,7 @@ from .errors import PaceError
 from .evidence.assets import capabilities, load_asset
 from .evidence.resolve import resolve_activity, resolve_contacts
 from .io.tables import write_table
-from .provenance import digest, environment, file_hash, output_directory, write_json
+from .provenance import digest, environment, file_hash, output_directory, software_hash, write_json
 from .reporting import evidence_catalog, evidence_summary, multiomics_features
 from .schemas import load_tables, universe_ids
 
@@ -193,6 +193,7 @@ def compute(cfg: dict):
     }
     manifest = {
         "software_version": __version__,
+        "software_sha256": software_hash(),
         "schema_version": SCHEMA_VERSION,
         "seed": cfg["seed"],
         "run_id": cfg["run_id"],

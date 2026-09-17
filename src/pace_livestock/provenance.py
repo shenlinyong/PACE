@@ -45,6 +45,14 @@ def file_hash(path: str | Path) -> str:
     return h.hexdigest()
 
 
+def software_hash() -> str:
+    """Hash the installed Python implementation, independently of its installation path."""
+    root = Path(__file__).parent
+    return digest(
+        [(str(path.relative_to(root)), file_hash(path)) for path in sorted(root.rglob("*.py"))]
+    )
+
+
 def write_json(path: str | Path, value) -> None:
     Path(path).write_text(
         json.dumps(clean(value), indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False)

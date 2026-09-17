@@ -34,5 +34,6 @@ Implementation and local verification completed. The canonical package, real fit
 paths, offline examples, bilingual guides and CI are present. The local full suite passed 127
 tests; wheel-only offline demos and actual training/inference commands passed. See
 `docs/validation.md` for precise scope and environment, and `docs/limitations.md` for research
-extensions and unavailable real biological assets. GitHub upload and hosted CI verification
-are the remaining delivery steps.
+extensions and unavailable real biological assets. The existing public GitHub main branch has
+been updated without rewriting history. The initial hosted CI run completed all eight jobs;
+the workflow tracks subsequent revisions. Run manifests also record the installed source hash.

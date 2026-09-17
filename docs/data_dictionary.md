@@ -126,6 +126,8 @@ assets with no experimental sample. Derived evidence carries parent IDs, method 
 run outputs include an expanded evidence.tsv and sources.tsv so parent IDs remain resolvable.
 Input-file and model-manifest SHA256 hashes are in run_manifest.json. Actual catalogs/candidates/
 promoters are hashed from contents, independent of caller-supplied human-readable IDs.
+`software_sha256` hashes the installed Python implementation independently of installation path,
+so two source revisions sharing a package version remain distinguishable.
 
 ## Output-only fields
 
