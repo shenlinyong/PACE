@@ -6,14 +6,14 @@ PACE 是用于研究家养动物增强子—基因调控联系的 Python 软件�
 
 ## 当前总公式
 
-$$
+```math
 \boxed{
-\operatorname{PACE}(E,G)=
+\mathrm{PACE}(E,G)=
 \frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
 {\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
  A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
 }
-$$
+```
 
 分母只有目标基因实际可评分候选的支持总和。默认无适用功能校准时 eta=0；
 有合格训练/校准数据时估计 [0,1] 内的连续值。测试集不参与。

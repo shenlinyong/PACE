@@ -9,7 +9,7 @@ accuracy is claimed.
 
 | Check | Result |
 |---|---|
-| Current test suite | **111 passed** |
+| Current test suite | **113 passed** |
 | Numerical references | Hand-derived endpoint and fractional eta scores, known interior calibration optimum, activity, TSS, fusion, bulk-order and CpG calculations pass |
 | Evidence and normalization | Missingness/zero distinction, fixed panel and B universe, partial/common denominators and overflow checks pass |
 | Calibration | Context and split isolation, zero fallback, bounded fitting, frozen reuse, incompatible scope and invalid artifact rejection pass |
@@ -17,12 +17,13 @@ accuracy is claimed.
 | Sequence and ML | Actual CNN gradient/update/save/load and grouped classifier/preprocessing checks pass |
 | Installed command | Three direct-file modes, file paths with spaces, YAML overrides and output protection pass |
 | Compatibility launchers | scripts/pace.py invokes the same fractional-scoring implementation; setup.sh delegates to the current installer |
-| Public documentation | Main displayed equations match FORMULA.md; documented defaults match configuration; relative links resolve; retired model terms and trees are rejected |
+| Public documentation | Main displayed equations match FORMULA.md; documented defaults match configuration; relative links resolve; retired model terms, trees and incompatible math markup are rejected |
 | Source style | Ruff lint/format, shell syntax and git patch checks pass |
 
 The preceding mixed-interface suite had 153 tests. This revision retains its 105
 current-model tests, removes 48 tests together with the retired implementation, and
-adds six public-documentation/launcher checks. No current-model test was removed.
+adds eight public-documentation/launcher checks, including two rendering regressions.
+No current-model test was removed.
 
 One cooler 0.10.4 warning concerns NumPy timedelta construction; it does not change
 the tested outputs. The local environment uses Python 3.13.12, NumPy 2.5.3 and

@@ -22,24 +22,24 @@ PACE 估计某个候选调控单元 E 对基因 G 的相对增强支持。主分
 
 省略物种、组织/状态、个体或群体背景下标。一次运行必须明确这些条件。
 
-$$
+```math
 S(E,G)=A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta},
 \qquad
 \boxed{\mathrm{PACE}(E,G)=\frac{S(E,G)}{\displaystyle\sum_{e\in\mathcal E^{score}(G)}S(e,G)}}.
-$$
+```
 
 这里的 $\eta$ 是本次实际使用的参数：自动模式没有适用功能校准时为0；
 提供适用功能训练/校准数据时为约束估计 $\widehat\eta\in[0,1]$。也可显式固定连续数值。
 估计目标、适用性检查与测试集隔离见[连续分配校准](eta_calibration.md)。
 
-$$
+```math
 A_\star(E)=\prod_{m\in\mathcal M}x_{\star,m}(E)^{1/|\mathcal M|},\qquad
 \overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t),
-$$
-$$
+```
+```math
 \widetilde C(E,t)=r(E,t)C_{obs}(E,t)+[1-r(E,t)]C_{prior}(E,t),\qquad
 B(E,G)=\frac{\overline C(E,G)}{\displaystyle\sum_{H\in\mathcal G(E)}\overline C(E,H)}.
-$$
+```
 
 | 符号 | 定义 |
 |---|---|
@@ -79,10 +79,10 @@ eta=0直接跳过B，避免0^0。r=0/1时只要求实际使用的来源，不能
 输入须是单位、规范化协议、统计量和窗口明确的非负信号。负的log fold-change不能直接进入几何均值；不静默裁剪。真零保留，未测/低覆盖/不可比对为NA。技术重复原始计数先合并再规范化；已规范化轨道使用明确的加权均值，不直接相加。动物层面重复等权汇总时，结果是群体平均代理，不是每只动物结果。
 
 三模式的主估计都先得到相同层级的各层信号。对于固定倍性、无影响位点对应关系的结构变异的序列输入，可显式采用对称可加的平均代理：
-$$
+```math
 x_{seq,m}^{bulk}(E)=\sum_h\rho_h x_{seq,m,h}(E),\qquad
 C_{prior}^{bulk}(E,t)=\sum_h\rho_h C_{prior,h}(E,t),\quad\sum_h\rho_h=1.
-$$
+```
 固定二倍体可用rho=(1/2,1/2)，单倍体用1；这表示所声明的平均代理，不是证明染色质信号按剂量线性变化。rho不能用测序深度或未验证的等位表达比例替代。单倍型局部联系不同时，这种边际代理仍不等于平均物理支持，必须保留解释边界。
 
 bulk实测不能复制给两个单倍型，也不能默认除以2称为等位实测。只有可靠等位信号、接触和每拷贝单位足够时，才可另做 `estimand=copy_resolved_support` 研究分析：先算各拷贝支持、相加再归一化。它与主bulk_proxy是不同对象，输出单独命名；当前软件未实现该研究扩展。
@@ -90,22 +90,22 @@ bulk实测不能复制给两个单倍型，也不能默认除以2称为等位实
 ## 5. 活性融合与校准
 
 将单位匹配的观测和序列预测变换到相同空间：
-$$
+```math
 z_{obs,m}=\log(1+x_{obs,m}/s_m),\qquad z_{seq,m}=\log(1+x_{seq,m}/s_m),
-$$
-$$
+```
+```math
 z_{\star,m}=w_m z_{obs,m}+(1-w_m)z_{seq,m},\qquad
-x_{\star,m}=s_m\operatorname{expm1}(z_{\star,m}).
-$$
+x_{\star,m}=s_m\,\mathrm{expm1}(z_{\star,m}).
+```
 
 s_m>0来自训练/校准协议并冻结。w_m是观测融合权重，不是B，也不是活性层之间的权重。measured取w=1；genome_only取w=0；hybrid有适用校准器才融合。无校准器时优先合格实测，缺观测且有适用预测时用单来源预测，保留实际路径；两者无效则NA。不设通用0.5。
 
 严重污染、错组织或明显不相容批次不得只给小权重混入。序列输出若是峰概率/logit，即使已校准分类概率，也不是定量强度；只有额外的定量校准通过检验后才能进入x_seq。
 
 按预定义质量层b拟合凸组合：
-$$
+```math
 \widehat w_b=\arg\min_{0\le w\le1}\sum_{i\in b}[z_i^*-(wz_{obs,i}+(1-w)z_{seq,i})]^2.
-$$
+```
 闭式解为clip(sum[(z_obs-z_seq)(z*-z_seq)]/sum[(z_obs-z_seq)^2],0,1)。分母0表示不可识别，不能制造精度；按明确单来源规则输出。
 
 校准器必须声明 `calibration_target=individual_state` 或 `population_mean`。前者需要同动物的适当独立测量或有说明的独立技术拆分；用另一只动物作真值会把真实个体差异当噪声。后者可用动物间共识，但只校准群体平均。普通序列模型不能因此恢复个体非遗传状态。
@@ -121,17 +121,17 @@ $$
 cooler稀疏矩阵的未存储pixel，仅在有效bin和明确存储语义下才代表0；无效bin不是0。同一bin pair的多条E–TSS边共享测量和抽样标识。实测联系、参考组织联系与先验分别标记；CTCF不能代替Hi-C或在主公式外再奖励一次。
 
 可用同物种距离先验：
-$$
+```math
 f_s(d)=a_s\left(\frac{\max(d,d_{min})}{d_{ref}}\right)^{-\gamma_s},\quad a_s>0,\ \gamma_s>0.
-$$
+```
 拟合使用有效bin pair，包括真实零；保存数据尺度、分辨率、距离范围、训练区域、组织和留出残差。d_min是近距离规则，不能与“加一个5000 bp伪计数”混淆。当前实现采用清楚的分箱拟合，不声称其误差权重是最优；不能仅拟合正pixel。近对角线策略单独记录，默认使用同尺度先验的近距离平台；这是建模选择，需敏感性检查。没有先验或有出处的校正时不可评分并报告启动子分母缺失。
 
 普通收缩使用有出处的r。原始计数Poisson–Gamma为研究扩展：
-$$
+```math
 N\mid\lambda\sim\mathrm{Poisson}(L\lambda),\quad
 \lambda\sim\mathrm{Gamma}(\kappa\mu,\kappa),\quad
 \widetilde C=(N+\kappa\mu)/(L+\kappa).
-$$
+```
 Gamma第二参数为rate。L、kappa、mu均正；L不能取本边count，必须处理所声明的曝光/偏差模型。ICE/KR平衡值不是Poisson整数计数。不支持该模型时不得假装已进行贝叶斯校正。
 
 TSS以gene、chrom、tss0、strand精确去重；多个转录本同TSS只算一次。GTF正链tss0=start-1，负链tss0=end-1。不同基因共享启动子标歧义。pi优先匹配CAGE/RAMPAGE；无可靠起始信息时对可信TSS等权。gene TPM不提供TSS使用率，H3K4me3也不直接当起始次数。pi>0的必要接触缺失时不删除该TSS重分配pi；pi=0不参与求和。
@@ -153,10 +153,10 @@ B分母始终使用原定G(E)。eta>0若有必要联系未知，B不可评分，
 `normalization_status=complete/partial/zero_support/empty`与分数一起输出。complete只表示预定义候选均被处理，不表示发现了所有生物学增强子。partial分数条件于可评分子集。条目覆盖率不能解释为捕获的真实调控质量。
 
 比较样本、模式或eta时，相同候选文件不保证分母相同。必须从各方法的未归一化支持出发，在共同可评分集合重新归一化：
-$$
+```math
 \mathcal I_G=\bigcap_k\mathcal E_k^{score}(G),\qquad
 P_k^{common}(E,G)=S_k(E,G)/\sum_{e\in\mathcal I_G}S_k(e,G).
-$$
+```
 B仍按各运行同一原定G(E)计算，不为了比较删基因。保存comparison_universe_id，原分数不覆盖。交集不足2个单元、某侧分母0或无法建立同源对应时，组成差异不具有所需比较信息，返回NA及原因。
 
 完整个体Delta要求同一计划宇宙、单位、估计对象、参数和可解释的结构状态；任何必要技术NA使完整Delta为NA。可以另报共同可测集合上的 `conditional_delta_pace`，明确其条件，不能称完整个体遗传效应。新增/删除结构与仅越过活性阈值分别报告。
@@ -182,11 +182,11 @@ B仍按各运行同一原定G(E)计算，不为了比较删基因。保存compar
 CpG计数m_j、n_j先统一到正链dyad坐标，禁止重复合并。定义M_pooled=sum(m)/sum(n)，M_site=mean(m_j/n_j)。后者默认作为特征，前者也输出；记录覆盖和CpG数。无CpG、未覆盖、低覆盖和真实零不同。无参考CpG总数时覆盖比例NA；常规bisulfite通常不区分5mC/5hmC。
 
 学习模型使用固定特征映射的elastic-net logistic：
-$$
+```math
 p=\sigma(\beta_0+\boldsymbol\beta^T\phi),\qquad
 \mathcal L=-\frac{\sum_i\omega_i[y_i\log p_i+(1-y_i)\log(1-p_i)]}{\sum_i\omega_i}
 +\lambda_1\|\beta\|_1+\frac{\lambda_2}{2}\|\beta\|_2^2.
-$$
+```
 omega默认1，非负、总和正；lambda非负，截距不惩罚。phi包括log1p(A)、log1p(C)、log1p(distance)、PACE和可用额外特征。用omega区别于活性融合w。仅核心可评分边可训练/推理，核心缺失不得靠中位数填补。额外特征可用训练折中位数和缺失指示；median/IQR缩放及所有交互定义在训练侧冻结。
 
 默认阳性是抑制增强子后靶基因下降，满足预设效应量、显著性和功效条件。表达上升标为potential_repressive_or_complex；未测试、功效不足、明显存活混杂或基因无法检测的不作普通阴性。区域扰动覆盖多个规范单元时不能给每个单元复制同一阳性标签；当前实现只用可靠一对一映射训练，模糊映射另报。区域级评价可按预注册单元分组合并支持，不宣称解析了区域内每个单元的因果作用。

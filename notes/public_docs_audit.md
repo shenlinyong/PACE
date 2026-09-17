@@ -32,8 +32,18 @@ Current guides must not offer old commands, output fields or validation claims.
 Run the current model suite, documentation/link checks, installation/build checks
 and hosted CI, and verify the published default-branch files after pushing.
 
-Local result: 111 current tests pass, including six new documentation/launcher checks.
+Local result: 113 current tests pass, including eight new documentation/launcher checks.
 All 105 existing current-model tests were retained; 48 tests specific to the removed
 implementation were retired with it. Public links, displayed equations and configuration
 defaults pass the automated audit. Distribution and hosted results are tracked in
 [the verification record](../docs/validation.md) and the linked CI workflow.
+
+## GitHub rendering follow-up
+
+The source-content audit did not exercise GitHub's browser renderer. The user then
+reported rejection of the operatorname macro. All six occurrences now use upright
+mathrm names. GitHub's Markdown API also consumed spacing escapes in dollar-delimited
+display equations, so all display equations now use its supported math fences.
+The checker rejects both regressions without changing the numerical definition.
+See the [GitHub math syntax documentation](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/writing-mathematical-expressions)
+and the [upstream macro report](https://github.com/github/markup/issues/1688).

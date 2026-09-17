@@ -2,6 +2,8 @@
 
 ## 0.2.1 — 2026-09-17
 
+- Fix GitHub formula rendering with supported upright names and fenced math blocks;
+  guard against rejected macros and Markdown consuming LaTeX escapes.
 - Consolidate the public repository around one current scoring implementation.
 - Rewrite the homepage, formula, notation, comparison, installation, tutorial and
   output references; remove incompatible equations, parameters and unsupported

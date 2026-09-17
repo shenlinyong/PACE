@@ -25,10 +25,14 @@ Git history preserves prior source and results. The
 [content audit](notes/public_docs_audit.md) records preserved, replaced and removed
 material; [migration](docs/migration.md) links the archival snapshot.
 
-The local current-model suite passes 111 tests, including six new public-documentation
+The local current-model suite passes 113 tests, including eight new public-documentation
 and launcher checks. Packaging and hosted CI checks accompany publication. Final executed results are recorded in
 [validation](docs/validation.md). No real biological validation or livestock weights
 are claimed from these synthetic software tests.
+
+The rendering follow-up uses GitHub-supported math fences and upright function names.
+The documentation checker rejects the reported unsupported macro and unprotected
+display equations; the [audit](notes/public_docs_audit.md) records the rendering checks.
 
 ## Development practices
 

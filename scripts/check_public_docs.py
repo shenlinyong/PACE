@@ -35,9 +35,11 @@ def check_markdown(path: Path, root: Path) -> list[str]:
     if re.search(r"(?i)(?:default|默认)[^\n]{0,80}(?:\\eta|eta)\s*[=$ ]+1(?!\d)", text):
         issues.append(f"{relative}: incompatible default allocation exponent")
     if "\\[" in text or "\\]" in text:
-        issues.append(f"{relative}: use GitHub-supported $$ display math delimiters")
-    if text.count("$$") % 2:
-        issues.append(f"{relative}: unpaired display-math delimiter")
+        issues.append(f"{relative}: use GitHub-supported fenced math blocks")
+    if "$$" in text:
+        issues.append(f"{relative}: use fenced math blocks to preserve LaTeX escapes on GitHub")
+    if re.search(r"\\operatorname\b", text):
+        issues.append(f"{relative}: unsupported GitHub math macro operatorname; use mathrm")
     for match in re.finditer(r"!?\[[^\]\n]*\]\(([^)\n]+)\)", text):
         target = match.group(1).strip().strip("<>")
         if re.match(r"[a-zA-Z][a-zA-Z0-9+.-]*:", target) or target.startswith("#"):
@@ -54,7 +56,7 @@ def audit(root: Path) -> list[str]:
     )
     issues = [problem for path in docs for problem in check_markdown(path, root)]
     formula = (root / "docs/FORMULA.md").read_text(encoding="utf-8")
-    total = re.search(r"\$\$\n\\boxed\{.*?\n\$\$", formula, flags=re.S)
+    total = re.search(r"```math\n\\boxed\{.*?\n```", formula, flags=re.S)
     if total is None:
         issues.append("FORMULA.md: authoritative total equation missing")
     else:
@@ -88,7 +90,7 @@ def main() -> int:
     if issues:
         print("\n".join(issues), file=sys.stderr)
         return 1
-    print("Public formula, defaults, local links and retired-tree checks passed.")
+    print("Public formula, math macros, defaults, local links and retired-tree checks passed.")
     return 0
 
 

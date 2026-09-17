@@ -8,11 +8,11 @@ The current PACE equation is defined in [FORMULA.md](FORMULA.md).
 
 For the same activity, contact and scoreable candidates, setting eta to zero gives
 
-$$
-\operatorname{PACE}_{\eta=0}(E,G)=
+```math
+\mathrm{PACE}_{\eta=0}(E,G)=
 \frac{A_\star(E)\overline C(E,G)}
 {\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}A_\star(e)\overline C(e,G)}.
-$$
+```
 
 With one TSS, this is an activity–contact normalization rule. It does not imply that
 candidate generation, measurement processing, contact priors or missingness are

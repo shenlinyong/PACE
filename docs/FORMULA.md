@@ -6,20 +6,20 @@ and [functional calibration](eta_calibration.md) specify how data enter it.
 
 ## Total score
 
-$$
+```math
 \boxed{
-\operatorname{PACE}(E,G)=
+\mathrm{PACE}(E,G)=
 \frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
 {\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
  A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
 }
-$$
+```
 
 Write the unnormalized support as
 
-$$
+```math
 S(E,G)=A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}.
-$$
+```
 
 Here E is a fixed, nonoverlapping scoring unit and G is a target gene.
 The normalization set consists of the planned candidates whose support can be
@@ -28,13 +28,13 @@ support sum. It has no added residual contribution or numerical pseudocount.
 
 In automatic mode,
 
-$$
+```math
 \eta_{\mathrm{used}}=
 \begin{cases}
 0, & \text{without applicable or sufficiently informative functional calibration},\\
 \widehat\eta\in[0,1], & \text{after fitting eligible training/calibration evidence}.
 \end{cases}
-$$
+```
 
 A matching frozen calibration supplies the same fitted value without refitting.
 Explicit fixed numeric exponents in [0,1] are also supported. Final test labels
@@ -43,9 +43,9 @@ are separate from the primary score's interpretation.
 
 ## Activity
 
-$$
+```math
 A_\star(E)=\left[\prod_{m\in\mathcal M}x_{\star,m}(E)\right]^{1/|\mathcal M|}.
-$$
+```
 
 The panel is fixed for a run: ATAC, DNase, H3K27ac, ATAC+H3K27ac or
 DNase+H3K27ac. Each signal is nonnegative, quantitative and matched to the same
@@ -61,15 +61,15 @@ has no log shift. RNA and additional omics do not multiply primary support.
 
 ## Contact and promoters
 
-$$
+```math
 \widetilde C(E,t)=r(E,t)C_{\mathrm{obs}}(E,t)
 +[1-r(E,t)]C_{\mathrm{prior}}(E,t),\qquad 0\le r(E,t)\le1,
-$$
+```
 
-$$
+```math
 \overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t),
 \qquad \pi(t\mid G)\ge0,\qquad\sum_t\pi(t\mid G)=1.
-$$
+```
 
 Distinct physical TSSs are deduplicated before weighting. Weights are fixed for
 the gene and independent of E. Missing contact for a positive-weight TSS makes
@@ -80,10 +80,10 @@ from an unrelated species. Near-diagonal contact follows the explicit run policy
 
 ## Cross-gene allocation
 
-$$
+```math
 B(E,G)=\frac{\overline C(E,G)}
 {\displaystyle\sum_{H\in\mathcal G(E)}\overline C(E,H)}.
-$$
+```
 
 The candidate-gene set is frozen before scoring. Positive eta requires all
 necessary contacts in that set; missing genes are not dropped to improve B.

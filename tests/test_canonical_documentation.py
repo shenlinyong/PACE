@@ -18,7 +18,16 @@ def test_public_documentation_contract():
     assert CHECKER.audit(ROOT) == []
 
 
-@pytest.mark.parametrize("wrong", ["S/(sum(S)+U(G))", "The default eta=1.", "[gone](absent.md)"])
+@pytest.mark.parametrize(
+    "wrong",
+    [
+        "S/(sum(S)+U(G))",
+        "The default eta=1.",
+        "[gone](absent.md)",
+        "```math\n" + r"\operatorname{PACE}(E,G)" + "\n```",
+        "$$x$$",
+    ],
+)
 def test_audit_rejects_known_documentation_failures(tmp_path, wrong):
     page = tmp_path / "README.md"
     page.write_text(wrong)

@@ -15,14 +15,14 @@ shenlinyong), Northwest A&F University (西北农林科技大学)**.
 
 ## Current formula
 
-$$
+```math
 \boxed{
-\operatorname{PACE}(E,G)=
+\mathrm{PACE}(E,G)=
 \frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
 {\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
  A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
 }
-$$
+```
 
 The denominator contains only the support of the actually scoreable candidates of
 that gene. The fixed activity panel uses an equal geometric mean; contact is

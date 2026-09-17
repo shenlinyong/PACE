@@ -8,10 +8,10 @@ different roles; fitting eta does not train that classifier.
 
 ## Formula and objective
 
-$$
+```math
 \mathrm{PACE}(E,G)=\frac{A_\star(E)\overline C(E,G)B(E,G)^{\eta_{used}}}
 {\sum_{e\in\mathcal E^{score}(G)}A_\star(e)\overline C(e,G)B(e,G)^{\eta_{used}}}.
-$$
+```
 
 In automatic mode, eta_used is the bounded fitted estimate when calibration is
 possible, and zero otherwise. At exactly zero, B and its missing-data requirements
@@ -24,12 +24,12 @@ direction-qualified positives and powered negatives **within each gene**. Define
 their log PACE ratio equals their log support ratio; the gene denominator cancels.
 The declared ranking objective is
 
-$$
+```math
 \widehat\eta=\arg\min_{0\le\eta\le1}
 \frac1{|\mathcal G_{fit}|}\sum_{G\in\mathcal G_{fit}}
 \frac1{|P_G||N_G|}\sum_{p\in P_G,n\in N_G}
 \log\left[1+\exp\{-[(a_p-a_n)+\eta(b_p-b_n)]\}\right].
-$$
+```
 
 Each informative gene has equal weight, and each positive-negative pair within a
 gene has equal weight. The objective is convex. Endpoint derivative checks and
