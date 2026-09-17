@@ -51,6 +51,8 @@ For $P=1$ and $H/D=4$, adjusted contact is 1 at $\lambda=0$, 1.75 at $\lambda=0.
 
 This is useful when a livestock study has a limited or borrowed contact map. Missing expectations, missing reliability or undeclared provenance trigger prior fallback and an explanatory state. PACE does not infer reliability from contact strength or correct tissue mismatch automatically. Expected contact must match the sample, normalization, resolution and distance of the observation.
 
+The [original ABC predictor](https://github.com/EngreitzLab/ABC-Enhancer-Gene-Prediction-20250314-archive/blob/NG2019/src/predictor.py) already scales contact and adds a distance-derived pseudocount. Its $C_{\mathrm{ABC}}$ should therefore be understood as a processed contact estimate. The PACE distinction is the explicit observation/expectation ratio, local reliability and provenance rule.
+
 ### 2. Activity: which measurements were actually observed?
 
 The original two-assay ABC profile uses an unshifted geometric mean. PACE uses scaled signals $x(E,i)=S(E,i)/a_i$ and, in the primary configuration, computes
@@ -122,6 +124,8 @@ Unknown $U$ is computationally zero, with `score_scope=observed_candidates_only`
 
 Two forms of incompleteness therefore remain distinct: unscorable rows in the supplied table are counted; undiscovered candidates outside that table require independent coverage information. Neither is treated as a measured absence of regulation.
 
+The [NG2019 output code](https://github.com/EngreitzLab/ABC-Enhancer-Gene-Prediction-20250314-archive/blob/NG2019/src/predict.py) also writes missing values and failed-gene records. PACE adds the explicit finite-support denominator, per-gene unscored-candidate count, residual-support input and linked evidence state described above.
+
 ## Which parameters changed, and which are inherited starting settings?
 
 | Category | Settings | Reason |
@@ -135,6 +139,20 @@ Two forms of incompleteness therefore remain distinct: unscorable rows in the su
 | Disabled extension | Inhibitory strength $\kappa=0$ | Avoid requiring methylation or repressive assays for primary predictions |
 
 [Parameters](PARAMETERS.md) lists exact values, units, input columns, CLI options and active YAML entries. RNA remains an expression-context annotation and optional downstream filter; it does not multiply the primary PACE score.
+
+### Numerical defaults that require care in a comparison
+
+The original command-line values come from [NG2019 `predict.py`](https://github.com/EngreitzLab/ABC-Enhancer-Gene-Prediction-20250314-archive/blob/NG2019/src/predict.py); its contact operations are defined in `predictor.py` above.
+
+| Setting | Original ABC implementation | Current PACE file adapters | Reason for the PACE choice |
+| --- | --- | --- | --- |
+| Cis window | `--window 5000000` | `--max_distance 5000000` | Retain a broad cis search background |
+| Distance exponent | `--hic_gamma 1`, reference exponent 1 | `--hic_gamma 1.024238616787792` | Retain the current adapter's starting decay profile; this is not a fitted livestock optimum |
+| Near-distance treatment | `hic_pseudocount_distance=1000000` controls an additive contact pseudocount | A 5,000-bp offset enters $P(d)=\mathrm{Scale}(d+5000)^{-\gamma}$ | Keep the prior finite at zero distance; the two parameters have different meanings |
+| Contact scale | Row-maximum rescaling to 100, pseudocount addition and clipping at 100 | Prior scale 5.9594510043736655, modulated by qualified $H/D$ | Define explicit prior/support units; a common scale cancels from normalized scores when $U=0$ |
+| Selection threshold | Required CLI argument; the original README discusses 0.02 and shows a 0.022 command example | 0.02 in file predictors and filters | Provide an illustrative output selection; calibrate each model on independent validation |
+
+PACE's retained YAML key `hic_pseudocount_distance` is not forwarded by the current file-adapter prediction path. It does not configure the 5,000-bp prior offset. Use a custom `contact_prior` in the table interface when another prior is required.
 
 ## Applying the model to livestock and other species
 
