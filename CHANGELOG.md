@@ -7,6 +7,7 @@
 - Preserve observed zero, missing measurements and unknown input quality as separate states.
 - Add distinct-TSS contact aggregation, enhancer-target allocation and explicit contact provenance.
 - Correct the earlier expression-weighted formula in all retained documentation: normalize activity × contact first, then multiply by the gene expression weight. The weight does not enter the denominator.
+- Apply the same correction to the archived sensitivity-analysis calculator, with regression checks for non-unit expression weights, optional expression input and zero scores. Expression-weighted legacy recalculations can therefore differ from earlier outputs.
 - Keep RNA as context in current primary predictions; archive incompatible earlier ML and analysis tools.
 - Supply a quantified-table example, command-line smoke workflow, regression tests and current input documentation.
 - Update the bundled read example to the supported missing-aware activity mode.

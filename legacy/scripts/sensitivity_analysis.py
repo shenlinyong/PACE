@@ -86,14 +86,14 @@ def compute_activity(df: pd.DataFrame,
 def compute_pace_score(df: pd.DataFrame, activity: np.ndarray,
                        contact_col: str, gene_col: str,
                        expr_col=None) -> np.ndarray:
-    """ABC-style normalized score: A*C*W / sum_per_gene(A*C*W)."""
+    """Historical PACE score: W * (A*C / sum_per_gene(A*C))."""
     axc = activity * df[contact_col].to_numpy(dtype=float)
-    if expr_col and expr_col in df.columns:
-        axc = axc * df[expr_col].to_numpy(dtype=float)
     tmp = pd.DataFrame({"gene": df[gene_col].values, "axc": axc})
     gene_sum = tmp.groupby("gene")["axc"].transform("sum").to_numpy()
     with np.errstate(divide="ignore", invalid="ignore"):
         score = np.where(gene_sum > 0, axc / gene_sum, 0.0)
+    if expr_col and expr_col in df.columns:
+        score = score * df[expr_col].to_numpy(dtype=float)
     return score
 
 

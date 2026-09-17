@@ -103,7 +103,7 @@ $$
 | EpiTensor | 原始论文和官方发布说明的跨assay/细胞类型张量分解 | 跨样本协变作为后续扩展；本次未取得可读内部源码，不声称逐行复核 |
 | TargetFinder | `generate_training.py`和官方EP/EPW特征说明 | 吸收区分增强子、启动子和中间区域的证据思想；不加入未经验证的监督权重 |
 | JEME | `1_first_step_modeling/1_generate.R`的`cv.glmnet`及两阶段目录 | 将跨样本建模与单样本主评分分开 |
-| EPIPDLF | `model_dnabert2_embedding_small.py`的嵌入、CNN、双向GRU与注意力 | 预训练序列信息留作需域外验证的扩展；用户的PIPDLF按原稿核实为EPIPDLF |
+| EPIPDLF | `model_dnabert2_embedding_small.py`的嵌入、CNN、双向GRU与注意力 | 预训练序列信息留作需域外验证的扩展 |
 | GATv2EPI | `GATv2_model.py`的GATv2Conv及边分类模块 | 图结构思想用于理解多候选关系，不把注意力权重当可靠性概率 |
 
 以上是设计来源记录，不是额外模型性能/优势比较。本版本没有拷贝这些项目的神经网络或训练权重。被引用的成熟模型不自动保证新组合更准确。

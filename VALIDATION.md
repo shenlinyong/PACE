@@ -4,15 +4,15 @@ Software verification and biological evaluation answer different questions.
 
 ## Reproducible software checks
 
-On 17 September 2026, all 44 standalone tests passed with no skips. All eight smoke commands passed; the maximum absolute score error against the independent formula was 1.12 × 10⁻¹⁶.
+On 17 September 2026, all 48 standalone tests passed with no skips. All eight smoke commands passed; the maximum absolute score error against the independent formula was 1.12 × 10⁻¹⁶.
 
-Run `python -m pytest tests -q` from the repository root. The tests cover activity aggregation, gene normalization, contact reliability, multi-TSS behavior, missing measurements and command-line adapters. Read-count tests require bedtools; bigWig tests require pyBigWig.
+Run `python -m pytest tests -q` from the repository root. The tests cover activity aggregation, gene normalization, contact reliability, multi-TSS behavior, missing measurements, command-line adapters and expression weighting after normalization in the archived sensitivity calculator. Read-count tests require bedtools; bigWig tests require pyBigWig.
 
 Run `python scripts/smoke_test.py --output-dir results/smoke` for the eight-command small-file workflow. It creates three enhancers and two genes, checks both prediction interfaces against an independent formula calculation, and exercises measured-zero and missing BEDPE contacts. The expected output contains six unfiltered and four filtered links.
 
 The bundled five-step read example also completed successfully, producing 12,000 unfiltered enhancer–gene predictions. Its generated outputs are not tracked as biological evidence.
 
-The earlier workspace validation comprised 56 tests, including 12 analysis-specific tests outside this software repository. This repository ships the 44 standalone software cases. Its own passing test count must be obtained from the command above, rather than inferred from the larger workspace suite.
+The earlier workspace validation comprised 56 tests, including 12 analysis-specific tests outside this software repository. This repository ships the original 44 standalone software cases plus four legacy-expression regression cases. Its own passing test count must be obtained from the command above, rather than inferred from the larger workspace suite.
 
 ## Biological scope
 

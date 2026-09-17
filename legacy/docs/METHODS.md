@@ -123,6 +123,8 @@ $$
 
 The expression weight is applied after within-gene normalization. It does not enter the denominator.
 
+The retained `legacy/scripts/sensitivity_analysis.py` calculator uses this order of operations. Its expression-weighted results can differ from those produced by earlier revisions; the current primary scoring kernel is separate.
+
 ## 6. Signal Weight Recommendations
 
 | Signal | Type | Default Weight | Biological Basis |
