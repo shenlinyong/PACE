@@ -1,0 +1,22 @@
+species: synthetic
+assembly: toy_assembly
+context_id: toy_tissue
+target_level: individual
+is_synthetic: true
+model_id: synthetic_cnn
+data: sequence.tsv
+assays:
+- ATAC
+- H3K27ac
+signal_unit: toy_signal
+normalization_id: toy_mean
+input_length: 8192
+output_window: 500
+seed: 17
+epochs: 2
+batch_size: 2
+channels:
+- 8
+- 8
+- 8
+threads: 1

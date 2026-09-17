@@ -1,0 +1,252 @@
+"""Standard tables and cross-table scientific integrity constraints."""
+
+from __future__ import annotations
+
+import math
+from collections import defaultdict
+
+from .errors import PaceError
+from .io.tables import integer, number, read_table, unique
+from .provenance import digest
+
+SCHEMAS = {
+    "units": "element_id chrom start end anchor0 element_roles canonical_catalog_id",
+    "region_membership": "region_id element_id source_id membership_rule",
+    "promoters": "gene_id promoter_id chrom tss0 strand pi pi_source",
+    "candidates": "element_id gene_id candidate_universe_id",
+    "samples": "sample_id donor_id assay biological_replicate technical_replicate species assembly context_id source_id",
+    "observed_activity": "element_id sample_id assay signal measurement_status callable_fraction unit normalization_id window_id",
+    "observed_contacts": "element_id promoter_id sample_id contact_value measurement_status bin_pair_id scale resolution source_id",
+    "resolved_activity": "element_id assay observed_value predicted_value resolved_value evidence_id evidence_type observation_sample_id parent_evidence_ids model_id calibrator_id fusion_weight resolution_status reason unit window_id",
+    "resolved_contacts": "element_id promoter_id resolved_value evidence_id evidence_type observation_sample_id prior_id reliability resolved_mode bin_pair_id resolution_status reason scale",
+    "predictions": "element_id assay predicted_value model_id unit normalization_id window_id status",
+    "features": "entity_type entity_id feature_name value evidence_id status",
+    "methylation": "chrom dyad_start0 methylated_count total_count sample_id assay",
+    "expression": "gene_id sample_id tpm status",
+    "labels": "label_id assayed_region_id gene_id context_id perturbation_type effect_direction effect_size label_status assay_id group_id source_id",
+    "evidence": "evidence_id evidence_type source_id parent_evidence_ids model_id unit processing_method checksum",
+    "sources": "source_id path_or_accession source_type assembly processing_method normalization_id checksum",
+}
+STATUSES = {"observed", "unmeasured", "low_coverage", "unmappable", "invalid", "not_applicable"}
+EVIDENCE_TYPES = {"observed", "sequence_prediction", "contact_prior", "fused", "aggregate"}
+
+
+def load_tables(cfg: dict) -> dict[str, list[dict]]:
+    tables = {
+        name: read_table(path, required=SCHEMAS[name].split()) if path else []
+        for name, path in cfg["inputs"].items()
+    }
+    for name in ("units", "promoters", "candidates"):
+        if not tables[name]:
+            raise PaceError(f"inputs.{name}: a nonempty table is required")
+    validate_tables(tables, cfg)
+    return tables
+
+
+def validate_tables(t: dict, cfg: dict) -> None:
+    keys = {
+        "units": ("element_id",),
+        "promoters": ("gene_id", "promoter_id"),
+        "candidates": ("element_id", "gene_id"),
+        "samples": ("sample_id",),
+        "sources": ("source_id",),
+        "evidence": ("evidence_id",),
+        "observed_activity": ("element_id", "sample_id", "assay"),
+        "observed_contacts": ("element_id", "promoter_id", "sample_id"),
+        "resolved_activity": ("element_id", "assay"),
+        "resolved_contacts": ("element_id", "promoter_id"),
+        "predictions": ("element_id", "assay"),
+        "expression": ("gene_id", "sample_id"),
+        "methylation": ("chrom", "dyad_start0", "sample_id", "assay"),
+        "features": ("entity_type", "entity_id", "feature_name"),
+        "labels": ("label_id",),
+    }
+    for name, key in keys.items():
+        unique(t[name], key, name)
+    units = {r["element_id"]: r for r in t["units"]}
+    genes = {r["gene_id"] for r in t["promoters"]}
+    samples = {r["sample_id"]: r for r in t["samples"]}
+    sources = {r["source_id"] for r in t["sources"]}
+    evidence_rows = {r["evidence_id"]: r for r in t["evidence"]}
+    evidence = set(evidence_rows)
+    promoter_coords = {}
+    gene_coords, pi_sums = defaultdict(set), defaultdict(float)
+    for row in t["units"]:
+        for field in ("start", "end", "anchor0"):
+            row[field] = integer(row[field], f"units.{field}")
+        start, end = row["start"], row["end"]
+        if start >= end or row["anchor0"] != (start + end - 1) // 2:
+            raise PaceError(f"units {row['element_id']}: invalid half-open interval or anchor")
+        if cfg["catalog"]["profile"] == "canonical_grid":
+            width, offset = cfg["catalog"]["width_bp"], cfg["catalog"]["offset_bp"]
+            if end - start != width or (start - offset) % width:
+                raise PaceError(
+                    f"units {row['element_id']}: interval does not match canonical grid"
+                )
+    unique(t["units"], ("chrom", "start", "end"), "unit coordinates")
+    if len({r["canonical_catalog_id"] for r in t["units"]}) != 1:
+        raise PaceError("units: mixed canonical_catalog_id values")
+    for row in t["promoters"]:
+        row["tss0"] = integer(row["tss0"], "promoters.tss0")
+        row["pi"] = number(row["pi"], "promoters.pi", minimum=0, maximum=1)
+        if row["strand"] not in ("+", "-"):
+            raise PaceError("promoters.strand must be + or -")
+        coord = row["chrom"], row["tss0"], row["strand"]
+        if row["promoter_id"] in promoter_coords and promoter_coords[row["promoter_id"]] != coord:
+            raise PaceError("A physical promoter_id has inconsistent coordinates")
+        promoter_coords[row["promoter_id"]] = coord
+        if coord in gene_coords[row["gene_id"]]:
+            raise PaceError("Duplicate physical TSS within a gene; deduplicate transcripts first")
+        gene_coords[row["gene_id"]].add(coord)
+        pi_sums[row["gene_id"]] += row["pi"]
+    if cfg["promoters"]["weights"] == "equal":
+        for row in t["promoters"]:
+            row["pi"], row["pi_source"] = 1 / len(gene_coords[row["gene_id"]]), "equal_physical_tss"
+    elif any(not math.isclose(x, 1, abs_tol=1e-10) for x in pi_sums.values()):
+        raise PaceError(
+            "Promoter pi values must sum to one per gene before any missing-data filtering"
+        )
+    if any(len({c[0] for c in coords}) != 1 for coords in gene_coords.values()):
+        raise PaceError("Gene promoters on multiple chromosomes are unsupported")
+    for row in t["candidates"]:
+        if row["element_id"] not in units or row["gene_id"] not in genes:
+            raise PaceError(f"Unknown candidate unit or gene: {row}")
+        if units[row["element_id"]]["chrom"] != next(iter(gene_coords[row["gene_id"]]))[0]:
+            raise PaceError("Only cis candidate links are supported")
+    if len({r["candidate_universe_id"] for r in t["candidates"]}) != 1:
+        raise PaceError("candidates: mixed candidate_universe_id values")
+    for row in t["samples"] + t["sources"]:
+        if row["source_id"] not in sources:
+            raise PaceError(f"Unknown source_id: {row['source_id']}")
+        for field in ("species", "assembly", "context_id"):
+            if field in row and row[field] != cfg["context"][field]:
+                raise PaceError(f"{field} mismatch for sample/source {row}")
+    for name in ("observed_activity", "observed_contacts", "methylation", "expression"):
+        for row in t[name]:
+            if row["sample_id"] not in samples:
+                raise PaceError(f"{name}: unknown real sample_id {row['sample_id']}")
+            if "element_id" in row and row["element_id"] not in units:
+                raise PaceError(f"{name}: unknown element_id {row['element_id']}")
+            if "assay" in row and row["assay"] != samples[row["sample_id"]]["assay"]:
+                raise PaceError(f"{name}: assay differs from samples table")
+    for name, value_col in (
+        ("observed_activity", "signal"),
+        ("observed_contacts", "contact_value"),
+    ):
+        for row in t[name]:
+            if row["measurement_status"] not in STATUSES:
+                raise PaceError(f"{name}: invalid measurement_status")
+            row[value_col] = number(row[value_col], f"{name}.{value_col}", missing=True, minimum=0)
+            if row["measurement_status"] == "observed" and math.isnan(row[value_col]):
+                raise PaceError(f"{name}: observed row requires an explicit finite value")
+            if name == "observed_activity":
+                row["callable_fraction"] = number(
+                    row["callable_fraction"], "callable_fraction", minimum=0, maximum=1
+                )
+                if not all(row[k] for k in ("unit", "normalization_id", "window_id")):
+                    raise PaceError("Activity requires unit, normalization_id and window_id")
+            else:
+                if row["promoter_id"] not in promoter_coords or row["source_id"] not in sources:
+                    raise PaceError("Contact has unknown promoter/source")
+                row["resolution"] = integer(row["resolution"], "contact.resolution", minimum=1)
+                if row["scale"] != cfg["contact"]["scale"]:
+                    raise PaceError("Contact scale differs from run configuration")
+    for name in ("resolved_activity", "resolved_contacts"):
+        for row in t[name]:
+            if row["element_id"] not in units or row["evidence_id"] not in evidence:
+                raise PaceError(f"{name}: unknown unit or evidence_id")
+            if row["evidence_type"] not in EVIDENCE_TYPES:
+                raise PaceError(f"{name}: invalid evidence_type")
+            declared = evidence_rows[row["evidence_id"]]
+            if declared["evidence_type"] != row["evidence_type"]:
+                raise PaceError("Resolved evidence type disagrees with evidence catalog")
+            for parent in (row.get("parent_evidence_ids") or "").split(";"):
+                if parent and parent not in evidence:
+                    raise PaceError(f"Unknown resolved parent evidence: {parent}")
+            if row["evidence_type"] == "aggregate" and not row.get("parent_evidence_ids"):
+                raise PaceError("Imported aggregate evidence requires its parent evidence IDs")
+            if name == "resolved_contacts" and row["promoter_id"] not in promoter_coords:
+                raise PaceError("Imported contact has unknown promoter_id")
+            sample = row["observation_sample_id"]
+            if sample and sample not in samples:
+                raise PaceError(f"{name}: unknown observation_sample_id")
+            if row["evidence_type"] == "observed" and not sample:
+                raise PaceError("Observed evidence requires a real sample")
+            if row["evidence_type"] in {"sequence_prediction", "contact_prior"} and sample:
+                raise PaceError("Prediction/prior evidence cannot impersonate a sample")
+            if row["resolution_status"] not in ("resolved", "unresolved", "invalid"):
+                raise PaceError("Invalid resolution_status")
+            row["resolved_value"] = number(
+                row["resolved_value"], "resolved_value", missing=True, minimum=0
+            )
+            if row["resolution_status"] == "resolved" and math.isnan(row["resolved_value"]):
+                raise PaceError("Resolved evidence requires a finite value")
+    for row in t["evidence"]:
+        if row["source_id"] not in sources or row["evidence_type"] not in EVIDENCE_TYPES:
+            raise PaceError("Evidence requires a known source and a legal type")
+        for parent in (row["parent_evidence_ids"] or "").split(";"):
+            if parent and parent not in evidence:
+                raise PaceError(f"Unknown parent_evidence_id {parent}")
+    for row in t["expression"]:
+        row["tpm"] = number(row["tpm"], "expression.tpm", minimum=0, missing=True)
+    known_features = {
+        "element": set(units),
+        "promoter": set(promoter_coords),
+        "gene": genes,
+        "edge": {f"{r['element_id']}|{r['gene_id']}" for r in t["candidates"]},
+    }
+    for row in t["features"]:
+        row["value"] = number(row["value"], "features.value", missing=True)
+        if row["evidence_id"] not in evidence:
+            raise PaceError("Feature has unknown evidence_id")
+        if row["entity_type"] not in ("element", "promoter", "gene", "edge"):
+            raise PaceError("Feature entity_type must be element, promoter, gene or edge")
+        if row["status"] not in STATUSES | {"resolved", "unresolved"}:
+            raise PaceError("Invalid feature status")
+        if row["status"] not in ("observed", "resolved"):
+            row["value"] = math.nan
+        elif math.isnan(row["value"]):
+            raise PaceError("Observed feature requires a finite value")
+        if row["entity_id"] not in known_features[row["entity_type"]]:
+            raise PaceError("Feature entity_id is outside the declared catalog")
+    for row in t["region_membership"]:
+        if row["element_id"] not in units or row["source_id"] not in sources:
+            raise PaceError("Region membership has an unknown element or source")
+    for row in t["predictions"]:
+        if row["element_id"] not in units:
+            raise PaceError("Prediction has unknown element_id")
+        row["predicted_value"] = number(
+            row["predicted_value"], "predicted_value", missing=True, minimum=0
+        )
+    if cfg["catalog"]["include_promoter_units"]:
+        cells = {(r["chrom"], r["start"], r["end"]) for r in t["units"]}
+        width, offset = cfg["catalog"]["width_bp"], cfg["catalog"]["offset_bp"]
+        if cfg["catalog"]["profile"] == "canonical_grid":
+            for row in t["promoters"]:
+                start = (row["tss0"] - offset) // width * width + offset
+                if (row["chrom"], start, start + width) not in cells:
+                    raise PaceError(
+                        "Promoter unit absent: prepare the catalog or explicitly set include_promoter_units=false"
+                    )
+
+
+def universe_ids(t: dict, cfg: dict) -> dict:
+    return {
+        "canonical_catalog_id": digest(
+            {
+                "definition": cfg["catalog"],
+                "units": sorted(
+                    (r["element_id"], r["chrom"], r["start"], r["end"]) for r in t["units"]
+                ),
+            }
+        ),
+        "candidate_universe_id": digest(
+            sorted((r["element_id"], r["gene_id"]) for r in t["candidates"])
+        ),
+        "promoter_universe_id": digest(
+            sorted(
+                (r["gene_id"], r["promoter_id"], r["chrom"], r["tss0"], r["strand"], r["pi"])
+                for r in t["promoters"]
+            )
+        ),
+    }

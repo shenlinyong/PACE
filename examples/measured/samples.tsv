@@ -1,0 +1,4 @@
+sample_id	donor_id	assay	biological_replicate	technical_replicate	species	assembly	context_id	source_id
+S_ATAC	toy_animal	ATAC	1	1	synthetic	toy_assembly	toy_tissue	toy_source
+S_H3K27ac	toy_animal	H3K27ac	1	1	synthetic	toy_assembly	toy_tissue	toy_source
+S_Hi-C	toy_animal	Hi-C	1	1	synthetic	toy_assembly	toy_tissue	toy_source

@@ -1,0 +1,4 @@
+region_id	element_id	source_id	membership_rule
+E1	E1	toy_source	synthetic_one_to_one
+E2	E2	toy_source	synthetic_one_to_one
+E3	E3	toy_source	synthetic_one_to_one

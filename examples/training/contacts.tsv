@@ -1,0 +1,8 @@
+bin_pair_id	distance_bp	contact_value	split	region_id
+1000_0	1000	8	train	train
+1000_1	1000	0	train	train
+2000_0	2000	4	train	train
+2000_1	2000	0	train	train
+4000_0	4000	2	train	train
+4000_1	4000	0	train	train
+test	3000	1.3333333333333333	test	test

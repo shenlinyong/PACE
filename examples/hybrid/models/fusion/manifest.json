@@ -1,0 +1,35 @@
+{
+  "assembly": "toy_assembly",
+  "calibration_sources": [],
+  "calibration_target": "individual_state",
+  "context_id": "toy_tissue",
+  "is_synthetic": true,
+  "kind": "fusion",
+  "model_id": "synthetic_fusion",
+  "normalization_id": "toy_mean",
+  "output_window": 500,
+  "signal_unit": "toy_signal",
+  "species": "synthetic",
+  "strata": {
+    "default": {
+      "ATAC": {
+        "identifiable": true,
+        "n": 20,
+        "scale": 1.0,
+        "weight": 0.5
+      },
+      "H3K27ac": {
+        "identifiable": true,
+        "n": 20,
+        "scale": 1.0,
+        "weight": 0.5
+      }
+    }
+  },
+  "target_level": "individual",
+  "test_sources": [],
+  "training_sources": [
+    "deterministic_fixture_recipe"
+  ],
+  "validation": {}
+}

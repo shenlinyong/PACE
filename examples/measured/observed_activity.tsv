@@ -1,0 +1,7 @@
+element_id	sample_id	assay	signal	measurement_status	callable_fraction	unit	normalization_id	window_id
+E1	S_ATAC	ATAC	4	observed	1	toy_signal	toy_mean	grid:500:mean
+E1	S_H3K27ac	H3K27ac	4	observed	1	toy_signal	toy_mean	grid:500:mean
+E2	S_ATAC	ATAC	2	observed	1	toy_signal	toy_mean	grid:500:mean
+E2	S_H3K27ac	H3K27ac	2	observed	1	toy_signal	toy_mean	grid:500:mean
+E3	S_ATAC	ATAC	1	observed	1	toy_signal	toy_mean	grid:500:mean
+E3	S_H3K27ac	H3K27ac	1	observed	1	toy_signal	toy_mean	grid:500:mean

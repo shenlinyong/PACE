@@ -1,0 +1,231 @@
+"""Strict YAML contracts and configuration-relative path resolution."""
+
+from __future__ import annotations
+
+import copy
+from pathlib import Path
+
+import yaml
+
+from .errors import PaceError
+from .io.tables import integer, number
+
+DEFAULTS = {
+    "schema_version": "pace-1",
+    "run_id": "pace",
+    "regime": "measured",
+    "execution_profile": "research",
+    "estimand": "bulk_proxy",
+    "target_level": "individual",
+    "context": {"species": None, "assembly": None, "context_id": None},
+    "inputs": {
+        k: None
+        for k in (
+            "units",
+            "region_membership",
+            "promoters",
+            "candidates",
+            "samples",
+            "observed_activity",
+            "observed_contacts",
+            "resolved_activity",
+            "resolved_contacts",
+            "predictions",
+            "features",
+            "methylation",
+            "expression",
+            "labels",
+            "evidence",
+            "sources",
+        )
+    },
+    "catalog": {
+        "profile": "canonical_grid",
+        "width_bp": 500,
+        "offset_bp": 0,
+        "include_promoter_units": True,
+    },
+    "activity": {
+        "panel": ["ATAC", "H3K27ac"],
+        "combine": "geometric_equal",
+        "missing_policy": "unresolved",
+        "minimum_callable_fraction": 0.0,
+        "replicate_aggregation": "equal_donor_mean",
+    },
+    "contact": {
+        "mode": "observed",
+        "scale": "depth_normalized_contact",
+        "prior_path": None,
+        "near_diagonal_policy": "prior_or_unresolved",
+        "near_diagonal_bp": 0,
+        "allow_prior_fallback": False,
+        "reliability": None,
+        "reliability_source": None,
+    },
+    "promoters": {"weights": "provided"},
+    "allocation": {"eta": 0, "missing_policy": "fixed_gene_set"},
+    "sequence": {"model_path": None, "max_n_fraction": 0.05},
+    "fusion": {"calibrator_path": None, "quality_stratum": "default"},
+    "genome": {
+        "individual_id": None,
+        "reference_path": None,
+        "variant_path": None,
+        "callability_path": None,
+        "ploidy_path": None,
+        "sample_id": None,
+        "phase_policy": "require_phase_or_single_variant_scenario",
+        "unrecorded_site_policy": "require_callable",
+        "sv_assessed": False,
+    },
+    "multiomics": {"mode": "annotate", "model_path": None},
+    "comparison": {
+        "full_delta_requires_complete": True,
+        "allow_conditional_intersection": True,
+        "minimum_common_units": 2,
+    },
+    "output": {"format": "tsv_gz", "retain_all_candidates": True},
+    "seed": 17,
+}
+
+
+class StrictLoader(yaml.SafeLoader):
+    """Reject duplicate keys rather than silently using the last spelling."""
+
+
+def _mapping(loader, node, deep=False):
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise PaceError(f"Duplicate YAML key: {key}")
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _mapping)
+
+
+def load_yaml(path: str | Path) -> dict:
+    result = yaml.load(Path(path).read_text(encoding="utf-8"), Loader=StrictLoader)
+    if not isinstance(result, dict):
+        raise PaceError(f"{path}: expected a YAML mapping")
+    return result
+
+
+def strict_keys(data: dict, allowed, name: str) -> None:
+    if not isinstance(data, dict):
+        raise PaceError(f"{name}: expected a mapping")
+    extra = set(data) - set(allowed)
+    if extra:
+        raise PaceError(f"{name}: unknown keys {sorted(extra)}")
+
+
+def load_config(path: str | Path) -> dict:
+    path = Path(path).resolve()
+    user = load_yaml(path)
+    strict_keys(user, DEFAULTS, "config")
+    cfg = copy.deepcopy(DEFAULTS)
+    for key, value in user.items():
+        if isinstance(DEFAULTS[key], dict):
+            strict_keys(value, DEFAULTS[key], key)
+            cfg[key].update(value)
+        else:
+            cfg[key] = value
+    for key in ("species", "assembly", "context_id"):
+        if not isinstance(cfg["context"][key], str) or not cfg["context"][key]:
+            raise PaceError(f"context.{key} is required")
+    enums = {
+        "schema_version": {"pace-1"},
+        "regime": {"measured", "hybrid", "genome_only"},
+        "execution_profile": {"demonstration", "research", "validated"},
+        "estimand": {"bulk_proxy"},
+        "target_level": {"individual", "population_mean"},
+    }
+    for key, values in enums.items():
+        if cfg[key] not in values:
+            raise PaceError(f"{key} must be one of {sorted(values)}")
+    panels = [{"ATAC"}, {"DNase"}, {"H3K27ac"}, {"ATAC", "H3K27ac"}, {"DNase", "H3K27ac"}]
+    panel = cfg["activity"]["panel"]
+    if not isinstance(panel, list) or len(panel) != len(set(panel)) or set(panel) not in panels:
+        raise PaceError("activity.panel must be ATAC, DNase, H3K27ac, or accessibility + H3K27ac")
+    choices = [
+        ("catalog", "profile", {"canonical_grid", "provided_regions"}),
+        ("activity", "combine", {"geometric_equal"}),
+        ("activity", "missing_policy", {"unresolved"}),
+        ("activity", "replicate_aggregation", {"equal_donor_mean"}),
+        ("allocation", "missing_policy", {"fixed_gene_set"}),
+        ("contact", "mode", {"observed", "prior_only", "shrinkage"}),
+        ("contact", "near_diagonal_policy", {"prior_or_unresolved", "unresolved"}),
+        ("promoters", "weights", {"provided", "equal"}),
+        ("multiomics", "mode", {"annotate", "ml"}),
+        ("output", "format", {"tsv_gz"}),
+        ("genome", "phase_policy", {"require_phase_or_single_variant_scenario"}),
+        ("genome", "unrecorded_site_policy", {"require_callable", "assume_reference"}),
+    ]
+    for section, key, values in choices:
+        if cfg[section][key] not in values:
+            raise PaceError(f"{section}.{key}: expected one of {sorted(values)}")
+    if cfg["allocation"]["eta"] not in (0, 1) or isinstance(cfg["allocation"]["eta"], bool):
+        raise PaceError("allocation.eta must be 0 or 1")
+    integer(cfg["catalog"]["width_bp"], "catalog.width_bp", minimum=1)
+    integer(cfg["catalog"]["offset_bp"], "catalog.offset_bp")
+    integer(cfg["seed"], "seed")
+    integer(cfg["contact"]["near_diagonal_bp"], "contact.near_diagonal_bp")
+    if cfg["contact"]["reliability"] is not None:
+        number(cfg["contact"]["reliability"], "contact.reliability", minimum=0, maximum=1)
+    number(
+        cfg["activity"]["minimum_callable_fraction"],
+        "minimum_callable_fraction",
+        minimum=0,
+        maximum=1,
+    )
+    number(cfg["sequence"]["max_n_fraction"], "max_n_fraction", minimum=0, maximum=1)
+    for section, key in [
+        ("catalog", "include_promoter_units"),
+        ("contact", "allow_prior_fallback"),
+        ("genome", "sv_assessed"),
+        ("output", "retain_all_candidates"),
+        ("comparison", "full_delta_requires_complete"),
+        ("comparison", "allow_conditional_intersection"),
+    ]:
+        if type(cfg[section][key]) is not bool:
+            raise PaceError(f"{section}.{key} must be a YAML boolean")
+    if (
+        not cfg["output"]["retain_all_candidates"]
+        or not cfg["comparison"]["full_delta_requires_complete"]
+    ):
+        raise PaceError("Dropping candidates or reporting incomplete full deltas is unsupported")
+    if cfg["contact"]["scale"] in ("oe", "O/E", "log_oe", "pvalue", "correlation"):
+        raise PaceError(
+            "Contact scale must retain distance background; convert O/E using matching expected contacts"
+        )
+    if cfg["regime"] == "genome_only" and (
+        cfg["contact"]["mode"] != "prior_only"
+        or any(cfg["inputs"][k] for k in ("observed_activity", "observed_contacts"))
+    ):
+        raise PaceError(
+            "genome_only requires prior_only contact and no experimental activity/contact input"
+        )
+    if cfg["catalog"]["profile"] == "provided_regions" and cfg["regime"] != "measured":
+        raise PaceError(
+            "provided_regions supports measured data only; no compatible sequence target is defined"
+        )
+    for section in ("inputs", "contact", "sequence", "fusion", "genome", "multiomics"):
+        for key, value in cfg[section].items():
+            if value is not None and (section == "inputs" or key.endswith("_path")):
+                if not isinstance(value, str):
+                    raise PaceError(f"{section}.{key}: expected a path string")
+                cfg[section][key] = str((path.parent / value).resolve())
+    return cfg
+
+
+def operation_config(path: str | Path, *, allowed, required=(), paths=()) -> dict:
+    cfg = load_yaml(path)
+    strict_keys(cfg, allowed, "config")
+    for key in required:
+        if cfg.get(key) is None:
+            raise PaceError(f"Required configuration key: {key}")
+    for key in paths:
+        if cfg.get(key):
+            cfg[key] = str((Path(path).resolve().parent / cfg[key]).resolve())
+    return cfg

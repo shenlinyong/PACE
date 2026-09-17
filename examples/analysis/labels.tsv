@@ -1,0 +1,7 @@
+label_id	assayed_region_id	gene_id	context_id	perturbation_type	effect_direction	effect_size	label_status	assay_id	group_id	source_id
+L0	E1	G1	toy_tissue	synthetic_inhibition	none	0	powered_negative	toy_assay	E1	toy_source
+L1	E1	G2	toy_tissue	synthetic_inhibition	down	-1	enhancing_positive	toy_assay	E1	toy_source
+L2	E2	G1	toy_tissue	synthetic_inhibition	none	0	powered_negative	toy_assay	E2	toy_source
+L3	E2	G2	toy_tissue	synthetic_inhibition	down	-1	enhancing_positive	toy_assay	E2	toy_source
+L4	E3	G1	toy_tissue	synthetic_inhibition	none	0	powered_negative	toy_assay	E3	toy_source
+L5	E3	G2	toy_tissue	synthetic_inhibition	down	-1	enhancing_positive	toy_assay	E3	toy_source

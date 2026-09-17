@@ -1,0 +1,17 @@
+model_id: synthetic_classifier
+data: learning.tsv
+is_synthetic: true
+context:
+  species: synthetic
+  assembly: toy_assembly
+  context_id: toy_tissue
+extra_features:
+- H3K4me1
+penalties:
+- - 0.01
+  - 0.01
+- - 0.02
+  - 0.01
+folds: 3
+seed: 17
+calibrate: true

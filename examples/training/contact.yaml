@@ -1,0 +1,16 @@
+species: synthetic
+assembly: toy_assembly
+context_id: toy_tissue
+target_level: individual
+is_synthetic: true
+model_id: synthetic_fitted_contact
+data: contacts.tsv
+scale: toy_contact
+resolution: 500
+bin_edges:
+- 500
+- 1500
+- 3000
+- 5000
+d_ref: 1000
+d_min: 500

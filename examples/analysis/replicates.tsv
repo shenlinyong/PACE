@@ -1,0 +1,3 @@
+run_path	donor_id	replicate_type
+../../results/measured	toy_animal	technical
+../../results/measured_repeat	toy_animal	technical

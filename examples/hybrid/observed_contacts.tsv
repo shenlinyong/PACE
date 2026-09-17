@@ -1,0 +1,7 @@
+element_id	promoter_id	sample_id	contact_value	measurement_status	bin_pair_id	scale	resolution	source_id
+E1	P1	S_Hi-C	3	observed	E1:P1	toy_contact	500	toy_source
+E2	P1	S_Hi-C	2	observed	E2:P1	toy_contact	500	toy_source
+E3	P1	S_Hi-C	2	observed	E3:P1	toy_contact	500	toy_source
+E1	P2	S_Hi-C	1	observed	E1:P2	toy_contact	500	toy_source
+E2	P2	S_Hi-C	2	observed	E2:P2	toy_contact	500	toy_source
+E3	P2	S_Hi-C	6	observed	E3:P2	toy_contact	500	toy_source

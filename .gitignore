@@ -28,3 +28,25 @@ models/*.pkl
 
 # Keep bundled example inputs, but exclude generated example results.
 example/results/
+
+# Local canonical development and private research inputs
+.venv-*/
+.pytest_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+private_data/
+data/raw/
+models/
+*.safetensors
+*.pt
+*.pth
+*.bam
+*.cram
+*.fastq*
+*.fq*
+.env
+.env.*
+# Small deterministic example manifests and numpy fixtures are intentionally versioned.
+!examples/**/models/
+!examples/**/models/**
