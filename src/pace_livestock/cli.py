@@ -116,7 +116,9 @@ def main(argv=None):
                         "  PACE measured --catalog-dir data "
                         "--activity animal_001_liver_ATAC_H3K27ac.tsv "
                         "--contacts animal_001_liver_HiC_5kb.tsv --out results\n"
-                        "  activity = ATAC-seq/H3K27ac; contacts = Hi-C or Prom-Hi-C"
+                        "  activity = ATAC-seq/H3K27ac; contacts = Hi-C or Prom-Hi-C\n"
+                        "  Replicates: put animal_001_rep1, rep2, rep3 in samples.tsv and keep "
+                        "their rows in the same activity/contact tables."
                     ),
                     "hybrid": (
                         "Hybrid mode: combine measured evidence with sequence/genome predictions.\n\n"
@@ -128,7 +130,10 @@ def main(argv=None):
                         "--contacts animal_001_liver_HiC_5kb.tsv "
                         "--reference cattle_ARS-UCD1.2.fa --vcf animal_001.vcf.gz "
                         "--sequence-model models/sequence --out results\n"
-                        "  optional annotation: animal_001_liver_RNAseq.tsv"
+                        "  optional annotation: animal_001_liver_RNAseq.tsv\n"
+                        "  Other marks (H3K4me1, H3K4me3, H3K27me3, CTCF) and WGBS/RRBS "
+                        "are added as named feature/methylation tables, not silently mixed into PACE.\n"
+                        "  Replicates: list 1, 2, or 3 biological samples in samples.tsv; each row keeps its sample_id."
                     ),
                     "genome": (
                         "Genome mode: score one individual from reference, variants, and callable sites.\n\n"
@@ -138,7 +143,9 @@ def main(argv=None):
                         "  PACE genome --catalog-dir data "
                         "--reference cattle_ARS-UCD1.2.fa --vcf animal_001.vcf.gz "
                         "--callable animal_001_callable.bed --out results\n"
-                        "  genome inputs = FASTA + VCF/BCF + callable sites; no ATAC/RNA file is required"
+                        "  genome inputs = FASTA + VCF/BCF + callable sites; no ATAC/RNA file is required\n"
+                        "  Optional RNA-seq, methylation, histone or CTCF data remain annotations and "
+                        "must carry sample_id and assay metadata."
                     ),
                 }[requested_mode]
                 p.description = examples

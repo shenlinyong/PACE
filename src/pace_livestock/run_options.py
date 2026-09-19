@@ -118,8 +118,9 @@ def add_run_options(
         if flag == "contacts":
             aliases.append("--observed-contacts")
         descriptions = {
-            "activity": "Measured activity table (ATAC-seq, DNase-seq and/or H3K27ac; one panel per run)",
-            "contacts": "Measured promoter contact table (Hi-C/Prom-Hi-C or compatible contact assay)",
+            "activity": "Measured activity table (ATAC-seq, DNase-seq and/or H3K27ac; one row per element/sample/assay)",
+            "contacts": "Measured promoter contact table (Hi-C/Prom-Hi-C; one row per element/promoter/sample)",
+            "samples": "Sample metadata table; list every biological/technical replicate with its sample_id",
             "expression": "Optional RNA-seq gene-expression table used as an annotation",
             "methylation": "Optional WGBS/RRBS methylation table used as an annotation",
             "reference": "Reference genome FASTA for the selected assembly",
