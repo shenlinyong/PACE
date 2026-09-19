@@ -214,3 +214,95 @@ PACE genome \
 ### 第六步：检查输出
 
 每次运行先看 `qc_report.json` 和 `gene_summary.tsv`，确认实际有多少候选进入分母；再看 `scores.tsv.gz` 的 `pace_score`、`A_used`、`Cbar`、`support` 和 `reason`。`resolved_activity.tsv`、`resolved_contacts.tsv` 说明每个值来自实测、预测、融合还是先验；`run_manifest.json` 记录配置、输入和模型身份。
+
+## 真实数据到底要整理成什么样
+
+PACE 从已经处理好的定量表开始，不负责 FASTQ 比对、peak calling、变异检测、相位推断或通用 liftover。先把不同来源整理成下面的规范表，再运行评分。
+
+### `samples.tsv`：样本、供体和重复
+
+至少包含以下字段：
+
+```text
+sample_id  donor_id  assay  biological_replicate  technical_replicate  species  assembly  context_id  source_id
+```
+
+例如同一只动物的三个肝脏生物学重复可以写成：
+
+```text
+animal_001_liver_rep1_ATAC  animal_001  ATAC     1  1  cattle  ARS-UCD1.2  liver  lab_batch_01
+animal_001_liver_rep2_ATAC  animal_001  ATAC     2  1  cattle  ARS-UCD1.2  liver  lab_batch_02
+animal_001_liver_rep3_ATAC  animal_001  ATAC     3  1  cattle  ARS-UCD1.2  liver  lab_batch_03
+animal_001_liver_rep1_HiC   animal_001  Hi-C     1  1  cattle  ARS-UCD1.2  liver  lab_batch_01
+```
+
+不要求每种 assay 都有相同的重复数，但缺少的样本必须在质量状态和 QC 中保持可见。技术重复应使用同一个生物学重复号和不同的 `technical_replicate`，不要把技术重复伪装成更多动物。
+
+### `observed_activity.tsv`：主活性层
+
+每一行是一个固定元件、一个样本和一个 assay：
+
+```text
+element_id  sample_id  assay  signal  measurement_status  callable_fraction  unit  normalization_id  window_id
+E0001        animal_001_liver_rep1_ATAC  ATAC     12.4  observed  0.98  CPM  atac_norm_v1  grid:500:mean
+E0001        animal_001_liver_rep1_H3K27ac H3K27ac 8.1 observed 0.97  CPM  chip_norm_v1  grid:500:mean
+```
+
+主活性组合只能从 ATAC、DNase、H3K27ac 中选择单层或支持的双层组合，并在一次运行中保持不变。RNA-seq 不放在这里；它进入 `expression.tsv`。H3K4me1、H3K4me3、H3K27me3、H3K9me3 和 CTCF 通常进入 `features.tsv` 或相应准备接口。
+
+### `observed_contacts.tsv`：元件—启动子接触
+
+每一行对应一个元件、一个物理启动子和一个接触样本：
+
+```text
+element_id  promoter_id  sample_id  contact_value  measurement_status  bin_pair_id  scale  resolution  source_id
+E0001        ENSG000001_P1  animal_001_liver_rep1_HiC  0.34  observed  bin_102:bin_205  balanced_HiC  5000  hic_batch_01
+```
+
+`resolution`、`scale`、`normalization_id` 和 `balancing` 必须和先验或其它接触样本兼容。p 值、相关系数和未声明背景的 log(O/E) 不能直接当作接触值。
+
+### RNA-seq、甲基化和其它组学
+
+| 数据 | 文件 | 最小身份字段 | 在主流程中的默认角色 |
+|---|---|---|---|
+| RNA-seq | `expression.tsv` | `gene_id`, `sample_id`, `tpm`, `status` | 基因表达注释或独立 ML 特征 |
+| WGBS/RRBS | `methylation.tsv` | `chrom`, `dyad_start0`, `methylated_count`, `total_count`, `sample_id`, `assay` | CpG 覆盖和甲基化状态 |
+| 组蛋白/CTCF | `features.tsv` 或 bigWig/BED 准备输出 | `entity_id`, `feature_name`, `value`, `evidence_id`, `status` | 元件、启动子或结构注释 |
+
+这些数据可以有不同的重复数，但每一行都要保留 `sample_id` 和来源。PACE 不会因为用户提供了 RNA-seq 就自动把 TPM 乘到主分数上；这避免了把表达注释误读为因果效应。
+
+## 从原始处理结果到规范表
+
+真实轨道先用准备命令转换，不能把 bigWig、BAM 或 xlsx 直接改名为 TSV：
+
+```yaml
+kind: bigwig
+track: data/animal_001_rep1_liver_ATAC.bw
+units: prepared/catalog/units.tsv
+sample_id: animal_001_liver_rep1_ATAC
+assay: ATAC
+unit: normalized_signal
+normalization_id: atac_norm_v1
+window_id: grid:500:mean
+missing_is_measured_zero: false
+minimum_callable_fraction: 0.8
+```
+
+```bash
+PACE prepare --config prepare_atac.yaml --out prepared/animal_001_rep1_atac
+```
+
+对第二、第三个重复重复准备步骤，最后把输出行合并到同一张 `observed_activity.tsv`，保留一次表头和每行的 `sample_id`。Hi-C/cooler、RNA、甲基化和 CTCF 的准备方式见[输入准备](docs/input_preparation.md)和[多组学接口](docs/MULTIOMICS.md)。
+
+## 常见问题先看这里
+
+| 现象 | 先检查 |
+|---|---|
+| `numpy.core._multiarray_umath` | 是否激活了 `pace` 环境；`which python` 和 `which PACE` 是否来自同一环境 |
+| `Output already exists` | 结果目录是保护性的，换一个新目录，不要删除旧结果 |
+| `Contact scale differs` | 实测接触、先验、配置中的 `contact.scale` 是否相同 |
+| `missing required column` | 查看[数据字典](docs/data_dictionary.md)，不要用文件名代替字段 |
+| 活性变成 NA | 检查 `measurement_status`、`callable_fraction`、单位和 `activity.panel` 是否匹配 |
+| 只有 WGS 但没有模型 | genome 模式不能从 FASTA 自动训练组织特异模型，需要适用权重和接触先验 |
+
+公式中的每个因子、零值与缺失规则以及三种模式的展开式见[中文公式说明](docs/FORMULA.zh-CN.md)。
