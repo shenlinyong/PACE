@@ -112,25 +112,33 @@ def main(argv=None):
                         "Measured mode: score candidates using observed activity and contact tables.\n\n"
                         "Recommended (config file):\n"
                         "  PACE measured --config examples/measured/config.yaml --out results\n\n"
-                        "Common direct inputs:\n"
-                        "  PACE measured --catalog-dir data --activity activity.tsv "
-                        "--contacts contacts.tsv --out results"
+                        "Common direct inputs (one animal/tissue):\n"
+                        "  PACE measured --catalog-dir data "
+                        "--activity animal_001_liver_ATAC_H3K27ac.tsv "
+                        "--contacts animal_001_liver_HiC_5kb.tsv --out results\n"
+                        "  activity = ATAC-seq/H3K27ac; contacts = Hi-C or Prom-Hi-C"
                     ),
                     "hybrid": (
                         "Hybrid mode: combine measured evidence with sequence/genome predictions.\n\n"
                         "Recommended (config file):\n"
                         "  PACE hybrid --config examples/hybrid/config.yaml --out results\n\n"
-                        "Common direct inputs:\n"
-                        "  PACE hybrid --catalog-dir data --reference genome.fa --vcf sample.vcf "
-                        "--sequence-model models/sequence --out results"
+                        "Common direct inputs (one animal/tissue):\n"
+                        "  PACE hybrid --catalog-dir data "
+                        "--activity animal_001_liver_ATAC_H3K27ac.tsv "
+                        "--contacts animal_001_liver_HiC_5kb.tsv "
+                        "--reference cattle_ARS-UCD1.2.fa --vcf animal_001.vcf.gz "
+                        "--sequence-model models/sequence --out results\n"
+                        "  optional annotation: animal_001_liver_RNAseq.tsv"
                     ),
                     "genome": (
                         "Genome mode: score one individual from reference, variants, and callable sites.\n\n"
                         "Recommended (config file):\n"
                         "  PACE genome --config examples/genome/config.yaml --out results\n\n"
-                        "Common direct inputs:\n"
-                        "  PACE genome --catalog-dir data --reference genome.fa --vcf sample.vcf "
-                        "--callable callable.bed --out results"
+                        "Common direct inputs (one animal):\n"
+                        "  PACE genome --catalog-dir data "
+                        "--reference cattle_ARS-UCD1.2.fa --vcf animal_001.vcf.gz "
+                        "--callable animal_001_callable.bed --out results\n"
+                        "  genome inputs = FASTA + VCF/BCF + callable sites; no ATAC/RNA file is required"
                     ),
                 }[requested_mode]
                 p.description = examples

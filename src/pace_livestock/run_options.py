@@ -117,9 +117,19 @@ def add_run_options(
             aliases.append("--observed-activity")
         if flag == "contacts":
             aliases.append("--observed-contacts")
+        descriptions = {
+            "activity": "Measured activity table (ATAC-seq, DNase-seq and/or H3K27ac; one panel per run)",
+            "contacts": "Measured promoter contact table (Hi-C/Prom-Hi-C or compatible contact assay)",
+            "expression": "Optional RNA-seq gene-expression table used as an annotation",
+            "methylation": "Optional WGBS/RRBS methylation table used as an annotation",
+            "reference": "Reference genome FASTA for the selected assembly",
+            "vcf": "Individual variants in VCF/BCF format",
+            "callable": "Callable-site BED/TSV for the individual genome",
+            "ploidy": "Individual ploidy table",
+        }
         files.add_argument(
             *aliases,
-            help=(f"{section}.{key}; paths are relative to the working directory"
+            help=(descriptions.get(flag, f"{section}.{key}; paths are relative to the working directory")
                   if visible is None or flag in visible else argparse.SUPPRESS),
         )
     model = parser.add_argument_group("scoring and calibration")
