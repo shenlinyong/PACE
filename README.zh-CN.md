@@ -109,3 +109,108 @@ PACE measured --catalog-dir examples/measured \
 [完整中文说明书](docs/USER_GUIDE.zh-CN.md) · [全部参数](docs/parameters.md) ·
 [输入字段](docs/data_dictionary.md) · [训练](docs/training.md) ·
 [差异比较](docs/comparison.md) · [局限](docs/limitations.md)。
+
+## 新手完整流程：从环境到结果
+
+### 第一步：建立独立环境
+
+推荐 Conda。不要直接使用系统 Python 或另一个项目的 NumPy。
+
+```bash
+git clone https://github.com/shenlinyong/PACE.git
+cd PACE
+conda env create -f environment.yml
+conda activate pace
+python --version
+python -c "import numpy, yaml; print(numpy.__version__, yaml.__version__)"
+python -m pip install -e '.[io,ml]'
+PACE --version
+```
+
+Python 应为 3.11 或更新版本。若 `import numpy` 报二进制错误，先运行 `conda activate pace`，再检查 `which python` 和 `which PACE` 是否都指向 `pace` 环境。没有 Conda 时，可以使用 `python3.12 -m venv .venv`、`source .venv/bin/activate` 和 `python -m pip install -e '.[io,ml]'`。
+
+环境成功后先做一次离线自检：
+
+```bash
+PACE --help
+PACE measured --help
+PACE demo --regime measured --out results/check_measured
+```
+
+### 第二步：按手里的数据选模式
+
+| 你手里的数据 | 选择 | 关键输入 | 不要误解为 |
+|---|---|---|---|
+| ATAC/DNase/H3K27ac 和启动子接触实测 | `measured` | 活性表、接触表、候选目录、样本表 | 不是功能验证概率 |
+| 上述实测加适用序列模型或个体基因组 | `hybrid` | measured 数据 + FASTA/VCF + 序列模型 | 不是任意实测/预测平均 |
+| 主要是基因组和已验证模型 | `genome` | FASTA、VCF/BCF、callable、ploidy、序列模型、接触先验 | 不是已经测得的 ATAC/RNA |
+
+RNA-seq、H3K4me1/3、H3K27me3、H3K9me3、CTCF 和 WGBS/RRBS 都可以加入，但默认作为带来源的注释或独立 ML 特征，不会自动乘进主分数。一个项目可以有 1、2、3 个或更多生物学重复；每个重复在 `samples.tsv` 中有独立 `sample_id`，并在相应数据表中复用该 ID。
+
+### 第三步：情况 A——只有实测组学
+
+仓库中真实存在的 measured 文件包括 `examples/measured/samples.tsv`、`observed_activity.tsv` 和 `observed_contacts.tsv`。下面命令可以直接复制：
+
+```bash
+PACE measured \
+  --catalog-dir examples/measured \
+  --samples examples/measured/samples.tsv \
+  --activity examples/measured/observed_activity.tsv \
+  --contacts examples/measured/observed_contacts.tsv \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --out results/measured_direct
+```
+
+真实 measured 项目至少需要：
+
+```text
+samples.tsv              每个生物学/技术重复和供体
+observed_activity.tsv    ATAC、DNase、H3K27ac 的定量窗口
+observed_contacts.tsv    Hi-C/Prom-Hi-C 的元件—启动子接触
+units/promoters/candidates.tsv  固定候选目录
+sources.tsv/evidence.tsv         来源和证据链
+```
+
+### 第四步：情况 B——实测加序列预测
+
+hybrid 在 measured 文件基础上增加参考基因组、个体变异、可调用区域、倍性和序列模型；只有有匹配校准器时才做实测—预测融合。
+
+```bash
+PACE hybrid \
+  --catalog-dir examples/hybrid \
+  --samples examples/hybrid/samples.tsv \
+  --activity examples/hybrid/observed_activity.tsv \
+  --contacts examples/hybrid/observed_contacts.tsv \
+  --reference examples/hybrid/genome.fa --vcf examples/hybrid/sample.vcf \
+  --callable examples/hybrid/callable.bed --ploidy examples/hybrid/ploidy.tsv \
+  --sequence-model examples/hybrid/models/sequence \
+  --fusion-model examples/hybrid/models/fusion \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --sample-id toy_animal --individual-id toy_animal \
+  --out results/hybrid_direct
+```
+
+实测样本和 VCF 个体必须对应同一个研究对象，物种、assembly、组织、窗口和单位必须与模型清单一致。
+
+### 第五步：情况 C——主要只有基因组
+
+genome 不要求 ATAC 或 RNA 文件，但不能只给 FASTA；还需要适用序列模型和接触先验。个体分析还需要 VCF/BCF、callable 和 ploidy。
+
+```bash
+PACE genome \
+  --catalog-dir examples/genome_only \
+  --reference examples/genome_only/genome.fa --vcf examples/genome_only/sample.vcf \
+  --callable examples/genome_only/callable.bed --ploidy examples/genome_only/ploidy.tsv \
+  --sequence-model examples/genome_only/models/sequence \
+  --contact-prior examples/genome_only/models/contact \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --sample-id toy_animal --individual-id toy_animal \
+  --out results/genome_direct
+```
+
+### 第六步：检查输出
+
+每次运行先看 `qc_report.json` 和 `gene_summary.tsv`，确认实际有多少候选进入分母；再看 `scores.tsv.gz` 的 `pace_score`、`A_used`、`Cbar`、`support` 和 `reason`。`resolved_activity.tsv`、`resolved_contacts.tsv` 说明每个值来自实测、预测、融合还是先验；`run_manifest.json` 记录配置、输入和模型身份。

@@ -4,6 +4,182 @@ PACE 用于整合增强子活性和增强子—启动子接触，计算候选调
 
 这里的“支持”是候选元件之间的相对份额。PACE 分数高，不等于该联系已经得到功能实验验证，也不等于该元件贡献了相同比例的基因表达。软件会保留原始支持、证据来源、缺失原因和实际分母，供研究者判断。
 
+## 0. 先把环境配置好
+
+下面的步骤在 Linux、macOS 或 WSL2 中适用。最省事的方式是使用 Conda；没有 Conda 时再使用 Python 虚拟环境。不要把系统 Python、另一个项目的 NumPy 和 PACE 混在一起。
+
+### 0.1 Conda 配置（推荐）
+
+```bash
+git clone https://github.com/shenlinyong/PACE.git
+cd PACE
+conda env create -f environment.yml
+conda activate pace
+python --version
+python -c "import numpy, yaml; print('numpy', numpy.__version__); print('PyYAML', yaml.__version__)"
+python -m pip install -e '.[io,ml]'
+PACE --version
+```
+
+`python --version` 应为 3.12 左右，不能低于 3.11。最后三条命令都成功，才算环境配置完成。若出现 `numpy.core._multiarray_umath`，说明调用了错误的 Python 环境；先执行 `conda activate pace`，再检查 `which python` 和 `which PACE`。
+
+### 0.2 Python venv 配置
+
+```bash
+git clone https://github.com/shenlinyong/PACE.git
+cd PACE
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e '.[io,ml]'
+PACE --version
+```
+
+如果只需要仓库内的 TSV 合成示例，核心安装 `python -m pip install -e .` 即可；bigWig、cool/mcool、BCF 和机器学习功能使用 `.[io,ml]`。序列 CNN 另需 `.[sequence]` 和匹配的 PyTorch。
+
+### 0.3 环境自检
+
+```bash
+PACE --help
+PACE measured --help
+PACE demo --regime measured --out results/check_measured
+```
+
+`PACE --help` 应只显示三种模式和基本工作流；`PACE measured --help` 应先显示一条可复制命令，再显示参数；demo 成功时会输出 `n_candidates` 和结果目录。若结果目录已存在，换一个目录名，不要覆盖旧结果。
+
+## 1. 三种情况先看懂
+
+不要从完整参数表开始。根据你手里的证据选择一条路径：
+
+| 情况 | 使用模式 | 你必须准备的主数据 | 适合回答的问题 |
+|---|---|---|---|
+| 有 ATAC/DNase/H3K27ac 和启动子接触实测 | `measured` | 活性表、接触表、样本表、候选目录 | 在实测证据背景下哪些候选更有相对支持 |
+| 有上述实测，并且还有适用序列模型或个体基因组 | `hybrid` | measured 全部数据，加 FASTA/VCF、序列模型；融合时加校准器 | 实测和序列预测共同支持下的候选排序 |
+| 主要只有参考/个体基因组和已验证序列模型 | `genome` | FASTA、VCF/BCF、callable、ploidy、序列模型、接触先验 | 指定组织背景下的遗传调控潜能 |
+
+RNA-seq、H3K4me1/3、H3K27me3、H3K9me3、CTCF 和 WGBS/RRBS 可以同时存在，但默认是带来源的注释或独立 ML 特征，不会自动成为主公式的额外乘数。每个生物学重复都可以有自己的 `sample_id`；重复数量可以是 1、2、3 或更多。
+
+## 2. 情况 A：只有实测组学，运行 measured
+
+### 2.1 环境和示例
+
+先确认环境已经按第 0 节配置。仓库中可直接运行的 measured 文件是：
+
+```text
+examples/measured/
+├── units.tsv, promoters.tsv, candidates.tsv   候选目录
+├── samples.tsv                                 样本和重复元数据
+├── observed_activity.tsv                       ATAC/H3K27ac 活性
+├── observed_contacts.tsv                       Hi-C/Prom-Hi-C 接触
+├── sources.tsv, evidence.tsv                   来源和证据链
+└── config.yaml                                 完整配置
+```
+
+### 2.2 先用配置文件跑通
+
+```bash
+PACE measured \
+  --config examples/measured/config.yaml \
+  --out results/measured_config
+```
+
+这是仓库内的合成数据，不代表真实物种准确率。成功后检查 `results/measured_config/scores.tsv.gz`、`gene_summary.tsv`、`qc_report.json` 和 `run_manifest.json`。
+
+### 2.3 再用真实存在的表格路径理解每个参数
+
+下面命令与仓库文件一一对应，可以直接复制运行：
+
+```bash
+PACE measured \
+  --catalog-dir examples/measured \
+  --samples examples/measured/samples.tsv \
+  --activity examples/measured/observed_activity.tsv \
+  --contacts examples/measured/observed_contacts.tsv \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters \
+  --out results/measured_direct
+```
+
+真实项目把路径替换为自己的表，并把 `--profile demonstration` 改为 `research`。主活性组合在配置中用 `activity.panel` 固定，例如 `[ATAC, H3K27ac]`；不要让不同元件自动使用不同组合。
+
+### 2.4 真实 measured 项目的文件组织
+
+```text
+project/
+├── data/
+│   ├── samples.tsv
+│   ├── observed_activity.tsv       ATAC/DNase/H3K27ac
+│   ├── observed_contacts.tsv       Hi-C/Prom-Hi-C
+│   ├── expression.tsv              可选 RNA-seq
+│   ├── methylation.tsv             可选 WGBS/RRBS
+│   └── features.tsv                可选组蛋白/CTCF
+├── prepared/catalog/               units/promoters/candidates/sources/evidence
+├── configs/measured.yaml
+└── results/
+```
+
+`samples.tsv` 可以登记一个、两个或三个生物学重复。例如 `animal_001_rep1_liver_ATAC`、`animal_001_rep2_liver_ATAC` 和 `animal_001_rep3_liver_ATAC` 各占一行；活性和接触表用同样的 `sample_id`。技术重复写入 `technical_replicate`，不要只靠文件名区分。
+
+## 3. 情况 B：实测加序列预测，运行 hybrid
+
+### 3.1 hybrid 比 measured 多什么
+
+除了 measured 的候选目录、样本、活性和接触外，还需要参考基因组、个体变异、可调用区域、倍性和序列模型。只有同时拥有匹配的融合校准器时，软件才会执行实测—预测融合；没有校准器时按证据优先级选择合格来源，不会猜 50:50。
+
+### 3.2 直接运行仓库示例
+
+```bash
+PACE hybrid \
+  --catalog-dir examples/hybrid \
+  --samples examples/hybrid/samples.tsv \
+  --activity examples/hybrid/observed_activity.tsv \
+  --contacts examples/hybrid/observed_contacts.tsv \
+  --reference examples/hybrid/genome.fa \
+  --vcf examples/hybrid/sample.vcf \
+  --callable examples/hybrid/callable.bed \
+  --ploidy examples/hybrid/ploidy.tsv \
+  --sequence-model examples/hybrid/models/sequence \
+  --fusion-model examples/hybrid/models/fusion \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --sample-id toy_animal --individual-id toy_animal \
+  --out results/hybrid_direct
+```
+
+### 3.3 真实 hybrid 的一致性检查
+
+实测样本和 VCF 个体必须对应同一个研究对象，物种、assembly、组织、窗口、单位和归一化协议必须与序列模型 manifest 一致。若实测是群体平均而序列是单个动物，必须把目标层级写清楚，不能只因为组织名称相同就混合。
+
+## 4. 情况 C：主要只有基因组，运行 genome
+
+### 4.1 genome 需要哪些文件
+
+genome 模式不要求提供 ATAC 或 RNA 文件，但不能只给一个 FASTA。至少需要匹配的序列模型、接触先验和候选目录；个体分析还需要 VCF/BCF、callable 位点和 ploidy。只有参考基因组时，去掉 VCF、sample、individual、callable 和 ploidy，但仍要有适用模型和先验。
+
+### 4.2 直接运行仓库示例
+
+```bash
+PACE genome \
+  --catalog-dir examples/genome_only \
+  --reference examples/genome_only/genome.fa \
+  --vcf examples/genome_only/sample.vcf \
+  --callable examples/genome_only/callable.bed \
+  --ploidy examples/genome_only/ploidy.tsv \
+  --sequence-model examples/genome_only/models/sequence \
+  --contact-prior examples/genome_only/models/contact \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --sample-id toy_animal --individual-id toy_animal \
+  --out results/genome_direct
+```
+
+genome 输出表示在指定模型、候选目录和接触先验下的相对支持或调控潜能，不是该个体已经完成的 ATAC-seq、RNA-seq 或功能验证结果。`genome` 是 `genome_only` 的命令别名。
+
+## 5. 三种模式都要检查的结果
+
+先看 `qc_report.json` 和 `gene_summary.tsv`，确认有多少候选进入实际分母；再看 `scores.tsv.gz` 的 `pace_score`、`A_used`、`Cbar`、`support` 和 `reason`。`resolved_activity.tsv` 与 `resolved_contacts.tsv` 告诉你每个值来自实测、预测、融合还是先验；`run_manifest.json` 记录输入、模型和环境哈希。`partial` 只表示在剩余可评分候选上归一化，不代表缺失数据已经被补齐。
+
 ## 1. 第一次使用：下载、安装和运行
 
 ### 1.1 从 GitHub 下载
