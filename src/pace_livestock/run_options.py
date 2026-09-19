@@ -74,7 +74,9 @@ VALUE_OPTIONS = {
 }
 
 
-def add_run_options(parser: argparse.ArgumentParser, *, output: bool = True) -> None:
+def add_run_options(
+    parser: argparse.ArgumentParser, *, output: bool = True, help_mode: str | None = None
+) -> None:
     parser.add_argument(
         "--config", help="Optional YAML; relative paths are relative to the YAML file"
     )
@@ -103,6 +105,11 @@ def add_run_options(parser: argparse.ArgumentParser, *, output: bool = True) -> 
         "--catalog-dir",
         help="Read available <table>.tsv[.gz] files from this directory; explicit file options take precedence",
     )
+    visible = {
+        "measured": {"units", "promoters", "candidates", "samples", "sources", "evidence", "activity", "contacts", "resolved_activity", "resolved_contacts", "predictions", "features", "expression", "methylation", "eta_labels", "eta_model"},
+        "hybrid": {"units", "promoters", "candidates", "samples", "sources", "evidence", "activity", "contacts", "predictions", "features", "expression", "methylation", "reference", "vcf", "callable", "ploidy", "sequence_model", "contact_prior", "fusion_model", "eta_labels", "eta_model"},
+        "genome": {"units", "promoters", "candidates", "samples", "sources", "evidence", "reference", "vcf", "callable", "ploidy", "sequence_model", "contact_prior", "eta_labels", "eta_model"},
+    }.get(help_mode)
     for flag, (section, key) in PATH_OPTIONS.items():
         aliases = ["--" + flag.replace("_", "-")]
         if flag == "activity":
@@ -110,7 +117,9 @@ def add_run_options(parser: argparse.ArgumentParser, *, output: bool = True) -> 
         if flag == "contacts":
             aliases.append("--observed-contacts")
         files.add_argument(
-            *aliases, help=f"{section}.{key}; paths are relative to the working directory"
+            *aliases,
+            help=(f"{section}.{key}; paths are relative to the working directory"
+                  if visible is None or flag in visible else argparse.SUPPRESS),
         )
     model = parser.add_argument_group("scoring and calibration")
     model.add_argument("--eta", help="auto (default; falls back to 0) or a fixed number in [0,1]")

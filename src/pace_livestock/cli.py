@@ -35,12 +35,13 @@ COMMON_COMMANDS = {"demo", "run", "validate", "capabilities"}
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    requested_mode = argv[0] if argv and argv[0] in MODES else None
     if argv and argv[0] in MODES:
         argv = ["run", "--mode", argv[0], *argv[1:]]
     elif argv and argv[0].startswith("-") and argv[0] not in ("--help", "-h", "--version"):
         argv = ["run", *argv]
     parser = argparse.ArgumentParser(
-        prog="PACE",
+        prog=f"PACE {requested_mode}" if requested_mode else "PACE",
         description=(
             "PACE — score candidate regulatory elements from measured, hybrid, or genome data.\n\n"
             "Start here:\n"
@@ -65,7 +66,13 @@ def main(argv=None):
         label = ("常用：" if name in COMMON_COMMANDS else "高级：") + description
         p = sub.add_parser(name, help=label, description=description)
         if name in ("run", "fit-eta", "validate", "capabilities"):
-            add_run_options(p, output=name in ("run", "fit-eta"))
+            if requested_mode and name == "run":
+                p.description = {
+                    "measured": "Measured mode: score candidates using observed activity and contact tables.",
+                    "hybrid": "Hybrid mode: combine measured evidence with sequence/genome predictions.",
+                    "genome": "Genome mode: score an individual from reference, variants, callability, and sequence assets.",
+                }[requested_mode]
+            add_run_options(p, output=name in ("run", "fit-eta"), help_mode=requested_mode)
             continue
         p.add_argument(
             "--config", required=True, help="YAML file; input paths resolve relative to this file"
