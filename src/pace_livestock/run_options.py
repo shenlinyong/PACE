@@ -81,7 +81,8 @@ def add_run_options(
         "--config", help="Optional YAML; relative paths are relative to the YAML file"
     )
     parser.add_argument(
-        "--mode", "--regime", choices=list(MODES), help="Evidence mode (required without --config)"
+        "--mode", "--regime", choices=list(MODES),
+        help=(argparse.SUPPRESS if help_mode else "Evidence mode (required without --config)"),
     )
     if output:
         parser.add_argument(

@@ -99,14 +99,42 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     for name, description in COMMANDS.items():
         label = ("常用：" if name in COMMON_COMMANDS else "高级：") + description
-        p = sub.add_parser(name, help=label, description=description)
+        p = sub.add_parser(
+            name,
+            help=label,
+            description=description,
+            formatter_class=argparse.RawDescriptionHelpFormatter if requested_mode and name == "run" else argparse.HelpFormatter,
+        )
         if name in ("run", "fit-eta", "validate", "capabilities"):
             if requested_mode and name == "run":
-                p.description = {
-                    "measured": "Measured mode: score candidates using observed activity and contact tables.",
-                    "hybrid": "Hybrid mode: combine measured evidence with sequence/genome predictions.",
-                    "genome": "Genome mode: score an individual from reference, variants, callability, and sequence assets.",
+                examples = {
+                    "measured": (
+                        "Measured mode: score candidates using observed activity and contact tables.\n\n"
+                        "Recommended (config file):\n"
+                        "  PACE measured --config examples/measured/config.yaml --out results\n\n"
+                        "Common direct inputs:\n"
+                        "  PACE measured --catalog-dir data --activity activity.tsv "
+                        "--contacts contacts.tsv --out results"
+                    ),
+                    "hybrid": (
+                        "Hybrid mode: combine measured evidence with sequence/genome predictions.\n\n"
+                        "Recommended (config file):\n"
+                        "  PACE hybrid --config examples/hybrid/config.yaml --out results\n\n"
+                        "Common direct inputs:\n"
+                        "  PACE hybrid --catalog-dir data --reference genome.fa --vcf sample.vcf "
+                        "--sequence-model models/sequence --out results"
+                    ),
+                    "genome": (
+                        "Genome mode: score one individual from reference, variants, and callable sites.\n\n"
+                        "Recommended (config file):\n"
+                        "  PACE genome --config examples/genome/config.yaml --out results\n\n"
+                        "Common direct inputs:\n"
+                        "  PACE genome --catalog-dir data --reference genome.fa --vcf sample.vcf "
+                        "--callable callable.bed --out results"
+                    ),
                 }[requested_mode]
+                p.description = examples
+                p.prog = f"PACE {requested_mode}"
             add_run_options(p, output=name in ("run", "fit-eta"), help_mode=requested_mode)
             continue
         p.add_argument(
