@@ -4,6 +4,19 @@ The defaults below are generated from `pace_livestock.config.DEFAULTS`. Input pa
 relative to the YAML file; `null` means no asset/input. Required context and data must be supplied.
 Do not use synthetic model assets in research/validated profiles.
 
+## Choose the small set of parameters first
+
+Most users only need to decide four things before reading the full defaults: `regime` (`measured`, `hybrid` or `genome_only`), the fixed activity `panel`, the contact `mode`, and the output target level. The remaining fields describe files, provenance and optional calibration.
+
+| First decision | Typical choice | What it controls |
+|---|---|---|
+| Evidence mode | `measured`, `hybrid`, `genome_only` | Which sources may resolve activity and contact |
+| Activity panel | `ATAC`, `DNase`, `H3K27ac`, or one supported two-layer panel | The layers used by the geometric-mean activity formula |
+| Contact mode | `observed`, `shrinkage`, `prior_only` | Whether contacts come from measurements, an explicit mixture, or a prior |
+| Replicates | Any positive number | Sample rows and aggregation; there is no fixed requirement of three |
+
+Additional RNA-seq, histone, CTCF and methylation inputs are declared in their own tables and keep their own `sample_id` and `assay`. They are annotations or separately validated ML features by default, not unlabelled extra score multipliers.
+
 ```yaml
 schema_version: pace-1
 run_id: pace

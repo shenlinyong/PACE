@@ -4,6 +4,12 @@ PACE starts from processed genomic measurements and annotations. It does not ali
 call peaks, call variants, or perform general liftover. Keep species, assembly, chromosome
 names, normalization and quantitative windows consistent across all files.
 
+## A project can have many assays and many replicates
+
+Keep one canonical table per evidence role, even when the source data arrive as many files. For example, merge the prepared rows from `animal_001_rep1_liver_ATAC.bw`, `animal_001_rep2_liver_ATAC.bw` and `animal_001_rep3_liver_ATAC.bw` into an activity table with one `sample_id` per replicate; do the same for contact, RNA-seq and methylation tables. Register the biological and technical replicate relationships in `samples.tsv` rather than encoding them only in filenames.
+
+Use `observed_activity.tsv` for the fixed primary panel (ATAC, DNase and/or H3K27ac), `observed_contacts.tsv` for Hi-C/Prom-Hi-C or a compatible contact assay, `expression.tsv` for RNA-seq, `methylation.tsv` for WGBS/RRBS counts, and `features.tsv` for additional histone marks or CTCF. Additional assays remain separately named evidence; they do not become extra factors in the PACE formula automatically. The [multi-omics guide](MULTIOMICS.md) explains the role and contract of each table.
+
 ## Canonical catalog from BED and GTF
 
 ```yaml

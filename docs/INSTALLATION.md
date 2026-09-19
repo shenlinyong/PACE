@@ -6,6 +6,16 @@ Python 3.11 or newer is required; the supplied Conda environment uses Python 3.1
 Installing dependencies requires access to the configured package repositories.
 Bundled examples subsequently run offline, without downloading data or weights.
 
+After installation, start with the mode that matches your data:
+
+```bash
+PACE measured --help
+PACE hybrid --help
+PACE genome --help
+```
+
+These commands show a short copyable example before the complete parameter reference. The examples use filenames such as `animal_001_liver_ATAC_H3K27ac.tsv` to make the expected assay and sample identity visible; replace them with your own files. PACE accepts one, two, three or more biological replicates when each sample is registered in `samples.tsv` and the same `sample_id` is used in the measurement tables.
+
 ## 1. Download the source
 
 With Git:

@@ -7,6 +7,20 @@ formula for each evidence mode. For configuration and worked commands, see the
 [Chinese user manual](USER_GUIDE.zh-CN.md), [English tutorial](TUTORIAL.md), and
 [complete parameter reference](parameters.md).
 
+## Read the formula from your data
+
+Choose the formula branch from the evidence you actually have:
+
+| Evidence in the project | Formula branch | Required measurements |
+|---|---|---|
+| Observed activity and promoter contacts | measured | A fixed ATAC/DNase/H3K27ac panel, contact observations or an explicit applicable prior |
+| Observed data plus sequence predictions | hybrid | The measured inputs plus a matching sequence model; fusion requires a matching calibrator |
+| Sequence or individual-genome predictions | genome | A matching sequence model, reference/individual genome assets and a contact prior |
+
+The formula does not require one file per assay or one replicate. The canonical activity and contact tables can contain many rows, with `sample_id` identifying each biological or technical replicate and `assay` identifying the measurement layer. PACE aggregates technical replicates within biological replicates and preserves donor identity before constructing the score. One, two, three or more biological replicates are valid when their metadata and normalization protocol are explicit.
+
+RNA-seq, histone marks other than H3K27ac, CTCF and WGBS/RRBS do not become extra multiplicative factors in the equations below by default. They remain named annotations or enter a separately validated classifier. See [MULTIOMICS.md](MULTIOMICS.md) for their interfaces.
+
 ## 1. What the score means
 
 For one gene, PACE compares the support supplied by each candidate regulatory unit.

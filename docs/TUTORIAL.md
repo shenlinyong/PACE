@@ -4,6 +4,12 @@ This tutorial uses complete offline fixtures first, then explains which files an
 parameters change for a real study. A longer [Chinese manual](USER_GUIDE.zh-CN.md)
 contains three fully commented project templates and track-preparation scripts.
 
+## Start from the evidence, not from the parameter list
+
+Use `measured` when you have qualified ATAC-seq/DNase-seq/H3K27ac and promoter-contact measurements. Use `hybrid` when those measurements are supplemented by a matching sequence model. Use `genome` when the main evidence is a reference or individual genome plus a validated sequence model and contact prior. The number of biological replicates may be one, two, three or more; each replicate is a row in `samples.tsv` and is referenced by `sample_id` in the measurement tables.
+
+RNA-seq, histone marks other than H3K27ac, CTCF and WGBS/RRBS can be supplied as named annotations. They are not silently added to the primary score. See [MULTIOMICS.md](MULTIOMICS.md) before deciding whether a layer belongs in `observed_activity.tsv`, `features.tsv`, `expression.tsv` or `methylation.tsv`.
+
 ## 1. Install
 
 ```bash

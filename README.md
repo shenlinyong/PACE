@@ -11,14 +11,30 @@ Author and maintainer: **申林用 (Linyong Shen, shenlinyong), Northwest A&F Un
 
 [中文完整使用说明](docs/USER_GUIDE.zh-CN.md) · [中文首页](README.zh-CN.md) ·
 [Installation: Conda / pip / Docker](docs/INSTALLATION.md) ·
-[Three-mode tutorial](docs/TUTORIAL.md) · [Equations](docs/```math
-\boxed{
-\mathrm{PACE}(E,G)=
-\frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
- A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
-}
-```.md)
+[Three-mode tutorial](docs/TUTORIAL.md) · [Equations](docs/FORMULA.md)
+
+## Start with the data you have
+
+Choose the first row that matches your project. The mode describes the evidence available for this run; it does not make a biological quality claim.
+
+| Available data | Start with | Main files | Optional files |
+|---|---|---|---|
+| ATAC-seq, DNase-seq or H3K27ac plus promoter contacts | `measured` | `observed_activity.tsv`, `observed_contacts.tsv`, `samples.tsv` | RNA-seq, histone marks, CTCF, methylation |
+| Measured data plus a sequence model or individual genome | `hybrid` | measured files plus FASTA/VCF and `sequence_model` | RNA-seq, histone marks, CTCF, methylation |
+| Reference/individual genome plus a validated sequence model | `genome` | FASTA, VCF/BCF, callable sites, ploidy, sequence model | RNA-seq, histone marks, CTCF, methylation |
+
+The primary score uses one fixed activity panel for the whole run: ATAC, DNase, H3K27ac, ATAC+H3K27ac or DNase+H3K27ac. RNA-seq, H3K4me1/3, H3K27me3, H3K9me3, CTCF and WGBS/RRBS remain named annotations or separately validated machine-learning features; they are not silently multiplied into the primary score. See [multi-omics inputs](docs/MULTIOMICS.md).
+
+There is no fixed number of biological replicates. Put every biological and technical replicate in `samples.tsv`, give each row a distinct `sample_id`, and keep those IDs in activity, contact, expression and methylation tables. PACE aggregates technical replicates within biological replicates and preserves donor and assay metadata before scoring. See the [input table dictionary](docs/data_dictionary.md#samples.tsv).
+
+For direct arguments, name files after the actual sample, tissue and assay:
+
+```bash
+PACE measured --catalog-dir data \
+  --activity animal_001_liver_ATAC_H3K27ac.tsv \
+  --contacts animal_001_liver_HiC_5kb.tsv \
+  --out results/animal_001_liver
+```
 
 ## Download and install
 
@@ -108,14 +124,7 @@ Automatic allocation uses a numerical exponent of zero without sufficient
 applicable functional labels and successful grouped validation. An accepted
 estimate lies in [0,1]. Details are in [calibration](docs/eta_calibration.md).
 
-The [equation manual](docs/```math
-\boxed{
-\mathrm{PACE}(E,G)=
-\frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
- A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
-}
-```.md) provides **the fully expanded total formula,
+The [equation manual](docs/FORMULA.md) provides **the fully expanded total formula,
 fully expanded formulas for all three modes, every symbol, and a numerical example**.
 A score is a relative support share, not a causal probability or expression effect.
 Missing evidence stays NA; observed zeros stay zero. No arbitrary denominator

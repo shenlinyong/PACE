@@ -1,8 +1,9 @@
 # PACE 命令行使用手册
 
-安装后直接使用 `PACE --mode measured|hybrid|genome 参数`。也可以写成
-`PACE measured 参数`、`PACE hybrid 参数`、`PACE genome 参数`。
-`PACE run --help` 列出全部文件参数；`PACE --help` 列出准备、训练和分析命令。
+安装后先选择 `PACE measured`、`PACE hybrid` 或 `PACE genome`，再查看对应的
+`--help`。帮助中的短命令会先说明 ATAC/DNase/H3K27ac、Hi-C、RNA-seq、甲基化
+和基因组文件分别放在哪里，再列出完整参数。内部的准备、训练和分析命令仍可用，
+但不混在普通用户的顶层入口中。
 命令别名 `pace` 和原来的 `pace-livestock` 使用同一套实现。
 
 ## 安装
@@ -48,6 +49,12 @@ PACE --mode measured \
   --panel ATAC H3K27ac --contact-scale depth_normalized_contact \
   --out results/measured
 ```
+
+`observed_activity.tsv` 可以包含同一项目的 1、2、3 个或更多生物学重复；
+每个重复在 `samples.tsv` 中有自己的 `sample_id`，并在活性和接触表中重复使用。
+ATAC、DNase 和 H3K27ac 通过 `assay` 区分，Hi-C/Prom-Hi-C 通过接触表区分。
+RNA-seq 放入 `expression.tsv`，WGBS/RRBS 放入 `methylation.tsv`，其它组蛋白和
+CTCF 放入 `features.tsv`，默认不会偷偷加入主分数。
 
 活动和接触参数接收规范 TSV/TSV.GZ 表，不直接接收 FASTQ、BAM 或 bigWig。
 真实轨道先通过 `PACE prepare --config preparation.yaml --out prepared/track`

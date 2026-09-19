@@ -55,6 +55,29 @@ PACE genome --config examples/genome_only/config.yaml --out results/genome
 
 “新个体只有 WGS”可以利用已经验证的适用模型；“整个物种没有可用功能数据”不能凭本软件自动解决。没有合适序列模型时，有实测数据就从 measured 开始。
 
+## 按你手里的数据开始
+
+PACE 不要求固定数量的组学层或生物学重复。先按数据条件选模式，再把每个样本的测量登记到统一表格中。
+
+| 你已有的数据 | 先选 | 主输入 | 可选输入 |
+|---|---|---|---|
+| ATAC-seq、DNase-seq 或 H3K27ac，加启动子接触数据 | `measured` | `observed_activity.tsv`、`observed_contacts.tsv`、`samples.tsv` | RNA-seq、其他组蛋白、CTCF、甲基化 |
+| 上述实测数据，加序列模型或个体基因组 | `hybrid` | 实测表，加 FASTA/VCF 和序列模型 | RNA-seq、其他组蛋白、CTCF、甲基化 |
+| 参考/个体基因组，加已验证的序列模型 | `genome` | FASTA、VCF/BCF、callable 位点、ploidy、序列模型 | RNA-seq、其他组蛋白、CTCF、甲基化 |
+
+主分数一次运行只使用固定的 ATAC、DNase、H3K27ac、ATAC+H3K27ac 或 DNase+H3K27ac 组合。RNA-seq、H3K4me1/3、H3K27me3、H3K9me3、CTCF 和 WGBS/RRBS 会保留为带名称和来源的注释，或进入单独验证的机器学习特征，不会被软件偷偷乘进主分数。详见[多组学接口](docs/MULTIOMICS.md)。
+
+生物学重复可以是 1、2、3 个或更多。`samples.tsv` 为每个生物学重复和技术重复保留独立 `sample_id`，活性、接触、表达和甲基化表使用相同的 ID。软件会先在生物学重复内处理技术重复，再保留供体和 assay 信息进行评分。字段见[输入字典](docs/data_dictionary.md#samples.tsv)。
+
+直接传文件时，文件名应写出实际个体、组织和检测层：
+
+```bash
+PACE measured --catalog-dir data \
+  --activity animal_001_liver_ATAC_H3K27ac.tsv \
+  --contacts animal_001_liver_HiC_5kb.tsv \
+  --out results/animal_001_liver
+```
+
 ## 总公式
 
 ```math
@@ -68,14 +91,7 @@ PACE genome --config examples/genome_only/config.yaml --out results/genome
 
 分子是当前元件的“活性 × 综合接触 × 可选分配”；分母是同一基因可评分候选的同类支持总和。A_star 是最终采用的活性，Cbar 是多物理 TSS 的加权接触，B 是该元件偏向目标基因的接触份额。默认实际分配指数为零，只有合格功能数据通过独立分组验证才自动采用学习结果。
 
-[完整公式说明](docs/```math
-\boxed{
-\mathrm{PACE}(E,G)=
-\frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
- A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
-}
-```.md)给出**全部展开的通用总公式、三种模式分别展开的总公式、每个符号和数值算例**。缺失是 NA，真实零是 0；分数是相对支持，不能解释为因果概率或基因表达贡献比例。
+[完整公式说明](docs/FORMULA.zh-CN.md)给出**全部展开的通用总公式、三种模式分别展开的总公式、每个符号和数值算例**。缺失是 NA，真实零是 0；分数是相对支持，不能解释为因果概率或基因表达贡献比例。
 
 ## 其他表观组学与结果
 

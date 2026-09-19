@@ -30,7 +30,7 @@ cd PACE-main
 conda env create -f environment.yml
 conda activate pace
 PACE --version
-PACE run --help
+PACE measured --help
 ```
 
 需事先安装 Conda。该环境包含核心程序及常用基因组文件读取依赖。真实序列 CNN 需要另外安装 PyTorch 和序列扩展；[安装手册](INSTALLATION.md)给出了 CPU 命令、Python venv、独立安装目录和 Docker 三种替代方式。
@@ -69,6 +69,23 @@ PACE genome --config examples/genome_only/config.yaml --out results/demo_genome
 三种模式共享同一个评分公式。模式差别是证据来源，不能把“实测”和“预测”混成同一种实验结果。`measured` 允许 H3K27ac 单层运行；没有 ATAC 时可以明确选择这个组合，不需要伪造 ATAC 数值。
 
 **没有合适序列模型时：**有实测数据就使用 measured；只有 WGS 则不能从这个仓库直接得到可靠的组织特异调控预测。某个新个体没有表观数据，与整个物种都没有训练和验证数据，是两种不同情况。
+
+### 2.1 一份、两份还是三份重复都可以
+
+PACE 不把重复数写死。每个生物学重复、技术重复和供体都在 `samples.tsv` 中占一行，并在其它表中通过相同的 `sample_id` 关联：
+
+```text
+sample_id        donor_id   assay       biological_replicate   technical_replicate
+animal_001_rep1  animal_001 ATAC        1                      1
+animal_001_rep2  animal_001 ATAC        2                      1
+animal_001_rep3  animal_001 H3K27ac     3                      1
+```
+
+`observed_activity.tsv` 可以同时包含这些样本的 ATAC、DNase 或 H3K27ac 行，`observed_contacts.tsv` 可以同时包含对应的 Hi-C/Prom-Hi-C 样本行。RNA-seq、H3K4me1/3、H3K27me3、H3K9me3、CTCF 和 WGBS/RRBS 也保留自己的 `sample_id` 与 `assay`。软件会先在生物学重复内处理技术重复，再按照目标层级保留供体信息；不会因为恰好有三个重复就自动声称统计功效足够。
+
+### 2.2 其它组学放在哪里
+
+ATAC/DNase/H3K27ac 是主活性组合的候选层；Hi-C/Prom-Hi-C 是主接触证据。RNA-seq 进入 `expression.tsv`，甲基化进入 `methylation.tsv`，其它组蛋白和 CTCF 进入 `features.tsv` 或相应的准备接口。它们默认用于注释和可追溯性，只有在独立功能标签、明确特征契约和验证通过时才进入 ML 分析，不会被自动乘进 PACE 主公式。字段和示例见[多组学说明](MULTIOMICS.md)。
 
 ## 3. 总公式与阅读顺序
 
