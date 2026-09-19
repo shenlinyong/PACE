@@ -27,14 +27,19 @@ The primary score uses one fixed activity panel for the whole run: ATAC, DNase, 
 
 There is no fixed number of biological replicates. Put every biological and technical replicate in `samples.tsv`, give each row a distinct `sample_id`, and keep those IDs in activity, contact, expression and methylation tables. PACE aggregates technical replicates within biological replicates and preserves donor and assay metadata before scoring. See the [input table dictionary](docs/data_dictionary.md#samples.tsv).
 
-For direct arguments, name files after the actual sample, tissue and assay:
+The repository's own files are a runnable example. They contain the synthetic sample IDs `S_ATAC`, `S_H3K27ac` and `S_Hi-C`, so the following command uses real files that exist after cloning:
 
 ```bash
-PACE measured --catalog-dir data \
-  --activity animal_001_liver_ATAC_H3K27ac.tsv \
-  --contacts animal_001_liver_HiC_5kb.tsv \
-  --out results/animal_001_liver
+PACE measured --catalog-dir examples/measured \
+  --samples examples/measured/samples.tsv \
+  --activity examples/measured/observed_activity.tsv \
+  --contacts examples/measured/observed_contacts.tsv \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --out results/measured_direct
 ```
+
+For your own study, replace those paths with files whose names identify the individual, tissue, assay and replicate, for example `animal_001_rep2_liver_ATAC.tsv` and `animal_001_rep2_liver_HiC_5kb.tsv`. The names are for humans; the table columns and `sample_id` values are what PACE validates.
 
 ## Download and install
 
@@ -82,6 +87,18 @@ These are complete **synthetic** fixtures that run offline without a GPU. They
 check installation and demonstrate the workflow; they are not biological models.
 Choose a new output directory each time. `PACE`, `pace` and `pace-livestock` are
 aliases for the same implementation.
+
+If you want to see which file supplies which evidence, run the same measured example with explicit paths:
+
+```bash
+PACE measured --catalog-dir examples/measured \
+  --samples examples/measured/samples.tsv \
+  --activity examples/measured/observed_activity.tsv \
+  --contacts examples/measured/observed_contacts.tsv \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --out results/measured_direct
+```
 
 For your own data, read the [step-by-step tutorial](docs/TUTORIAL.md),
 [three complete project configurations](docs/USER_GUIDE.zh-CN.md), and

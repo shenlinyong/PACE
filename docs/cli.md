@@ -30,6 +30,47 @@ PACE --version
 
 ## 三种模式的真实数据命令
 
+先用仓库中存在的合成文件确认安装和参数连接正确。下面三条命令都可以直接复制；每条命令的输入文件、样本 ID 和模型目录都真实存在于仓库中。
+
+```bash
+PACE measured --catalog-dir examples/measured \
+  --samples examples/measured/samples.tsv \
+  --activity examples/measured/observed_activity.tsv \
+  --contacts examples/measured/observed_contacts.tsv \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --out results/measured_direct
+```
+
+```bash
+PACE hybrid --catalog-dir examples/hybrid \
+  --samples examples/hybrid/samples.tsv \
+  --activity examples/hybrid/observed_activity.tsv \
+  --contacts examples/hybrid/observed_contacts.tsv \
+  --reference examples/hybrid/genome.fa --vcf examples/hybrid/sample.vcf \
+  --callable examples/hybrid/callable.bed --ploidy examples/hybrid/ploidy.tsv \
+  --sequence-model examples/hybrid/models/sequence \
+  --fusion-model examples/hybrid/models/fusion \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --sample-id toy_animal --individual-id toy_animal \
+  --out results/hybrid_direct
+```
+
+```bash
+PACE genome --catalog-dir examples/genome_only \
+  --reference examples/genome_only/genome.fa --vcf examples/genome_only/sample.vcf \
+  --callable examples/genome_only/callable.bed --ploidy examples/genome_only/ploidy.tsv \
+  --sequence-model examples/genome_only/models/sequence \
+  --contact-prior examples/genome_only/models/contact \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --sample-id toy_animal --individual-id toy_animal \
+  --out results/genome_direct
+```
+
+这些合成样本只有一个生物学重复，真实项目可以有 1、2、3 个或更多；把每个重复写入 `samples.tsv`，并在对应的表格行中使用相同的 `sample_id`。下面的命令才是替换成真实物种、组织和模型后的模板。
+
 下面的 `sheep`、`my_assembly`、`liver` 和文件路径是需要替换的项目示例，
 必须与输入表和模型清单逐字匹配。`prepared/catalog` 包含 `units.tsv`、
 `promoters.tsv`、`candidates.tsv`，以及适用的 `sources.tsv`、`evidence.tsv`。

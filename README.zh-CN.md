@@ -69,14 +69,19 @@ PACE 不要求固定数量的组学层或生物学重复。先按数据条件选
 
 生物学重复可以是 1、2、3 个或更多。`samples.tsv` 为每个生物学重复和技术重复保留独立 `sample_id`，活性、接触、表达和甲基化表使用相同的 ID。软件会先在生物学重复内处理技术重复，再保留供体和 assay 信息进行评分。字段见[输入字典](docs/data_dictionary.md#samples.tsv)。
 
-直接传文件时，文件名应写出实际个体、组织和检测层：
+仓库里已经有可以直接运行的真实示例文件。它们使用合成样本 ID `S_ATAC`、`S_H3K27ac` 和 `S_Hi-C`，因此下面的命令可以在克隆后直接执行：
 
 ```bash
-PACE measured --catalog-dir data \
-  --activity animal_001_liver_ATAC_H3K27ac.tsv \
-  --contacts animal_001_liver_HiC_5kb.tsv \
-  --out results/animal_001_liver
+PACE measured --catalog-dir examples/measured \
+  --samples examples/measured/samples.tsv \
+  --activity examples/measured/observed_activity.tsv \
+  --contacts examples/measured/observed_contacts.tsv \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --out results/measured_direct
 ```
+
+自己的研究数据再替换这些路径。建议文件名写出实际个体、组织、检测层和重复号，例如 `animal_001_rep2_liver_ATAC.tsv`、`animal_001_rep2_liver_HiC_5kb.tsv`；PACE 真正校验的是表头、`sample_id` 和来源元数据，不是文件名本身。
 
 ## 总公式
 

@@ -38,6 +38,20 @@ observed contact, the candidate/promoter/unit tables and actual sample/source
 metadata. Its tiny hand-calculation catalog explicitly excludes promoter units;
 the main research default includes them.
 
+The same run can be written with the actual bundled tables, which makes the file roles visible:
+
+```bash
+PACE measured --catalog-dir examples/measured \
+  --samples examples/measured/samples.tsv \
+  --activity examples/measured/observed_activity.tsv \
+  --contacts examples/measured/observed_contacts.tsv \
+  --species synthetic --assembly toy_assembly --tissue toy_tissue \
+  --profile demonstration --contact-scale toy_contact \
+  --no-include-promoters --out results/tutorial_measured_direct
+```
+
+The sample table contains `S_ATAC`, `S_H3K27ac` and `S_Hi-C`; the activity table labels the first two assays and the contact table labels the third. A real project replaces these paths with its own sample/assay tables and may include any number of biological replicates.
+
 ```yaml
 # Key measured-mode settings; merge into a full config, not a standalone file.
 regime: measured
