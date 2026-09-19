@@ -30,6 +30,8 @@ COMMANDS = {
     "benchmark": "Evaluate independent functional labels and explicit baselines",
 }
 
+COMMON_COMMANDS = {"demo", "run", "validate", "capabilities"}
+
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
@@ -39,14 +41,29 @@ def main(argv=None):
         argv = ["run", *argv]
     parser = argparse.ArgumentParser(
         prog="PACE",
-        description="PACE — auditable regulatory support for livestock research",
-        epilog="Direct use: PACE --mode measured|hybrid|genome [options] --out DIR. "
-        "Also: PACE measured|hybrid|genome [options]. See PACE run --help for file options.",
+        description=(
+            "PACE — score candidate regulatory elements from measured, hybrid, or genome data.\n\n"
+            "Start here:\n"
+            "  PACE demo                         Run a safe offline example\n"
+            "  PACE run --help                  Score your own prepared data\n"
+            "  PACE validate --help             Check inputs before a run\n"
+            "  PACE capabilities --help         See supported evidence and limits\n\n"
+            "Outputs are written to a new directory; existing results are never overwritten."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  PACE demo --out demo-results\n"
+            "  PACE measured --config examples/measured/config.yaml --out results\n"
+            "\n"
+            "For advanced workflows, run PACE <command> --help."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"PACE {__version__}")
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     for name, description in COMMANDS.items():
-        p = sub.add_parser(name, help=description, description=description)
+        label = ("常用：" if name in COMMON_COMMANDS else "高级：") + description
+        p = sub.add_parser(name, help=label, description=description)
         if name in ("run", "fit-eta", "validate", "capabilities"):
             add_run_options(p, output=name in ("run", "fit-eta"))
             continue
@@ -55,9 +72,18 @@ def main(argv=None):
         )
         if name not in ("validate", "capabilities"):
             p.add_argument("--out", required=True, help="New output directory (never overwritten)")
-    d = sub.add_parser("demo", help="Run a fully offline synthetic example")
-    d.add_argument("--regime", choices=["measured", "hybrid", "genome_only"], required=True)
-    d.add_argument("--out", required=True)
+    d = sub.add_parser(
+        "demo",
+        help="常用：Run a fully offline example (recommended first command)",
+        description="Run a fully offline example using synthetic data. This does not need input files.",
+    )
+    d.add_argument(
+        "--regime",
+        choices=["measured", "hybrid", "genome_only"],
+        default="measured",
+        help="Evidence mode (default: measured)",
+    )
+    d.add_argument("--out", default="pace-demo", help="Output directory (default: pace-demo)")
     args = parser.parse_args(argv)
     try:
         result = dispatch(args)
