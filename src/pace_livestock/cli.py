@@ -33,8 +33,43 @@ COMMANDS = {
 COMMON_COMMANDS = {"demo", "run", "validate", "capabilities"}
 
 
+def print_user_help() -> None:
+    """Print the task-oriented first-run guide, without exposing internals."""
+    print(
+        """PACE — score regulatory candidates from three kinds of evidence
+
+Choose the kind of data you have:
+
+  PACE measured --help     Measured activity/contact data
+  PACE hybrid --help       Measured data plus sequence/genome predictions
+  PACE genome --help       A reference genome plus variants for one individual
+
+Try it safely first (choose the mode and output directory explicitly):
+
+  PACE demo --regime measured --out demo-results
+
+The usual workflow is:
+
+  1. choose measured, hybrid, or genome
+  2. run that mode's --help to see only its inputs
+  3. provide --config FILE (recommended) and --out DIRECTORY
+
+Examples:
+
+  PACE measured --config examples/measured/config.yaml --out results
+  PACE hybrid --config examples/hybrid/config.yaml --out results
+  PACE genome --config examples/genome/config.yaml --out results
+
+Use PACE --version for the installed version.
+"""
+    )
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
+    if not argv or argv in (["--help"], ["-h"]):
+        print_user_help()
+        return 0
     requested_mode = argv[0] if argv and argv[0] in MODES else None
     if argv and argv[0] in MODES:
         argv = ["run", "--mode", argv[0], *argv[1:]]
@@ -87,10 +122,10 @@ def main(argv=None):
     d.add_argument(
         "--regime",
         choices=["measured", "hybrid", "genome_only"],
-        default="measured",
-        help="Evidence mode (default: measured)",
+        required=True,
+        help="Evidence mode to demonstrate",
     )
-    d.add_argument("--out", default="pace-demo", help="Output directory (default: pace-demo)")
+    d.add_argument("--out", required=True, help="New output directory")
     args = parser.parse_args(argv)
     try:
         result = dispatch(args)
