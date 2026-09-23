@@ -3,22 +3,22 @@
 ## 常用入口
 
 ```bash
-PACE demo --out results/demo
-PACE validate --config experiment.yaml
-PACE run --config experiment.yaml --out results/experiment
-PACE measured --config experiment.yaml --out results/another_run
-PACE run --help
+pace demo --out results/demo
+pace validate --config experiment.yaml
+pace run --config experiment.yaml --out results/experiment
+pace measured --config experiment.yaml --out results/another_run
+pace run --help
 ```
 
 `run` 和 `measured` 使用同一实测活性模型。`--mode measured` 可保留，但无需选择模式。
-所有成功结果写入新的目录；已有目录不覆盖。YAML 路径相对于配置所在目录，CLI 文件路径相对于当前目录。
+默认写入新目录。`--force` 先把已有 PACE 结果保存到相邻备份目录，再发布新结果；不允许替换任意输入目录。YAML 路径相对于配置所在目录，CLI 文件路径相对于当前目录。
 
 ## 不使用 YAML 的完整示例
 
 下例可从仓库根目录直接运行，数值应与 measured 示例一致：
 
 ```bash
-PACE run --catalog-dir examples/measured \
+pace run --catalog-dir examples/measured \
   --species synthetic --assembly toy_assembly --tissue toy_tissue \
   --profile demonstration --target-level individual \
   --panel ATAC H3K27ac --contact-mode observed --contact-scale toy_contact \
@@ -47,12 +47,23 @@ PACE run --catalog-dir examples/measured \
 | --eta-labels / --eta-model | 自动学习所需标签，或已冻结且适用的校准资产 |
 | --expression / --methylation / --features | RNA、CpG 计数和其他表观注释入口 |
 | --ml-model | 已独立训练的附加分类器，输出与主分数分列 |
-| --out | 必需的新输出目录 |
+| --out | 输出目录 |
+| --force | 保留旧结果备份后替换已识别的 PACE 输出 |
+| --pseudocount | auto、none 或 powerlaw；只能用同尺度先验正则化实测接触 |
+| --partial-policy | withhold 默认；conditional 显式兼容条件主分数 |
+| --support-bounds | 有来源说明的缺失最终支持上下界 |
+| --prior-preset | abc_human；仅 research + prior_only，目标背景未验证 |
 
 ## 其他命令
 
 | 命令 | 用途 |
 |---|---|
+| init | 生成简短配置和输入空表 |
+| prepare-pairs | 从候选目录直接生成 E–TSS 查询表 |
+| merge-tables | 合并样本规范表并检查重复 |
+| normalize-activity | 原始窗口计数按文库量和窗口长度做 CPM 密度归一化 |
+| prepare-promoter-weights | 从实测启动子信号生成固定 pi |
+| fit-prior | 直接从 cool/mcool 拟合先验，或通过 --config 使用原表格接口 |
 | prepare | BED/GTF、bigWig、cool/mcool、RNA、甲基化和区间特征转标准表 |
 | capabilities | 检查背景、接触资产及其验证声明；不会代替完整 validate |
 | fit-contact-prior | 用实测接触拟合距离背景，保留真实零和独立测试区域 |
@@ -64,10 +75,10 @@ PACE run --catalog-dir examples/measured \
 例如：
 
 ```bash
-PACE fit-contact-prior --config examples/training/contact.yaml --out models/demo_contact
-PACE fit-eta --config examples/measured/config.yaml \
+pace fit-contact-prior --config examples/training/contact.yaml --out models/demo_contact
+pace fit-eta --config examples/measured/config.yaml \
   --eta-labels examples/training/eta_labels.tsv --eta-min-genes 2 --out results/eta_demo
-PACE benchmark --config examples/analysis/benchmark.yaml --out results/benchmark_demo
+pace benchmark --config examples/analysis/benchmark.yaml --out results/benchmark_demo
 ```
 
 这些示例中的数据是合成数据。所有 YAML 默认值见[参数手册](parameters.md)，完整真实数据流程见[中文说明](USER_GUIDE.zh-CN.md)。

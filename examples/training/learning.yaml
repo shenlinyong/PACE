@@ -40,8 +40,11 @@ feature_contract:
     resolution_bp: 500
     mode: observed
     near_diagonal_bp: 0
-    near_diagonal_policy: prior_or_unresolved
+    near_diagonal_policy: prior_or_neighbor
     allow_prior_fallback: false
+    pseudocount: auto
+    pseudocount_distance_bp: 5000
+    pseudocount_strength: 1.0
   candidate_construction:
     profile: canonical_grid
     window_bp: 500
@@ -70,3 +73,5 @@ feature_contract:
     contact_reliability_source: null
     minimum_callable_fraction: 0.0
     asset_hashes: {}
+  scoring_policy:
+    partial_policy: withhold

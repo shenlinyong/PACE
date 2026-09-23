@@ -10,11 +10,24 @@ import os
 import platform
 import shutil
 import tempfile
+import uuid
 from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Iterator
 
 from .errors import PaceError
+
+_FORCE_OUTPUT = ContextVar("pace_force_output", default=False)
+
+
+@contextmanager
+def output_policy(*, force=False):
+    token = _FORCE_OUTPUT.set(force)
+    try:
+        yield
+    finally:
+        _FORCE_OUTPUT.reset(token)
 
 
 def clean(value):
@@ -70,17 +83,43 @@ def read_json(path: str | Path) -> dict:
 
 @contextmanager
 def output_directory(path: str | Path) -> Iterator[Path]:
-    """Commit all outputs together; refuse an existing path, including an empty directory."""
+    """Publish complete results; explicit force preserves a previous PACE result as a backup."""
+    if Path(path).is_symlink():
+        raise PaceError("Output must not be a symbolic link")
     final = Path(path).resolve()
+    previous = None
     if final.exists():
-        raise PaceError(f"Output already exists: {final}; choose a new --out directory")
+        if not _FORCE_OUTPUT.get():
+            raise PaceError(
+                f"Output already exists: {final}; choose a new --out directory or --force"
+            )
+        marker = final / "pace_output.json"
+        legacy = final / "run_manifest.json"
+        recognized = marker.is_file() and read_json(marker).get("format") == "pace-output-1"
+        recognized |= legacy.is_file() and read_json(legacy).get("schema_version") == "pace-1"
+        if not recognized:
+            raise PaceError("--force only replaces an identifiable PACE output directory")
+        previous = final.stat()
     final.parent.mkdir(parents=True, exist_ok=True)
     temp = Path(tempfile.mkdtemp(prefix=f".{final.name}-", dir=final.parent))
     try:
         yield temp
-        if final.exists():
+        write_json(temp / "pace_output.json", {"format": "pace-output-1"})
+        if previous is not None:
+            current = final.stat()
+            if (current.st_dev, current.st_ino) != (previous.st_dev, previous.st_ino):
+                raise PaceError("Output directory changed during computation")
+            backup = final.with_name(final.name + ".backup-" + uuid.uuid4().hex[:8])
+            os.rename(final, backup)
+            try:
+                os.rename(temp, final)
+            except OSError:
+                os.rename(backup, final)
+                raise
+        elif final.exists():
             raise PaceError(f"Output appeared during computation: {final}")
-        os.rename(temp, final)
+        else:
+            os.rename(temp, final)
     finally:
         if temp.exists():
             shutil.rmtree(temp)

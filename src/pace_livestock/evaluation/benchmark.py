@@ -8,7 +8,7 @@ from collections import defaultdict
 
 from ..catalog import map_labels
 from ..config import load_config, operation_config, strict_keys
-from ..core.scoring import log_normalize
+from ..core.scoring import log_normalize, safe_exp
 from ..errors import PaceError
 from ..io.tables import number, read_table, write_table
 from ..pipeline import compute
@@ -131,6 +131,26 @@ def benchmark_command(path, out):
         for r in resolved["scores"]
     ]
     methods["ABC_style_single_TSS"] = score(abc_edges, eta=0)[0]
+    # Distinguish allocation from simply steepening the contact exponent.
+    power_rows = [dict(r) for r in resolved["scores"]]
+    by_gene = defaultdict(list)
+    for row in power_rows:
+        a, contact = row["A_used"], row["Cbar"]
+        row["log_support"] = (
+            math.nan
+            if math.isnan(a) or math.isnan(contact)
+            else -math.inf
+            if a == 0 or contact == 0
+            else math.log(a) + 2 * math.log(contact)
+        )
+        row["support"] = safe_exp(row["log_support"])
+        by_gene[row["gene_id"]].append(row)
+    for group in by_gene.values():
+        values, _ = log_normalize([r["log_support"] for r in group])
+        complete = all(not math.isnan(r["log_support"]) for r in group)
+        for row, value in zip(group, values, strict=True):
+            row["pace_score"] = float(value) if complete else math.nan
+    methods["contact_power_2"] = power_rows
     reference_rows = methods["PACE_eta0"]
     lookup = {
         name: {(r["element_id"], r["gene_id"]): r for r in rows} for name, rows in methods.items()

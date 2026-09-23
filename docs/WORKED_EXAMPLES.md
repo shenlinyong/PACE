@@ -31,9 +31,11 @@ The bulk calculation first averages assays, producing activities 5 and 4. With
 identical contact and eta zero, E1 receives 5/9. Computing support separately per
 replicate and summing gives 3/7 instead; that is a different, unimplemented estimand.
 
-Supports (1,1,2) and (1,1,NA) give original E1 shares 1/4 and 1/2. On the common
-first two elements, both recomputed shares are 1/2; a complete-background difference
-remains unavailable. Changing supports (1,1) to (1,2) reduces the first share from
+Supports (1,1,2) and (1,1,NA) give conditional E1 shares 1/4 and 1/2. The second
+primary score is withheld because its full denominator is unknown; its default
+sensitivity interval is [0,1/2]. On the common first two elements, both recomputed
+shares are 1/2; a complete-background difference remains unavailable.
+Changing supports (1,1) to (1,2) reduces the first share from
 1/2 to 1/3 even though its own support is unchanged.
 
 ## Continuous calibration check

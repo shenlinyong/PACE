@@ -8,6 +8,8 @@ from ..errors import PaceError
 
 
 def quantify_bigwig(path, units, *, missing_is_measured_zero=False, minimum_callable_fraction=0.0):
+    if type(missing_is_measured_zero) is not bool:
+        raise PaceError("missing_is_measured_zero must be a YAML boolean")
     try:
         import pyBigWig
     except ImportError as exc:

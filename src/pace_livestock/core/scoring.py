@@ -1,4 +1,4 @@
-"""PACE measured-activity equations, evaluated in log space without pseudocounts."""
+"""PACE measured-activity equations; contact regularization is resolved upstream."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import numpy as np
 
 from ..errors import PaceError
 from ..provenance import digest
+from .bounds import score_intervals
 
 
 def nonnegative(values) -> np.ndarray:
@@ -80,7 +81,9 @@ def tss_contact(contacts, weights) -> float:
     return float(np.sum(c[w > 0] * w[w > 0]))
 
 
-def score(edges: list[dict], *, eta: float = 0) -> tuple[list[dict], list[dict]]:
+def score(
+    edges: list[dict], *, eta: float = 0, partial_policy="withhold"
+) -> tuple[list[dict], list[dict]]:
     """Score sparse E–G records carrying A_used and Cbar; never drop an input edge.
 
     All planned genes for each element MUST be present, including missing contacts.
@@ -88,6 +91,8 @@ def score(edges: list[dict], *, eta: float = 0) -> tuple[list[dict], list[dict]]
     """
     if isinstance(eta, bool) or not isinstance(eta, (int, float)) or not 0 <= eta <= 1:
         raise PaceError(f"eta must be a finite number in [0, 1], received {eta!r}")
+    if partial_policy not in ("withhold", "conditional"):
+        raise PaceError("partial_policy must be withhold or conditional")
     rows = [dict(r) for r in sorted(edges, key=lambda r: (r["gene_id"], r["element_id"]))]
     seen, by_element, by_gene = set(), defaultdict(list), defaultdict(list)
     for i, row in enumerate(rows):
@@ -174,5 +179,12 @@ def score(edges: list[dict], *, eta: float = 0) -> tuple[list[dict], list[dict]]
                     ]
                 }
             )
-            rows[i]["pace_score"] = float(p)
+            rows[i]["pace_score_conditional"] = float(p)
+            rows[i]["pace_score"] = (
+                float(p) if state == "complete" or partial_policy == "conditional" else math.nan
+            )
+            rows[i]["score_scope"] = (
+                "full_candidate_set" if state == "complete" else "conditional_only"
+            )
+        score_intervals([rows[i] for i in indices])
     return rows, summaries

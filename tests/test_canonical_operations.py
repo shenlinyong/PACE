@@ -107,6 +107,7 @@ def test_benchmark_four_explicit_baselines(tmp_path):
         "PACE_eta1",
         "ABC_style_single_TSS",
         "negative_distance",
+        "contact_power_2",
     }
     assert all(r["n_scored"] == 6 for r in report)
     assert all(

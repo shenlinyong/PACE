@@ -31,6 +31,7 @@ PATH_OPTIONS = {
     "eta_model": ("allocation", "calibrator_path"),
     "chrom_sizes": ("catalog", "chrom_sizes_path"),
     "reference_cpg": ("methylation", "reference_cpg_path"),
+    "support_bounds": ("inputs", "support_bounds"),
 }
 VALUE_OPTIONS = {
     "species": ("context", "species"),
@@ -50,6 +51,9 @@ VALUE_OPTIONS = {
     "contact_reliability": ("contact", "reliability"),
     "reliability_source": ("contact", "reliability_source"),
     "allow_prior_fallback": ("contact", "allow_prior_fallback"),
+    "prior_preset": ("contact", "prior_preset"),
+    "pseudocount": ("contact", "pseudocount"),
+    "partial_policy": ("scoring", "partial_policy"),
     "catalog_profile": ("catalog", "profile"),
     "unit_width": ("catalog", "width_bp"),
     "grid_offset": ("catalog", "offset_bp"),
@@ -82,7 +86,7 @@ def add_run_options(
             "-o",
             "--out",
             required=True,
-            help="New output directory; existing paths are never overwritten",
+            help="New output directory; --force retains a backup of recognized PACE outputs",
         )
     context = parser.add_argument_group("sample and biological context")
     for flag in ("species", "assembly", "tissue", "run-id"):
@@ -131,6 +135,13 @@ def add_run_options(
     model.add_argument("--eta-min-groups", type=int)
     model.add_argument("--eta-validation-folds", type=int)
     model.add_argument("--contact-mode", choices=["observed", "prior_only", "shrinkage"])
+    model.add_argument(
+        "--prior-preset",
+        choices=["abc_human"],
+        help="Explicit unvalidated human contact-shape baseline; requires prior_only",
+    )
+    model.add_argument("--pseudocount", choices=["auto", "none", "powerlaw"])
+    model.add_argument("--partial-policy", choices=["withhold", "conditional"])
     model.add_argument("--contact-scale")
     model.add_argument(
         "--contact-resolution",

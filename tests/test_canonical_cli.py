@@ -104,8 +104,8 @@ def test_cli_errors_and_output_protection(tmp_path):
 
 def test_installed_executable():
     # This test runs against a pip-installed package in CI, as well as the local editable install.
-    executable = Path(sys.executable).parent / "PACE"
-    assert executable.is_file(), "Install this revision with pip install -e . to create PACE"
+    executable = Path(sys.executable).parent / "pace"
+    assert executable.is_file(), "Install this revision with pip install -e . to create pace"
     result = subprocess.run([str(executable), "--version"], capture_output=True, text=True)
     assert result.returncode == 0
     from pace_livestock import __version__

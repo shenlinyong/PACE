@@ -11,7 +11,7 @@ from . import SCHEMA_VERSION, __version__
 from .config import load_config
 from .core import activity, score, tss_contact
 from .errors import PaceError
-from .evidence.assets import capabilities, load_asset
+from .evidence.assets import builtin_contact_prior, capabilities, load_asset
 from .evidence.resolve import contact_measurement_contract, resolve_activity, resolve_contacts
 from .io.tables import write_table
 from .provenance import digest, environment, file_hash, output_directory, software_hash, write_json
@@ -44,6 +44,12 @@ def compute(cfg: dict):
         assets["contact_prior"] = load_asset(
             cfg["contact"]["prior_path"], cfg, kind="contact_prior"
         )
+    elif cfg["contact"].get("prior_preset"):
+        if tables["observed_contacts"] or tables["resolved_contacts"]:
+            raise PaceError(
+                "Human relative prior cannot be mixed with measured contact tables; omit contact inputs for this explicit baseline"
+            )
+        assets["contact_prior"] = builtin_contact_prior(cfg)
     resolved_a = resolve_activity(tables, cfg)
     resolved_c = resolve_contacts(tables, cfg, prior_asset=assets.get("contact_prior"))
     a_by_e, c_by_ep, gene_promoters = defaultdict(list), {}, defaultdict(list)
@@ -54,6 +60,7 @@ def compute(cfg: dict):
     for p in tables["promoters"]:
         gene_promoters[p["gene_id"]].append(p)
     units = {r["element_id"]: r for r in tables["units"]}
+    bounds = {(r["element_id"], r["gene_id"]): r for r in tables["support_bounds"]}
     edges = []
     for edge in tables["candidates"]:
         element, gene = edge["element_id"], edge["gene_id"]
@@ -75,10 +82,14 @@ def compute(cfg: dict):
         edges.append(
             {
                 **edge,
+                **bounds.get((element, gene), {}),
                 "A_used": activity([r["resolved_value"] for r in ar]),
                 "Cbar": tss_contact([r["resolved_value"] for r in cs], [p["pi"] for p in ps]),
                 "distance_bp": distance,
                 "n_tss": len(ps),
+                "n_contact_bins": len({(p["chrom"], p["tss0"] // cs[0]["resolution"]) for p in ps})
+                if cs[0].get("resolution")
+                else len(ps),
                 "reason": reason,
                 "activity_sources": ";".join(sorted({r["evidence_type"] for r in ar})),
                 "contact_sources": ";".join(sorted({r["evidence_type"] for r in cs})),
@@ -115,6 +126,9 @@ def compute(cfg: dict):
             "near_diagonal_bp": cfg["contact"]["near_diagonal_bp"],
             "near_diagonal_policy": cfg["contact"]["near_diagonal_policy"],
             "allow_prior_fallback": cfg["contact"]["allow_prior_fallback"],
+            "pseudocount": cfg["contact"]["pseudocount"],
+            "pseudocount_distance_bp": cfg["contact"]["pseudocount_distance_bp"],
+            "pseudocount_strength": cfg["contact"]["pseudocount_strength"],
         },
         "candidate_construction": {
             "profile": cfg["catalog"]["profile"],
@@ -170,7 +184,10 @@ def compute(cfg: dict):
         "minimum_callable_fraction": cfg["activity"]["minimum_callable_fraction"],
         "asset_hashes": {k: a["manifest_sha256"] for k, a in assets.items()},
     }
-    scores, summary = score(edges, eta=allocation["eta"])
+    ml_contract["scoring_policy"] = cfg["scoring"]
+    scores, summary = score(
+        edges, eta=allocation["eta"], partial_policy=cfg["scoring"]["partial_policy"]
+    )
     features, roles = multiomics_features(tables, scores, resolved_a, cfg)
     if cfg["multiomics"]["mode"] == "ml":
         if not cfg["multiomics"]["model_path"]:
@@ -206,6 +223,24 @@ def compute(cfg: dict):
         "multiomics_roles": roles,
         "n_candidates": len(scores),
         "n_scoreable": sum(r["scoreable"] for r in scores),
+        "n_full_scores": sum(
+            math.isfinite(r["pace_score"]) and r["score_scope"] == "full_candidate_set"
+            for r in scores
+        ),
+        "n_partial_genes": sum(r["normalization_status"] == "partial" for r in summary),
+        "score_bounds": "Sensitivity ranges conditional on support assumptions; not confidence intervals",
+        "contact_processing": {
+            "pseudocount_policy": cfg["contact"]["pseudocount"],
+            "compatible_prior_available": bool(assets.get("contact_prior")),
+            "n_regularized": sum(r["evidence_type"] == "regularized" for r in resolved_c),
+            "n_near_diagonal_unresolved": sum(
+                r["reason"] == "near_diagonal_unresolved" for r in resolved_c
+            ),
+            "n_resolved_zero": sum(
+                r["resolution_status"] == "resolved" and r["resolved_value"] == 0
+                for r in resolved_c
+            ),
+        },
         "biological_validation": "not_assessed",
         "capabilities": capabilities(cfg),
         "interpretation": "PACE is a composition of regulatory support, not a causal probability or expression effect.",
@@ -222,6 +257,7 @@ def compute(cfg: dict):
         "contact_measurement_contract": contact_contract,
         "eta": allocation["eta"],
         "catalog_profile": cfg["catalog"]["profile"],
+        "scoring_policy": cfg["scoring"],
         "contact_near_diagonal_bp": cfg["contact"]["near_diagonal_bp"],
         "contact_near_diagonal_policy": cfg["contact"]["near_diagonal_policy"],
         "evidence_policy": {
@@ -230,6 +266,9 @@ def compute(cfg: dict):
             "contact_reliability": cfg["contact"]["reliability"],
             "contact_reliability_source": cfg["contact"]["reliability_source"],
             "allow_prior_fallback": cfg["contact"]["allow_prior_fallback"],
+            "pseudocount": cfg["contact"]["pseudocount"],
+            "pseudocount_distance_bp": cfg["contact"]["pseudocount_distance_bp"],
+            "pseudocount_strength": cfg["contact"]["pseudocount_strength"],
             "minimum_callable_fraction": cfg["activity"]["minimum_callable_fraction"],
             "asset_hashes": {k: a["manifest_sha256"] for k, a in assets.items()},
         },
@@ -247,6 +286,10 @@ def compute(cfg: dict):
         "input_hashes": {name: file_hash(path) for name, path in cfg["inputs"].items() if path},
         "asset_hashes": {k: a["manifest_sha256"] for k, a in assets.items()},
         "universe_ids": ids,
+        "asset_manifests": {
+            kind: {key: value for key, value in asset.items() if key != "asset_directory"}
+            for kind, asset in assets.items()
+        },
         "config_hash": digest(cfg),
         "allocation": allocation,
         "ml_feature_contract": ml_contract,
@@ -254,9 +297,12 @@ def compute(cfg: dict):
     evidence, sources = evidence_catalog(
         tables, resolved_a, resolved_c, assets, cfg, features=features
     )
+    from .reporting import regional_scores
+
     return {
         "scores": scores,
         "gene_summary": summary,
+        "region_scores": regional_scores(scores, tables["region_membership"]),
         "resolved_activity": resolved_a,
         "resolved_contacts": resolved_c,
         "features": features,
@@ -276,6 +322,7 @@ def run(config_path, out):
         write_table(dest / "scores.tsv.gz", result["scores"])
         for name in (
             "gene_summary",
+            "region_scores",
             "resolved_activity",
             "resolved_contacts",
             "evidence",

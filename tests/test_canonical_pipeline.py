@@ -192,7 +192,7 @@ def test_common_denominator_counterexample():
     rows = compare_rows(a, b)
     # Review §3.2: .25 vs .5 are conditional on different denominators; common E0/E1 both .5.
     assert rows[0]["original_score_a"] == 0.25
-    assert rows[0]["original_score_b"] == 0.5
+    assert math.isnan(rows[0]["original_score_b"])
     assert rows[0]["common_score_a"] == rows[0]["common_score_b"] == 0.5
     assert rows[0]["conditional_delta_pace"] == 0
     assert math.isnan(rows[0]["full_delta_pace"])

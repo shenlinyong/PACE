@@ -96,12 +96,20 @@ evidence_id	evidence_type	source_id	parent_evidence_ids	model_id	unit	processing
 source_id	path_or_accession	source_type	assembly	processing_method	normalization_id	checksum
 ```
 
+### support_bounds
+
+```text
+element_id	gene_id	support_lower	support_upper	bound_source
+```
+
+Optional bounds on final unnormalized support of unresolved edges. NA upper bound means unbounded. These are explicit sensitivity assumptions, not inferred experiments or confidence limits.
+
 ## Status and measurement definitions
 
 - measurement_status: observed, unmeasured, low_coverage, unmappable, invalid, not_applicable.
 - resolution_status: resolved, unresolved, invalid.
 - Activity evidence: observed or aggregate only. Imported measurements must identify the correct assay/sample and include unit, normalization_id and window_id.
-- Contact evidence: observed, aggregate, contact_prior or fused. Here fused refers solely to declared contact shrinkage between observed contacts and a distance prior.
+- Contact evidence: observed, aggregate, contact_prior, regularized or fused. Here fused refers solely to declared contact shrinkage between observed contacts and a distance prior.
 - Imported contacts require a resolution supplied by the table, matching raw contacts/prior or run configuration; scale alone is insufficient. Optional normalization_id, balancing and window_id must agree when declared.
 - Normalization status: complete, partial, zero_support, empty. Complete concerns the planned candidate set.
 - samples records identify donor, biological and technical repeats separately. Metadata checks do not replace batch correction.
@@ -111,7 +119,8 @@ source_id	path_or_accession	source_type	assembly	processing_method	normalization
 
 | File | Meaning |
 |---|---|
-| scores.tsv.gz | Every candidate, pace_score, A_used, Cbar, support/log_support, scoreable, normalization_status and reasons |
+| scores.tsv.gz | Every candidate, primary and conditional scores, pace_score_lo/hi, score_scope, A_used, Cbar, support, coverage and reasons |
+| region_scores.tsv | Sum of each source/region/gene's unique cells, without another denominator |
 | gene_summary.tsv | Candidate counts, coverage and actual denominator |
 | resolved_activity.tsv | Qualified experimental activity per unit/assay |
 | resolved_contacts.tsv | Contact value, source, prior identity, resolution and policy |

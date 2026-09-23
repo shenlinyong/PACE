@@ -29,9 +29,9 @@ jobs:
           python -m venv /tmp/pace-wheel
           /tmp/pace-wheel/bin/python -m pip install dist/*.whl
           cd /tmp
-          /tmp/pace-wheel/bin/PACE --version
-          /tmp/pace-wheel/bin/PACE demo --regime measured --out wheel-measured
-          /tmp/pace-wheel/bin/PACE measured --config wheel-measured/inputs/config.yaml --eta 0.5 --out wheel-fractional
+          /tmp/pace-wheel/bin/pace --version
+          /tmp/pace-wheel/bin/pace demo --regime measured --out wheel-measured
+          /tmp/pace-wheel/bin/pace measured --config wheel-measured/inputs/config.yaml --eta 0.5 --out wheel-fractional
   minimum-core:
     runs-on: ubuntu-latest
     steps:
@@ -93,7 +93,7 @@ jobs:
       - name: Run installed Conda entry point and examples
         shell: bash -el {0}
         run: |
-          PACE --version
+          pace --version
           for regime in measured; do
-            PACE demo --regime "$regime" --out "conda-results/$regime"
+            pace demo --regime "$regime" --out "conda-results/$regime"
           done

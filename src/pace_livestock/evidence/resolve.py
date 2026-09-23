@@ -205,9 +205,13 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
     promoters = defaultdict(list)
     for p in t["promoters"]:
         promoters[p["gene_id"]].append(p)
+    promoter_lookup = {p["promoter_id"]: p for p in t["promoters"]}
+    same_tss_bin = defaultdict(list)
     observed, imported, shared = defaultdict(list), {}, {}
     for row in t["observed_contacts"]:
         observed[row["element_id"], row["promoter_id"]].append(row)
+        p = promoter_lookup[row["promoter_id"]]
+        same_tss_bin[row["element_id"], p["chrom"], p["tss0"] // row["resolution"]].append(row)
         key = row["sample_id"], row["bin_pair_id"], row["resolution"]
         value = row["contact_value"] if row["measurement_status"] == "observed" else None
         if key in shared and shared[key] != value:
@@ -220,6 +224,11 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
     mode = cfg["contact"]["mode"]
     if mode in ("prior_only", "shrinkage") and not prior_asset:
         raise PaceError(f"contact.mode={mode} requires a contact prior asset")
+    pseudocount_policy = cfg["contact"]["pseudocount"]
+    if pseudocount_policy == "powerlaw" and (not prior_asset or mode != "observed"):
+        raise PaceError(
+            "Power-law pseudocount requires observed mode and a compatible fitted prior"
+        )
     r = cfg["contact"]["reliability"]
     if mode == "shrinkage" and (r is None or not cfg["contact"]["reliability_source"]):
         raise PaceError("Shrinkage needs explicit reliability and reliability_source")
@@ -232,7 +241,26 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 continue
             done.add(key)
             distance = abs(unit["anchor0"] - p["tss0"])
-            obs, used = aggregate_observations(observed[key], samples, "contact_value")
+            observations = observed[key]
+            # Reuse the same measured bin without counting duplicate TSS queries as replicates.
+            if not observations and measurement["resolution"]:
+                candidates = same_tss_bin[
+                    key[0], p["chrom"], p["tss0"] // measurement["resolution"]
+                ]
+                by_sample = {}
+                for candidate in candidates:
+                    sid = candidate["sample_id"]
+                    if sid in by_sample and (
+                        candidate["contact_value"] != by_sample[sid]["contact_value"]
+                        and candidate["measurement_status"]
+                        == by_sample[sid]["measurement_status"]
+                        == "observed"
+                    ):
+                        raise PaceError("Same-bin TSS contact measurements disagree")
+                    if sid not in by_sample or candidate["measurement_status"] == "observed":
+                        by_sample[sid] = candidate
+                observations = list(by_sample.values())
+            obs, used = aggregate_observations(observations, samples, "contact_value")
             prior = distance_prior(distance, prior_asset) if prior_asset else math.nan
             resolution = measurement["resolution"]
             same_bin = (
@@ -240,14 +268,35 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
             )
             near = same_bin or distance < cfg["contact"]["near_diagonal_bp"]
             reason = "resolved"
+            near_method = None
             if near:
+                near_policy = cfg["contact"]["near_diagonal_policy"]
                 value, source, weight = (
                     (prior, "contact_prior", 0.0)
-                    if cfg["contact"]["near_diagonal_policy"] == "prior_or_unresolved"
+                    if near_policy != "unresolved"
                     else (math.nan, "observed", math.nan)
                 )
+                if near_policy == "prior_or_neighbor" and not math.isfinite(value) and same_bin:
+                    corrected = [
+                        {
+                            **r,
+                            "contact_value": r["near_diagonal_value"],
+                            "measurement_status": "observed",
+                        }
+                        for r in observations
+                        if r.get("near_diagonal_method") == "neighbor_max"
+                        and r.get("near_diagonal_value") is not None
+                        and math.isfinite(r["near_diagonal_value"])
+                    ]
+                    value, used = aggregate_observations(corrected, samples, "contact_value")
+                    source, weight = "aggregate", 1.0
+                    near_method = "neighbor_max" if math.isfinite(value) else None
                 reason = (
-                    "near_diagonal_prior" if math.isfinite(value) else "near_diagonal_unresolved"
+                    "near_diagonal_neighbor_max"
+                    if near_method
+                    else "near_diagonal_prior"
+                    if math.isfinite(value)
+                    else "near_diagonal_unresolved"
                 )
             elif mode == "prior_only":
                 value, source, weight = prior, "contact_prior", 0.0
@@ -269,7 +318,15 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 "evidence_id": digest([key, source, used]),
                 "evidence_type": "aggregate" if source == "observed" and len(used) > 1 else source,
                 "observation_sample_id": used[0] if len(used) == 1 and weight > 0 else None,
-                "parent_evidence_ids": ";".join(f"contact:{key[0]}:{key[1]}:{s}" for s in used)
+                "parent_evidence_ids": ";".join(
+                    sorted(
+                        {
+                            f"contact:{r['element_id']}:{r['promoter_id']}:{r['sample_id']}"
+                            for r in observations
+                            if r["sample_id"] in used
+                        }
+                    )
+                )
                 if weight > 0
                 else None,
                 "prior_id": prior_asset["model_id"] if prior_asset and weight < 1 else None,
@@ -280,7 +337,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 else "observed"
                 if weight == 1
                 else mode,
-                "bin_pair_id": ";".join(sorted({r["bin_pair_id"] for r in observed[key]})) or None,
+                "bin_pair_id": ";".join(sorted({r["bin_pair_id"] for r in observations})) or None,
                 "resolution_status": "resolved" if math.isfinite(value) else "unresolved",
                 "reason": reason
                 if math.isfinite(value) or reason != "resolved"
@@ -288,6 +345,9 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 "scale": cfg["contact"]["scale"],
                 **{k: v for k, v in measurement.items() if k != "contract_version"},
                 "distance_bp": distance,
+                "near_diagonal_method": near_method,
+                "shared_tss_bin": any(r["promoter_id"] != key[1] for r in observations),
+                "pseudocount_value": 0.0,
                 "structural_status": structural,
             }
             if key in imported:
@@ -302,10 +362,12 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                     if mode == "shrinkage"
                     else {"observed", "aggregate"}
                 )
-                if (near and cfg["contact"]["near_diagonal_policy"] == "prior_or_unresolved") or (
+                if (near and cfg["contact"]["near_diagonal_policy"] != "unresolved") or (
                     mode == "observed" and cfg["contact"]["allow_prior_fallback"]
                 ):
                     allowed_sources.add("contact_prior")
+                if mode == "observed" and pseudocount_policy != "none" and prior_asset:
+                    allowed_sources.add("regularized")
                 if imported_source not in allowed_sources:
                     raise PaceError(
                         "Imported contact evidence conflicts with contact.mode/fallback policy"
@@ -321,7 +383,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                         0.0
                         if imported_source == "contact_prior"
                         else 1.0
-                        if imported_source in ("observed", "aggregate")
+                        if imported_source in ("observed", "aggregate", "regularized")
                         else r
                     )
                     if imported_weight != expected_weight:
@@ -329,7 +391,9 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                             "Imported contact reliability conflicts with the declared evidence policy"
                         )
                     expected_mode = (
-                        "prior_only"
+                        "regularized"
+                        if imported_source == "regularized"
+                        else "prior_only"
                         if imported_weight == 0
                         else "observed"
                         if imported_weight == 1
@@ -340,7 +404,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                             "Imported contact resolved_mode conflicts with its reliability"
                         )
                     imported_row["reliability"] = imported_weight
-                if imported_row["evidence_type"] in ("contact_prior", "fused") and (
+                if imported_row["evidence_type"] in ("contact_prior", "fused", "regularized") and (
                     not prior_asset or imported_row["prior_id"] != prior_asset["model_id"]
                 ):
                     raise PaceError("Imported contacts need a matching prior asset")
@@ -356,11 +420,53 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                         imported_row["reason"] = reason
                 if near and (
                     cfg["contact"]["near_diagonal_policy"] == "unresolved"
-                    or imported_row["evidence_type"] != "contact_prior"
+                    or not (
+                        imported_row["evidence_type"] == "contact_prior"
+                        or (
+                            cfg["contact"]["near_diagonal_policy"] == "prior_or_neighbor"
+                            and imported_row["evidence_type"] == "aggregate"
+                            and imported_row.get("near_diagonal_method") == "neighbor_max"
+                        )
+                    )
                 ):
                     imported_row["resolved_value"] = math.nan
                     imported_row["resolution_status"] = "unresolved"
                     imported_row["reason"] = "near_diagonal_unresolved"
                 row = imported_row
+            # Add a distance-dependent pseudocount once, only on the fitted measurement scale.
+            if (
+                mode == "observed"
+                and pseudocount_policy != "none"
+                and prior_asset
+                and not near
+                and row["resolution_status"] == "resolved"
+                and row["evidence_type"] in ("observed", "aggregate", "regularized")
+            ):
+                pc = cfg["contact"]["pseudocount_strength"] * min(
+                    prior, distance_prior(cfg["contact"]["pseudocount_distance_bp"], prior_asset)
+                )
+                if row["evidence_type"] == "regularized":
+                    raw = number(row.get("observed_value"), "regularized observed_value", minimum=0)
+                    if not math.isclose(
+                        number(row.get("pseudocount_value"), "pseudocount_value", minimum=0),
+                        pc,
+                        rel_tol=1e-10,
+                    ) or not math.isclose(row["resolved_value"], raw + pc, rel_tol=1e-10):
+                        raise PaceError(
+                            "Imported pseudocount differs from the declared prior or raw contact"
+                        )
+                elif pc > 0:
+                    raw = row["resolved_value"]
+                    row.update(
+                        observed_value=raw,
+                        resolved_value=raw + pc,
+                        prior_id=prior_asset["model_id"],
+                        prior_value=prior,
+                        evidence_type="regularized",
+                        resolved_mode="regularized",
+                        reason="powerlaw_pseudocount",
+                    )
+                row["pseudocount_value"] = pc
+            row["evidence_id"] = digest({"key": key, "resolution": row})
             output.append(row)
     return sorted(output, key=lambda r: (r["element_id"], r["promoter_id"]))

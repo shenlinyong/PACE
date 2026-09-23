@@ -34,7 +34,7 @@ add another scoring unit. Incomplete edge cells are reported and excluded. Defau
 cells are included once. Candidate generation binary-searches local cis neighborhoods.
 
 ```bash
-pace-livestock prepare --config prepare_catalog.yaml --out prepared/catalog
+pace prepare --config prepare_catalog.yaml --out prepared/catalog
 ```
 
 This writes units, promoters, candidates, region membership, transcript mappings,
@@ -94,7 +94,7 @@ floor((start+end−1)/2); TSS uses its exact base. The reader queries sparse bin
 shared bin-pair identifiers. Invalid balanced bins stay NA. Unstored pixels are zero only when
 explicitly declared and both bins are valid. Choose a matching resolution and state the scale;
 raw counts and balanced values are not interchangeable. Near-diagonal handling is configured
-separately in the run. There is no built-in human-species contact prior.
+separately in the run. The adapter records same-bin neighbor maxima. A human reference contact shape is available only as an explicitly selected, unvalidated prior-only baseline. See [practical workflow](PRACTICAL_WORKFLOW.md) for direct cooler prior fitting.
 
 PACE expects contact retaining distance background. An O/E track must first be multiplied by
 its matched distance expectation; log-O/E requires the corresponding inverse transform before
@@ -126,8 +126,7 @@ transcript_mapping: catalog/transcript_mapping.tsv
 
 Transcript TPM is summed only through the supplied transcript-to-gene/TSS map. Gene TPM can
 be supplied directly as expression.tsv; it is not distributed back to transcripts or used to
-invent TSS usage. Default TSS weights are equal across trusted physical TSSs. Measured CAGE or
-other suitable initiation evidence can supply explicit pi values.
+invent TSS usage. Prepared GTF TSS weights are equal across distinct physical TSSs. `pace prepare-promoter-weights` can freeze explicit weights from measured ATAC/DNase/H3K4me3/CAGE promoter signals; these are proxies requiring validation.
 
 For automatic element **and promoter** methylation annotations during scoring,
 pass the raw CpG table as `inputs.methylation` and use the run's `methylation` block

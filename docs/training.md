@@ -2,11 +2,11 @@
 
 Frozen-model inference never refits weights, scales, medians, quantiles or thresholds.
 Eta is the explicit exception: providing `--eta-labels` requests its fitting during a run;
-`--eta-model` instead reuses a frozen estimate. All distributed weights are synthetic.
+`--eta-model` instead reuses a frozen estimate. Example trained weights are synthetic. The optional human contact-shape preset is a separately labeled transferred reference, not a fitted livestock asset.
 
 ## Continuous allocation eta
 
-`PACE fit-eta --config run.yaml --eta-labels functional_labels.tsv --out results/eta`
+`pace fit-eta --config run.yaml --eta-labels functional_labels.tsv --out results/eta`
 fits a bounded continuous exponent from applicable training/calibration perturbations.
 The same behavior is available in a normal run with `--eta-labels`. Without suitable
 data, automatic eta remains zero with an explicit fallback reason. Freeze
@@ -15,6 +15,8 @@ The [calibration specification](eta_calibration.md) defines the label schema, co
 ranking objective, conservative information requirements and split-isolation rules.
 
 ## Contact prior
+
+`pace fit-prior --cooler ...` fits a compatible sparse contact map directly, with zero opportunities included and optional chromosome holdout. See [practical workflow](PRACTICAL_WORKFLOW.md). The table-based interface below remains available.
 
 ```yaml
 data: contact_fit.tsv
@@ -69,7 +71,7 @@ config = yaml.safe_load(Path('classifier.yaml').read_text())
 config['feature_contract'] = json.loads(Path('results/measured/ml_feature_contract.json').read_text())
 Path('classifier_with_contract.yaml').write_text(yaml.safe_dump(config, sort_keys=False))
 PYTHON
-PACE train --config classifier_with_contract.yaml --out models/classifier
+pace train --config classifier_with_contract.yaml --out models/classifier
 ```
 
 The contract includes activity panels/scales, contact resolution and normalization,

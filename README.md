@@ -13,7 +13,7 @@ git clone https://github.com/shenlinyong/PACE.git
 cd PACE
 conda env create -f environment.yml
 conda activate pace
-PACE --version
+pace --version
 ```
 
 Alternatively, use Python >=3.11:
@@ -38,14 +38,15 @@ No GPU or deep-learning framework is required.
 ## First run
 
 ```bash
-PACE demo --out results/demo
-PACE validate --config examples/measured/config.yaml
-PACE run --config examples/measured/config.yaml --out results/measured
-PACE measured --help
+pace demo --out results/demo
+pace validate --config examples/measured/config.yaml
+pace run --config examples/measured/config.yaml --out results/measured
+pace measured --help
 ```
 
 The bundled data are synthetic software examples. Use experimental data with
-`execution_profile: research` for scientific analysis. Output directories must be new.
+`execution_profile: research` for scientific analysis. Output directories must be new
+unless `--force` is used to replace a recognized PACE output with a retained backup.
 
 ## Required evidence
 
@@ -59,7 +60,7 @@ The bundled data are synthetic software examples. Use experimental data with
 
 Use [input preparation](docs/input_preparation.md) for BED/GTF, bigWig and cool/mcool.
 PACE starts from processed experimental data; it does not align raw reads or call peaks.
-Missing activity remains unavailable. `PACE run` and `PACE measured` call the same
+Missing activity remains unavailable. `pace run` and `pace measured` call the same
 measured-activity implementation. [Migration](docs/migration.md) describes removed APIs.
 
 ## Total formula
@@ -68,21 +69,23 @@ measured-activity implementation. [Migration](docs/migration.md) describes remov
 \boxed{
 \mathrm{PACE}(E,G)=
 \frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
+{\displaystyle\sum_{e\in\mathcal E(G)}
  A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
 }
 ```
 
 A_star is the fixed-panel geometric mean of measured signals. Cbar integrates
 distinct promoters with fixed weights. B is optional target allocation; eta defaults
-to zero without eligible independent functional validation. The denominator is the
-sum of support for the actually scoreable candidates of the same gene.
+to zero without eligible independent functional validation. The primary denominator
+includes all planned candidates for the gene. If support is incomplete, the primary
+score is withheld by default; a separate conditional score uses only scoreable
+candidates, and sensitivity bounds describe the unresolved support.
 See [fully expanded equations](docs/FORMULA.md) and [worked examples](docs/WORKED_EXAMPLES.md).
 
 ## Analyze your experiment
 
 ```bash
-PACE run --config experiment.yaml --out results/experiment
+pace run --config experiment.yaml --out results/experiment
 ```
 
 A complete configuration and all required table fields are explained in the
@@ -109,3 +112,11 @@ not demonstrate livestock predictive accuracy. See [limitations](docs/limitation
 [manuscript scope](docs/MANUSCRIPT_SCOPE.zh-CN.md).
 
 Maintainer: Linyong Shen (申林用). [MIT license](LICENSE).
+
+## Sparse experimental data and preparation
+
+The default primary score requires complete planned support. Conditional scores and support-assumption intervals remain separate. Matched contact priors enable sparse-count regularization, and diagonal contacts use declared priors or recorded neighbor correction. Region summaries aggregate unique grid cells.
+
+Use `pace init`, `prepare-pairs`, `merge-tables`, `normalize-activity`, `prepare-promoter-weights`, and `fit-prior` to prepare a project without hand-written joins. The explicit human contact-shape baseline is unvalidated for livestock and remains measured-activity-only.
+
+[Practical workflow](docs/PRACTICAL_WORKFLOW.md) · [Robustness study protocol](docs/ROBUSTNESS_VALIDATION.md) · [Development](docs/DEVELOPMENT.md).

@@ -60,6 +60,18 @@ def fit_distance_prior(distances, contacts, *, bin_edges, d_ref: float, d_min: f
                 "fit_status": "used" if n and mean > 0 else "zero_mean_excluded" if n else "empty",
             }
         )
+    result = fit_binned_prior(bins, d_ref=d_ref, d_min=d_min)
+    result.update(
+        fit_range=[float(boundaries[0]), float(boundaries[-1])],
+        n_pairs_outside_bins=int(np.sum((d < boundaries[0]) | (d >= boundaries[-1]))),
+    )
+    return result
+
+
+def fit_binned_prior(bins, *, d_ref, d_min):
+    """Fit bin means using all callable opportunities, including unstored zero pixels."""
+    if not math.isfinite(d_ref) or not math.isfinite(d_min) or min(d_ref, d_min) <= 0:
+        raise PaceError("Prior reference and minimum distances must be positive")
     used = [b for b in bins if b["fit_status"] == "used"]
     if len(used) < 2:
         raise PaceError("Prior fit needs at least two nonzero mean distance bins")
@@ -80,6 +92,4 @@ def fit_distance_prior(distances, contacts, *, bin_edges, d_ref: float, d_min: f
         "d_min": d_min,
         "bins": bins,
         "fit_weight": "valid_pair_count",
-        "fit_range": [float(boundaries[0]), float(boundaries[-1])],
-        "n_pairs_outside_bins": int(np.sum((d < boundaries[0]) | (d >= boundaries[-1]))),
     }

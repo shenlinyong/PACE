@@ -7,7 +7,17 @@ import numpy as np
 from ..errors import PaceError
 
 
-def query_contacts(uri, pairs, *, resolution: int, balanced: bool, missing_pixels_are_zero: bool):
+def query_contacts(
+    uri,
+    pairs,
+    *,
+    resolution: int,
+    balanced: bool,
+    missing_pixels_are_zero: bool,
+    diagonal_window_bp=5000,
+):
+    if type(balanced) is not bool or type(missing_pixels_are_zero) is not bool:
+        raise PaceError("balanced and missing_pixels_are_zero must be YAML booleans")
     try:
         import cooler
     except ImportError as exc:
@@ -41,6 +51,21 @@ def query_contacts(uri, pairs, *, resolution: int, balanced: bool, missing_pixel
         )
         requests.append((pair, i, j))
         grouped[i].add(j)
+    neighbors = {}
+    for pair, i, j in requests:
+        if i != j:
+            continue
+        chrom = pair["chrom"]
+        first, last = c.extent(chrom)
+        radius = max(1, int(np.ceil(diagonal_window_bp / resolution)))
+        near = [
+            tuple(sorted((i, k)))
+            for k in range(max(first, i - radius), min(last, i + radius + 1))
+            if k != i
+        ]
+        neighbors[i] = near
+        for x, y in near:
+            grouped[x].add(y)
     lookup = {}
     selector = c.matrix(balance=balanced, sparse=True)
     for i, js in grouped.items():
@@ -63,6 +88,16 @@ def query_contacts(uri, pairs, *, resolution: int, balanced: bool, missing_pixel
             "bin_pair_id": f"{i}:{j}",
             "resolution": resolution,
             "measurement_status": "observed" if np.isfinite(lookup[i, j]) else "unmappable",
+            "near_diagonal_value": max(
+                [lookup[x, y] for x, y in neighbors.get(i, []) if np.isfinite(lookup[x, y])],
+                default=np.nan,
+            )
+            if i == j and valid[i]
+            else np.nan,
+            "near_diagonal_method": "neighbor_max" if i == j else None,
+            "near_diagonal_source_bins": ";".join(f"{x}:{y}" for x, y in neighbors.get(i, []))
+            if i == j
+            else None,
         }
         for pair, i, j in requests
     ]

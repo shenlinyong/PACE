@@ -27,13 +27,13 @@ cd PACE-main
 ```bash
 conda env create -f environment.yml
 conda activate pace
-PACE --version
-PACE measured --help
+pace --version
+pace measured --help
 ```
 
 需事先安装 Conda。该环境包含核心程序及常用基因组文件读取依赖。无需 GPU；[安装手册](INSTALLATION.md)给出了 Python venv、独立安装目录和 Docker 的安装方式。
 
-Docker 从源码本地构建，容器入口已经是 PACE：
+Docker 从源码本地构建，容器入口已经是 pace：
 
 ```bash
 docker build -t pace:local .
@@ -45,9 +45,9 @@ docker run --rm --user "$(id -u):$(id -g)" \
 ### 1.3 运行合成示例
 
 ```bash
-PACE demo --out results/demo
-PACE validate --config examples/measured/config.yaml
-PACE run --config examples/measured/config.yaml --out results/demo_measured
+pace demo --out results/demo
+pace validate --config examples/measured/config.yaml
+pace run --config examples/measured/config.yaml --out results/demo_measured
 ```
 
 这些是合成软件检查，不能用作真实物种准确率。真实分析使用自己的实验数据并设 `execution_profile: research`。
@@ -79,11 +79,11 @@ ATAC/DNase/H3K27ac 是主活性组合的候选层；Hi-C/Prom-Hi-C 是主接触�
 ```math
 \mathrm{PACE}(E,G)=\frac{
 A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
+{\displaystyle\sum_{e\in\mathcal E(G)}
 A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}.
 ```
 
-按三个步骤理解：先确定每个元件的活性，再确定它对该基因的综合接触，最后把它的支持除以该基因可评分候选的支持总和。
+按三个步骤理解：先确定每个元件的活性，再确定它对该基因的综合接触，最后把它的支持除以该基因完整计划候选的支持总和；若存在缺失，主分数默认 NA，条件分数另列。
 
 | 符号 | 通俗解释 |
 |---|---|
@@ -93,7 +93,7 @@ A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}.
 | Cbar | 把同一个基因不同物理 TSS 的接触按固定权重汇总 |
 | B | 该元件对该基因的接触占其所有候选目标基因接触的份额 |
 | eta_used | 实际使用的可选分配参数；默认数值为 0，有合格功能证据才自动学习并验证 |
-| E_score | 在预先确定的候选背景中，本次确实可计算支持的元件 |
+| E(G) | 预先确定的完整候选背景；可用子集另用于条件分数 |
 
 以 ATAC+H3K27ac 为例，活性是两种合格信号的几何平均：
 
@@ -105,10 +105,10 @@ A_\star(E)=\sqrt{x_{\star,\mathrm{ATAC}}(E)\,x_{\star,\mathrm{H3K27ac}}(E)}.
 
 ```math
 \overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)
-\{r(E,t)C_{\mathrm{obs}}(E,t)+[1-r(E,t)]C_{\mathrm{prior}}(E,t)\}.
+\widetilde C(E,t).
 ```
 
-这里 pi 是同一基因的 TSS 权重，r 是接触中实测来源的权重；二者含义不同。r=1 只用实测，r=0 只用先验。程序不会仅凭测序文件的存在自动认定数据可信。
+这里 pi 是固定的 TSS 权重，Ctilde 是采用明确策略解析的接触。实测接触可用同尺度先验加伪计数；近对角可用匹配先验或有来源记录的邻近最大值。具体分支见完整数学说明。
 
 [完整数学说明](FORMULA.zh-CN.md)给出总公式、完全展开式、接触策略、符号及零值/缺失规则。
 
@@ -154,7 +154,7 @@ include_promoters: true
 ```
 
 ```bash
-PACE prepare --config prepare_catalog.yaml --out prepared/catalog
+pace prepare --config prepare_catalog.yaml --out prepared/catalog
 ```
 
 `chrom_sizes.tsv` 有 `chrom`、`length` 两列。GTF 需要 transcript 记录。`radius` 是候选搜索距离，不是鸡的已验证最优距离，应在研究设计中确定并检查敏感性。启动子单元默认进入候选背景。参考序列边缘放不下完整窗口的单元会被报告。
@@ -169,39 +169,26 @@ track: data/animal1_ATAC.bw
 units: prepared/catalog/units.tsv
 sample_id: animal1_ATAC
 assay: ATAC
-unit: normalized_signal
-normalization_id: frozen_signal_protocol
+unit: CPM_per_bp
+normalization_id: CPM_density_v1
 window_id: grid:500:mean
 missing_is_measured_zero: false
 minimum_callable_fraction: 0.8
 ```
 
 ```bash
-PACE prepare --config prepare_atac.yaml --out prepared/animal1_atac
+pace prepare --config prepare_atac.yaml --out prepared/animal1_atac
 ```
 
 H3K27ac 使用同一命令，修改轨道、sample_id、assay 和输出目录。0.8 只是这里演示的阈值，应按实际轨道协议设置。bigWig 未存储的区间不一定是真实零，不能不加判断就打开 `missing_is_measured_zero`。
 
-把各样本输出的 `observed_activity.tsv` 合并成一张保留一次表头的 TSV。使用 Python 标准库即可：
+把各样本输出合并为一张规范表，程序会检查重复键：
 
 ```bash
-python - <<'PY'
-import csv
-from pathlib import Path
-paths = [Path('prepared/animal1_atac/observed_activity.tsv'),
-         Path('prepared/animal1_h3k27ac/observed_activity.tsv')]
-with Path('prepared/observed_activity.tsv').open('w', newline='') as out:
-    writer = None
-    for path in paths:
-        with path.open() as handle:
-            reader = csv.DictReader(handle, delimiter='\t')
-            if writer is None:
-                writer = csv.DictWriter(out, reader.fieldnames, delimiter='\t')
-                writer.writeheader()
-            elif reader.fieldnames != writer.fieldnames:
-                raise ValueError(f'Headers differ: {path}')
-            writer.writerows(reader)
-PY
+pace merge-tables --table observed_activity \
+  --inputs prepared/animal1_atac/observed_activity.tsv \
+           prepared/animal1_h3k27ac/observed_activity.tsv \
+  --out prepared/activity
 ```
 
 需先对 H3K27ac 执行准备命令，生成第二个路径。不要重复输入同一 sample/element/assay。各检测层可以有自己的量纲，但同一层在所有元件、样本和所用模型之间必须采用同一个已声明归一化协议。
@@ -211,30 +198,7 @@ PY
 `element_promoter_pairs.tsv` 每行包含 `element_id,promoter_id,chrom,anchor0,tss0`。从候选表与启动子表连接生成：
 
 ```bash
-python - <<'PY'
-import csv
-from collections import defaultdict
-from pathlib import Path
-root = Path('prepared/catalog')
-def read(name):
-    with (root / name).open() as handle:
-        return list(csv.DictReader(handle, delimiter='\t'))
-units = {r['element_id']: r for r in read('units.tsv')}
-promoters = defaultdict(list)
-for r in read('promoters.tsv'):
-    promoters[r['gene_id']].append(r)
-rows = {}
-for edge in read('candidates.tsv'):
-    u = units[edge['element_id']]
-    for p in promoters[edge['gene_id']]:
-        key = (u['element_id'], p['promoter_id'])
-        rows[key] = dict(element_id=u['element_id'], promoter_id=p['promoter_id'],
-                         chrom=u['chrom'], anchor0=u['anchor0'], tss0=p['tss0'])
-with Path('prepared/element_promoter_pairs.tsv').open('w', newline='') as out:
-    writer = csv.DictWriter(out, ['element_id','promoter_id','chrom','anchor0','tss0'], delimiter='\t')
-    writer.writeheader()
-    writer.writerows(rows.values())
-PY
+pace prepare-pairs --catalog-dir prepared/catalog --out prepared/pairs
 ```
 
 `prepare_hic.yaml`：
@@ -242,7 +206,7 @@ PY
 ```yaml
 kind: cooler
 contact: data/animal1.mcool::/resolutions/5000
-pairs: prepared/element_promoter_pairs.tsv
+pairs: prepared/pairs/pairs.tsv
 resolution: 5000
 balanced: true
 missing_pixels_are_zero: true
@@ -253,12 +217,41 @@ normalization_id: hic_norm_protocol_1
 ```
 
 ```bash
-PACE prepare --config prepare_hic.yaml --out prepared/animal1_hic
+pace prepare --config prepare_hic.yaml --out prepared/animal1_hic
 ```
 
 `balanced` 必须符合文件实际处理方式；未存储 pixel 是否代表零也需核实。不同分辨率、raw counts、不同归一化不能直接平均。O/E 已去掉距离背景，需要先用匹配的 expected 还原为接触量；p 值不能作 contact。`.hic` 需在上游转换为可核验的 cool/mcool。
 
+### 5.4 归一化、先验与启动子权重
+
+如果拥有原始窗口片段计数，使用 `pace normalize-activity`，并提供完整过滤后文库量。上面的 bigWig 示例假设轨道已按对应的 CPM 密度协议归一化；若你的轨道使用其他方式，填写实际方法，不能靠重命名标识完成换算。
+
+先验可直接从本次实验的 mcool 拟合：
+
+```bash
+pace fit-prior --cooler data/animal1.mcool::/resolutions/5000 \
+  --species chicken --assembly GRCg7w --tissue liver \
+  --scale balanced_contact_protocol_1 --normalization-id hic_norm_protocol_1 \
+  --out models/animal1_contact
+```
+
+在运行配置 contact 中加入 `prior_path: models/animal1_contact`，即可在有匹配测量合同的情况下使用近对角先验和自动伪计数。普通位置缺失需要另设 `allow_prior_fallback: true`。这不恢复仅基因组预测，活性仍须实测。
+
+没有同背景 Hi-C 时可以显式选 `--prior-preset abc_human` 生成距离基线配置，输出会标记人类来源和目标背景尚未验证。不能用它冒充畜禽实测接触，不能与实测 Hi-C 的任意绝对尺度混合。
+
+ATAC/H3K4me3 等启动子信号可以用 `pace prepare-promoter-weights` 生成固定 pi；不同物理 TSS 的基因总 TPM 不作这种分配。所有新命令、输入表和具体参数见[实际操作流程](PRACTICAL_WORKFLOW.md)。
+
 ## 6. 实测数据运行配置与参数
+
+推荐先生成简短配置，无需手写所有可选参数：
+
+```bash
+pace init --catalog-dir prepared/catalog \
+  --species chicken --assembly GRCg7w --tissue liver \
+  --panel ATAC H3K27ac --out project
+```
+
+填写生成的空表，或把 config.yaml 中的路径指向已准备文件。下面的完整 YAML 是参数参考，不是要求首次使用逐项填写。
 
 以下是**真实项目配置模板**，需先准备所列文件；它不是仓库中开箱即用的示例。以一个鸡个体肝脏为例，保存为 `measured.yaml`：
 
@@ -280,7 +273,7 @@ inputs:
   region_membership: prepared/catalog/region_membership.tsv
   samples: prepared/samples.tsv
   sources: prepared/sources.tsv
-  observed_activity: prepared/observed_activity.tsv
+  observed_activity: prepared/activity/observed_activity.tsv
   observed_contacts: prepared/animal1_hic/observed_contacts.tsv
 catalog:
   profile: canonical_grid
@@ -299,7 +292,7 @@ contact:
   normalization_id: hic_norm_protocol_1
   balancing: balanced
   window_id: bin_pair
-  near_diagonal_policy: prior_or_unresolved
+  near_diagonal_policy: prior_or_neighbor
   allow_prior_fallback: false
 promoters:
   weights: provided
@@ -311,8 +304,8 @@ seed: 17
 ```
 
 ```bash
-PACE validate --config measured.yaml
-PACE measured --config measured.yaml --out results/animal1_measured
+pace validate --config measured.yaml
+pace measured --config measured.yaml --out results/animal1_measured
 ```
 
 | 参数 | 如何选择 |
@@ -322,7 +315,7 @@ PACE measured --config measured.yaml --out results/animal1_measured
 | `activity.panel` | ATAC、DNase、H3K27ac 三种单层，或可及性+H3K27ac 双层；不支持把任意组蛋白直接塞入主活性组合 |
 | `minimum_callable_fraction` | 低于阈值的观测不可用；由数据生产协议确定 |
 | `contact.scale` | 与接触表一致的测量尺度标识；更名不能实现尺度转换 |
-| `near_diagonal_policy` | 同 bin 等近距离接触使用匹配先验，或返回 NA；无先验时保持缺失 |
+| `near_diagonal_policy` | 默认优先匹配先验，否则同 bin 采用有记录的邻近最大值；均不可用才为 NA |
 | `promoters.weights` | provided 使用可信 pi；equal 对去重后的物理 TSS 等权 |
 | `allocation.eta` | 通常保持 auto，无合格校准证据时实际为零 |
 
@@ -337,7 +330,7 @@ PACE measured --config measured.yaml --out results/animal1_measured
 | Hi-C | 元件到物理 TSS 的接触 | cooler prepare → observed_contacts |
 | RNA-seq | 基因表达注释、显式选择的 ML 特征 | expression 或 rna prepare |
 | H3K4me1 | 元件状态注释，可用于独立 ML | observed_activity 中的附加层或 features |
-| H3K4me3 | 启动子状态注释，可用于独立 ML | 启动子窗口量化后 features |
+| H3K4me3 | 注释、独立 ML，或显式生成固定 TSS 权重 | features 或 prepare-promoter-weights |
 | H3K27me3 / H3K9me3 | 抑制性染色质注释，可用于独立 ML | bigWig 或 features；没有固定惩罚倍数 |
 | CTCF ChIP-seq / CUT&Tag | 结构相关占据与 motif 方向注释 | bigWig、BED features 或外部 features |
 | DNA methylation：WGBS/RRBS | 区域/启动子甲基化及覆盖状态注释 | CpG counts、methylation prepare、features |
@@ -365,9 +358,10 @@ PY
 
 | 输出文件 | 建议检查内容 |
 |---|---|
-| `scores.tsv.gz` | 每条边的 pace_score、A_used、Cbar、B、support、log_support、缺失原因 |
+| `scores.tsv.gz` | 主分数、pace_score_conditional、pace_score_lo/hi、支持及缺失原因 |
+| `region_scores.tsv` | 对原始峰区域的唯一网格单元求和，不重新建立分母 |
 | `gene_summary.tsv` | 每个基因计划候选数、可评分数、覆盖率和分母 |
-| `resolved_activity.tsv` | 每层活动最终采用实测、预测还是融合，及使用量纲 |
+| `resolved_activity.tsv` | 每层活性的实测值、重复汇总、缺失及量纲 |
 | `resolved_contacts.tsv` | 接触来源、prior、reliability 和无效原因 |
 | `multiomics_features.tsv.gz` | 额外组学特征、状态、角色和 evidence_id |
 | `evidence.tsv`、`sources.tsv` | 原始与派生证据的可追溯目录 |
@@ -375,7 +369,7 @@ PY
 | `qc_report.json`、`report.md` | 总体覆盖、失败原因、能力边界 |
 | `resolved_config.yaml`、`run_manifest.json` | 实际参数、输入/模型哈希、环境和软件身份 |
 
-先检查覆盖与缺失，再看分数。`complete` 只表示计划候选可评分，不表示发现了全部生物学增强子；`partial` 表示分数只针对可评分子集。只有一个有效候选时它可能得到 1，但并没有因此成为已验证调控元件。所有支持为零时 PACE 是 NA，不能人为加常数凑出分数。
+先检查覆盖与缺失，再看分数。`complete` 表示计划候选支持均可计算；`partial` 的主分数默认 NA，只有条件列按可用子集归一化。上下界是敏感性范围，不是统计置信区间。加过明确接触伪计数后仍全部支持为零时，主分数为 NA。条件分数 1 不构成独立功能验证。
 
 ## 9. 比较两只动物或两个处理
 
@@ -392,7 +386,7 @@ allow_evidence_difference: false
 ```
 
 ```bash
-PACE compare --config compare.yaml --out results/animal2_minus_animal1
+pace compare --config compare.yaml --out results/animal2_minus_animal1
 ```
 
 差值方向是右减左。完整差异与条件差异分开报告；分辨率、归一化或模型策略不兼容时不能当作完整个体生物效应。增强子自身支持不变，但其他元件改变，也会使它的 PACE 份额改变，因此应同时查看活性、support、基因总支持和 PACE 差值。
@@ -413,9 +407,9 @@ PACE compare --config compare.yaml --out results/animal2_minus_animal1
 
 ## 11. 常见错误与继续阅读
 
-- `PACE: command not found`：先 `conda activate pace`，确认安装和运行使用同一 Python 环境。
+- `pace: command not found`：先 `conda activate pace`，确认安装和运行使用同一 Python 环境。
 - 文件找不到：YAML 内路径相对于 YAML 所在目录；CLI 路径相对于当前目录；Docker 路径必须在挂载范围内。
-- 输出目录已存在：使用新的输出目录，避免旧结果和新参数混在一起。
+- 输出目录已存在：使用新目录，或 `--force`；后者仅替换可识别的 PACE 结果，并先保留 NAME.backup-* 备份。
 - 某基因全部 NA：检查固定活性组合、各正权重 TSS、零分母及 QC 原因，不要把 NA 改成 0。
 - 数据合同不兼容：实际统一分辨率/尺度/窗口或重新拟合模型；修改字符串标识不能修复物理不一致。
 - 自动参数仍为零：查看校准报告，可能是无标签、独立组不足、提升不稳定或本就没有独立增益。

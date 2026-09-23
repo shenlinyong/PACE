@@ -16,8 +16,12 @@ All symbols refer to the [current formula](FORMULA.md).
 | B | Contact share across G(E) | `B`; skipped at eta zero |
 | eta_used | Actual fixed or calibrated allocation exponent | `comparison_contract.eta`, `eta_calibration.json` |
 | S | Unnormalized activity/contact/allocation support | `support`, `log_support` |
-| E_score(G) | Actually scoreable candidates for G | Normalization identifiers and coverage |
-| PACE(E,G) | Within-gene relative support | `pace_score` |
+| E(G) | Full planned candidate set for G | `inputs.candidates`; primary denominator |
+| E_score(G) | Actually scoreable candidates for G | Conditional denominator and coverage |
+| PACE(E,G) | Full-background within-gene relative support | `pace_score`; withheld if incomplete by default |
+| PACE_cond(E,G) | Relative support within the measurable subset | `pace_score_conditional` |
+| L, U | Declared bounds on unresolved unnormalized support | `support_lower`, `support_upper` |
+| PACE_lo, PACE_hi | Sensitivity bounds under these assumptions | `pace_score_lo`, `pace_score_hi` |
 
 Auxiliary classifier outputs `pace_ml_score` and `pace_ml_probability` are separate.
 QC and coverage are reported explicitly; no universal combined quality index is

@@ -20,7 +20,7 @@ while (($#)); do
             shift 2 ;;
         -h|--help)
             printf '%s\n' 'Usage: ./install.sh [--prefix ~/.local] [--python python3] [--extras io,ml]'
-            printf '%s\n' 'Requires Python >=3.11. Installs into PREFIX/share/pace/venv and PREFIX/bin/PACE.'
+            printf '%s\n' 'Requires Python >=3.11. Installs into PREFIX/share/pace/venv and PREFIX/bin/pace.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -35,9 +35,9 @@ pace_root="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p -- "$pace_prefix"
 pace_prefix="$(CDPATH= cd -- "$pace_prefix" && pwd)"
 pace_env="$pace_prefix/share/pace/venv"
-pace_bin="$pace_prefix/bin/PACE"
+pace_bin="$pace_prefix/bin/pace"
 if [[ -e "$pace_bin" || -L "$pace_bin" ]]; then
-    if [[ ! -L "$pace_bin" || "$(readlink -- "$pace_bin")" != "$pace_env/bin/PACE" ]]; then
+    if [[ ! -L "$pace_bin" || "$(readlink -- "$pace_bin")" != "$pace_env/bin/pace" ]]; then
         printf 'Refusing to replace an unmanaged executable: %s\n' "$pace_bin" >&2
         exit 2
     fi
@@ -55,8 +55,8 @@ if [[ -n "$pace_extras" ]]; then
     pace_requirement="$pace_root[$pace_extras]"
 fi
 "$pace_env/bin/python" -m pip install --upgrade "$pace_requirement"
-"$pace_env/bin/PACE" --version
+"$pace_env/bin/pace" --version
 mkdir -p -- "$pace_prefix/bin"
-ln -sfn -- "$pace_env/bin/PACE" "$pace_bin"
+ln -sfn -- "$pace_env/bin/pace" "$pace_bin"
 printf 'Installed: %s\n' "$pace_bin"
 printf 'If needed, add to PATH: export PATH="%s/bin:$PATH"\n' "$pace_prefix"

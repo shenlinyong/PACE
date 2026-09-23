@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+- Withhold incomplete primary scores by default; report conditional scores and support sensitivity intervals.
+- Add matched-scale power-law contact pseudocounts, recorded neighbor correction and same-bin TSS query reuse.
+- Fit contact priors directly from sparse coolers, counting valid zero opportunities; provide an explicit unvalidated human shape baseline.
+- Add region summaries, promoter-signal weights, CPM density normalization, project initialization, pairs and merge commands.
+- Use the lowercase pace executable; force output replacement preserves a prior-result backup.
+- Add contact-power benchmark control and a controlled-degradation validation protocol.
+
+
 ## 0.4.0
 
 - Restrict activity to measured ATAC, DNase or H3K27ac and valid experimental aggregates.

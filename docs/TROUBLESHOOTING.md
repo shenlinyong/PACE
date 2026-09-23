@@ -11,7 +11,7 @@
 | Missing activity | Supply every declared assay for the fixed panel, or explicitly choose an appropriate separate single-layer run |
 | Missing contact or B | Check required TSSs and the fixed candidate-gene set; do not remove missing genes to change allocation |
 | All gene scores are NA | Inspect unresolved inputs and `gene_summary.tsv`; zero total support cannot be normalized |
-| Scores sum to one but coverage is partial | Inspect `normalization_status`; the sum describes the measurable subset only |
+| Primary scores are NA but conditional scores sum to one | Planned support is incomplete; inspect coverage, intervals and contact resolution reasons |
 | Automatic eta remains zero | Read `eta_calibration.json`: no labels, inapplicable context, insufficient informative genes, or a valid boundary optimum can explain zero |
 | Eta calibration scope mismatch | Use the same scientific context, catalog and evidence/model policy, or perform a new justified calibration |
 | Synthetic asset rejected | Use demonstration mode for bundled fixtures; provide real appropriate assets for research |

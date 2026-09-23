@@ -5,9 +5,9 @@
 Follow [installation](INSTALLATION.md), then run:
 
 ```bash
-PACE demo --out results/demo
-PACE validate --config examples/measured/config.yaml
-PACE run --config examples/measured/config.yaml --out results/measured
+pace demo --out results/demo
+pace validate --config examples/measured/config.yaml
+pace run --config examples/measured/config.yaml --out results/measured
 ```
 
 These commands use synthetic data and do not need external downloads beyond installation.
@@ -59,11 +59,11 @@ Multiple animals cannot be combined under `individual`. Use separate runs for an
 ## 4. Run and inspect
 
 ```bash
-PACE validate --config experiment.yaml
-PACE run --config experiment.yaml --out results/animal1_liver
+pace validate --config experiment.yaml
+pace run --config experiment.yaml --out results/animal1_liver
 ```
 
-Inspect scores.tsv.gz, gene_summary.tsv, qc_report.json and resolved evidence. Check candidate coverage and every partial/NA reason before ranking links. The total score within a gene sums to 1 only when positive total support exists. A score of 1 is not independent functional confirmation.
+Inspect scores.tsv.gz, gene_summary.tsv, qc_report.json and resolved evidence. Check candidate coverage and every partial/NA reason before ranking links. The primary scores sum to 1 only for a complete planned background with positive support. Incomplete genes have separate conditional scores and sensitivity bounds. A score of 1 is not independent functional confirmation.
 
 ## 5. Optional contact prior
 

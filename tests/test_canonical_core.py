@@ -1,4 +1,4 @@
-"""Independent constants from PACE_Review_and_Validation.md §§3.1–3.4."""
+"""Independent hand-calculated checks of activity and relative support."""
 
 import math
 

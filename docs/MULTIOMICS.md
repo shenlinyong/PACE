@@ -42,7 +42,7 @@ minimum_callable_fraction: 0.8
 ```
 
 ```bash
-PACE prepare --config prepare_h3k4me1.yaml --out prepared/animal1_h3k4me1
+pace prepare --config prepare_h3k4me1.yaml --out prepared/animal1_h3k4me1
 ```
 
 将输出行合并到 `inputs.observed_activity` 指定的表，同时在 samples 和 sources 中登记真实样本与处理方法。`activity.panel` 不增加 H3K4me1，主分数不会因此换成三层几何平均；该层会出现在 `multiomics_features.tsv.gz`。
@@ -65,7 +65,7 @@ motif_strands: true
 ```
 
 ```bash
-PACE prepare --config prepare_ctcf.yaml --out prepared/ctcf
+pace prepare --config prepare_ctcf.yaml --out prepared/ctcf
 ```
 
 `motif_strands: true` 要求 BED 的 strand 列提供 motif 方向。普通 CTCF ChIP 峰通常不携带 motif 方向：只有峰时设置 false，不要拿峰的任意 strand 代替 motif。该接口提取重叠与方向特征，不推断一个经过验证的 loop 概率。
@@ -96,7 +96,7 @@ transcript_mapping: prepared/catalog/transcript_mapping.tsv
 ```
 
 ```bash
-PACE prepare --config prepare_rna.yaml --out prepared/rna
+pace prepare --config prepare_rna.yaml --out prepared/rna
 ```
 
 输出的 gene TPM 只按已提供的 transcript-to-gene/TSS 映射汇总，不会根据 gene TPM 反推转录本或 TSS 的使用比例。附加测量与主活性测量来自不同个体时，应明确目标是群体注释还是个体分析，不能只靠相同组织名称混合。
@@ -156,7 +156,7 @@ reference_cpg: data/element_reference_cpg_counts.tsv
 ```
 
 ```bash
-PACE prepare --config prepare_methylation.yaml --out prepared/methylation_qc
+pace prepare --config prepare_methylation.yaml --out prepared/methylation_qc
 ```
 
 这里的 reference_cpg 是 `element_id,n_cpg` 格式。输出 `methylation_summary.tsv` 用于检查，不要把它再传给要求原始计数的 `inputs.methylation`。需要作为自定义附加特征导入时，显式转换为 features 格式并登记证据。
@@ -183,7 +183,7 @@ multiomics:
   model_path: models/liver_classifier
 ```
 
-这是 run 配置片段。也可独立 `PACE predict-ml --config predict_ml.yaml --out results/ml`。模型训练/推理合同不一致、缺乏可验证范围或无效核心分数时，软件给出明确状态，不输出貌似适用的校准概率。
+这是 run 配置片段。也可独立 `pace predict-ml --config predict_ml.yaml --out results/ml`。模型训练/推理合同不一致、缺乏可验证范围或无效核心分数时，软件给出明确状态，不输出貌似适用的校准概率。
 
 主 PACE 与附加分类器分开解释，并比较 base-only 和增加表观特征后的独立验证效果。数据使用范围、缺失率和功效不足的负标签同样影响结论。
 

@@ -22,6 +22,49 @@ LAYERS = (
 )
 
 
+def regional_scores(scores, memberships):
+    """Report whole-region support without adding overlapping regions to the denominator."""
+    regions = defaultdict(set)
+    for row in memberships:
+        regions[row["source_id"], row["region_id"]].add(row["element_id"])
+    by_element = defaultdict(list)
+    for row in scores:
+        by_element[row["element_id"]].append(row)
+    output = []
+    for (source, region), elements in sorted(regions.items()):
+        genes = defaultdict(list)
+        for element in sorted(elements):
+            for row in by_element[element]:
+                genes[row["gene_id"]].append(row)
+        for gene, rows in sorted(genes.items()):
+
+            def total(field):
+                return (
+                    math.fsum(r[field] for r in rows)
+                    if all(math.isfinite(r[field]) for r in rows)
+                    else math.nan
+                )
+
+            output.append(
+                {
+                    "source_id": source,
+                    "region_id": region,
+                    "gene_id": gene,
+                    "n_units": len(rows),
+                    "n_scoreable": sum(r["scoreable"] for r in rows),
+                    "pace_score": total("pace_score"),
+                    "pace_score_conditional": total("pace_score_conditional"),
+                    "pace_score_lo": total("pace_score_lo"),
+                    "pace_score_hi": min(1.0, total("pace_score_hi"))
+                    if all(math.isfinite(r["pace_score_hi"]) for r in rows)
+                    else math.nan,
+                    "aggregation": "sum_unique_units_no_renormalization",
+                    "normalization_status": rows[0]["normalization_status"],
+                }
+            )
+    return output
+
+
 def observation_evidence_id(row):
     return f"observation:{row['element_id']}:{row['sample_id']}:{row['assay']}"
 
@@ -245,7 +288,7 @@ def multiomics_features(tables, scores, resolved_activity, cfg):
     if cfg["contact"]["mode"] != "prior_only" and (
         tables["observed_contacts"]
         or any(
-            r["evidence_type"] in ("observed", "aggregate", "fused")
+            r["evidence_type"] in ("observed", "aggregate", "fused", "regularized")
             for r in tables["resolved_contacts"]
         )
     ):

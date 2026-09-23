@@ -31,6 +31,7 @@ inputs:
   labels: null
   evidence: null
   sources: null
+  support_bounds: null
 catalog:
   profile: canonical_grid
   width_bp: 500
@@ -50,7 +51,8 @@ contact:
   mode: observed
   scale: depth_normalized_contact
   prior_path: null
-  near_diagonal_policy: prior_or_unresolved
+  prior_preset: null
+  near_diagonal_policy: prior_or_neighbor
   near_diagonal_bp: 0
   allow_prior_fallback: false
   reliability: null
@@ -59,6 +61,11 @@ contact:
   normalization_id: null
   balancing: null
   window_id: null
+  pseudocount: auto
+  pseudocount_distance_bp: 5000
+  pseudocount_strength: 1.0
+scoring:
+  partial_policy: withhold
 promoters:
   weights: provided
 allocation:

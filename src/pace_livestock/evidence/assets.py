@@ -3,9 +3,43 @@
 from pathlib import Path
 
 from ..errors import PaceError
-from ..provenance import file_hash, read_json
+from ..provenance import digest, file_hash, read_json
 
 TASKS = ("link_prediction",)
+
+
+def builtin_contact_prior(cfg):
+    """Explicit human-derived shape on a relative scale, never a calibrated animal asset."""
+    if cfg["contact"].get("prior_preset") != "abc_human":
+        return None
+    if cfg["contact"]["mode"] != "prior_only" or cfg["execution_profile"] != "research":
+        raise PaceError("abc_human requires research profile and prior_only contact mode")
+    m = {
+        "model_id": "abc_human_shape_1.024238616787792",
+        "kind": "contact_prior",
+        "is_synthetic": False,
+        **cfg["context"],
+        "target_level": cfg["target_level"],
+        "prior_source": "abc_human_default",
+        "source_species": "Homo sapiens",
+        "transfer_status": "unvalidated_for_target_context",
+        "reference": "https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/main/config/config.yaml",
+        "training_sources": ["ABC published human reference gamma"],
+        "calibration_sources": [],
+        "test_sources": [],
+        "validation": {},
+        "a": 1.0,
+        "gamma": 1.024238616787792,
+        "d_ref": 5000.0,
+        "d_min": 5000.0,
+        "scale": "relative_distance_contact",
+        "resolution": 5000,
+        "normalization_id": "abc_human_relative_shape",
+        "balancing": "not_applicable",
+        "window_id": "bin_pair",
+    }
+    m["manifest_sha256"] = digest(m)
+    return m
 
 
 def load_asset(path, cfg: dict, *, kind: str) -> dict:
@@ -68,6 +102,14 @@ def load_asset(path, cfg: dict, *, kind: str) -> dict:
 def capabilities(cfg: dict) -> dict:
     assets, blocks = {}, []
     for kind, path in (("contact_prior", cfg["contact"]["prior_path"]),):
+        if cfg["contact"].get("prior_preset"):
+            m = builtin_contact_prior(cfg)
+            assets[kind] = {
+                "weights_status": "transferred_unvalidated",
+                "model_id": m["model_id"],
+                "task_validation_status": {},
+            }
+            continue
         if not path:
             assets[kind] = {"weights_status": "absent"}
             if cfg["contact"]["mode"] in ("prior_only", "shrinkage"):

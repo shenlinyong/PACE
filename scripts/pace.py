@@ -8,7 +8,7 @@ try:
 except ModuleNotFoundError as exc:
     if exc.name != "pace_livestock":
         raise
-    sys.exit("Install PACE with Python >=3.11: python -m pip install .; then run PACE --help")
+    sys.exit("Install PACE with Python >=3.11: python -m pip install .; then run pace --help")
 
 if __name__ == "__main__":
     raise SystemExit(main())

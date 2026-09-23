@@ -36,6 +36,7 @@ DEFAULTS = {
             "labels",
             "evidence",
             "sources",
+            "support_bounds",
         )
     },
     "catalog": {
@@ -57,7 +58,8 @@ DEFAULTS = {
         "mode": "observed",
         "scale": "depth_normalized_contact",
         "prior_path": None,
-        "near_diagonal_policy": "prior_or_unresolved",
+        "prior_preset": None,
+        "near_diagonal_policy": "prior_or_neighbor",
         "near_diagonal_bp": 0,
         "allow_prior_fallback": False,
         "reliability": None,
@@ -66,7 +68,11 @@ DEFAULTS = {
         "normalization_id": None,
         "balancing": None,
         "window_id": None,
+        "pseudocount": "auto",
+        "pseudocount_distance_bp": 5000,
+        "pseudocount_strength": 1.0,
     },
+    "scoring": {"partial_policy": "withhold"},
     "promoters": {"weights": "provided"},
     "allocation": {
         "eta": "auto",
@@ -167,7 +173,13 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         ("activity", "replicate_aggregation", {"equal_donor_mean"}),
         ("allocation", "missing_policy", {"fixed_gene_set"}),
         ("contact", "mode", {"observed", "prior_only", "shrinkage"}),
-        ("contact", "near_diagonal_policy", {"prior_or_unresolved", "unresolved"}),
+        (
+            "contact",
+            "near_diagonal_policy",
+            {"prior_or_neighbor", "prior_or_unresolved", "unresolved"},
+        ),
+        ("contact", "pseudocount", {"auto", "none", "powerlaw"}),
+        ("scoring", "partial_policy", {"withhold", "conditional"}),
         ("promoters", "weights", {"provided", "equal"}),
         ("multiomics", "mode", {"annotate", "ml"}),
         ("output", "format", {"tsv_gz"}),
@@ -206,6 +218,29 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
     cfg["contact"]["near_diagonal_bp"] = integer(
         cfg["contact"]["near_diagonal_bp"], "contact.near_diagonal_bp"
     )
+    cfg["contact"]["pseudocount_distance_bp"] = integer(
+        cfg["contact"]["pseudocount_distance_bp"], "contact.pseudocount_distance_bp", minimum=1
+    )
+    cfg["contact"]["pseudocount_strength"] = number(
+        cfg["contact"]["pseudocount_strength"], "contact.pseudocount_strength", minimum=0
+    )
+    preset = cfg["contact"]["prior_preset"]
+    if preset not in (None, "abc_human"):
+        raise PaceError("contact.prior_preset must be null or abc_human")
+    if preset and (cfg["contact"]["prior_path"] or cfg["contact"]["mode"] != "prior_only"):
+        raise PaceError(
+            "abc_human is an explicit prior_only baseline; do not mix its arbitrary scale with measured contacts"
+        )
+    if preset and cfg["execution_profile"] != "research":
+        raise PaceError("abc_human is an unvalidated transferred prior for research only")
+    if preset:
+        cfg["contact"].update(
+            scale="relative_distance_contact",
+            resolution=5000,
+            normalization_id="abc_human_relative_shape",
+            balancing="not_applicable",
+            window_id="bin_pair",
+        )
     if cfg["contact"]["resolution"] is not None:
         cfg["contact"]["resolution"] = integer(
             cfg["contact"]["resolution"], "contact.resolution", minimum=1

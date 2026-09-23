@@ -4,7 +4,7 @@
 \boxed{
 \mathrm{PACE}(E,G)=
 \frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
+{\displaystyle\sum_{e\in\mathcal E(G)}
  A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
 }
 ```

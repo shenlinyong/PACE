@@ -12,7 +12,7 @@ git clone https://github.com/shenlinyong/PACE.git
 cd PACE
 conda env create -f environment.yml
 conda activate pace
-PACE --version
+pace --version
 ```
 
 没有 Conda 时，可用 Python >=3.11：
@@ -36,14 +36,14 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work pace:local \
 ## 先运行一个完整示例
 
 ```bash
-PACE demo --out results/demo
-PACE validate --config examples/measured/config.yaml
-PACE run --config examples/measured/config.yaml --out results/measured
-PACE measured --help
+pace demo --out results/demo
+pace validate --config examples/measured/config.yaml
+pace run --config examples/measured/config.yaml --out results/measured
+pace measured --help
 ```
 
 仓库示例为合成数据，可直接运行，用于检查安装和熟悉流程。真实分析需要替换为自己的实测数据，设置 `execution_profile: research`。
-输出目录必须尚不存在。`PACE run` 和 `PACE measured` 是同一个实测活性入口。
+默认输出目录须尚不存在；`--force` 保留旧 PACE 结果备份后替换。`pace run` 和 `pace measured` 是同一个实测活性入口。
 
 ## 需要准备什么
 
@@ -64,19 +64,19 @@ PACE measured --help
 \boxed{
 \mathrm{PACE}(E,G)=
 \frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E^{\mathrm{score}}(G)}
+{\displaystyle\sum_{e\in\mathcal E(G)}
  A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
 }
 ```
 
 A_star 为实测活性的几何平均；Cbar 为多启动子综合接触；B 为可选的跨基因分配项。
-没有合格功能验证数据时使用 eta=0。分母是该基因可评分候选的支持总和。
+没有合格功能验证数据时使用 eta=0。主分数要求完整计划候选支持；缺失时另列条件分数和敏感性区间。
 [完整展开公式](docs/FORMULA.zh-CN.md)说明每一个符号、重复处理和接触策略。
 
 ## 分析真实实验
 
 ```bash
-PACE run --config experiment.yaml --out results/experiment
+pace run --config experiment.yaml --out results/experiment
 ```
 
 [完整中文手册](docs/USER_GUIDE.zh-CN.md)提供可修改的 YAML、逐项参数、真实文件组织和结果解释。
@@ -89,3 +89,9 @@ PACE 是相对支持分数，不能当成因果概率；软件测试通过也不
 [论文范围调整](docs/MANUSCRIPT_SCOPE.zh-CN.md) · [迁移说明](docs/migration.md)
 
 维护者：申林用（Linyong Shen）。[MIT 许可](LICENSE)。
+
+## 稀疏实验数据与便捷准备
+
+支持同尺度幂律伪计数、近对角校正、缺失分母敏感性区间、原始区域汇总，以及启动子实测信号权重。`pace init` 生成简短配置；`prepare-pairs` 和 `merge-tables` 代替手写连接/合并脚本；`fit-prior` 直接拟合 cool/mcool。
+
+[实际操作](docs/PRACTICAL_WORKFLOW.md) · [意见核查与调整](docs/METHOD_REVIEW.zh-CN.md) · [独立验证方案](docs/ROBUSTNESS_VALIDATION.md)。

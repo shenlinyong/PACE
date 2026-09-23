@@ -64,8 +64,8 @@ def audit(root: Path) -> list[str]:
         for name in ("README.md", "README.zh-CN.md", "PACE_livestock_model.md"):
             if expected not in (root / name).read_text(encoding="utf-8"):
                 issues.append(f"{name}: total equation differs from FORMULA.md")
-        if "\\sum_{e\\in\\mathcal E^{\\mathrm{score}}(G)}" not in expected:
-            issues.append("FORMULA.md: scoreable-candidate denominator missing")
+        if "\\sum_{e\\in\\mathcal E(G)}" not in expected:
+            issues.append("FORMULA.md: full-candidate denominator missing")
         if "\\eta_{\\mathrm{used}}" not in expected:
             issues.append("FORMULA.md: actual allocation exponent missing")
     reference = (root / "docs/parameters.md").read_text(encoding="utf-8")

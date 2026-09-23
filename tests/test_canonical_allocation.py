@@ -235,6 +235,7 @@ def test_benchmark_excludes_fitting_labels_and_keeps_baselines(cfg, tmp_path):
         "PACE_eta0",
         "PACE_eta1",
         "ABC_style_single_TSS",
+        "contact_power_2",
         "negative_distance",
     }
     assert all(r["n_scored"] == 0 for r in report)

@@ -14,5 +14,5 @@ RUN python -m pip install --no-cache-dir ".[${PACE_EXTRAS}]" \
 
 USER pace
 WORKDIR /work
-ENTRYPOINT ["PACE"]
+ENTRYPOINT ["pace"]
 CMD ["--help"]

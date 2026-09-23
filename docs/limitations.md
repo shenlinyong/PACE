@@ -17,6 +17,6 @@ PACE is research software for relative regulatory support from measured activity
 | Cross-species/tissue use | Explicit background checks; any accuracy claim requires target-scope evaluation |
 | Scalability | Sparse candidate contact processing; training tables reside in memory |
 
-No universal livestock weights or independent biological benchmark results are bundled. A high PACE fraction can occur when only a small subset is measurable. Always report candidate construction, assay availability, exclusions and coverage. Do not interpret partial normalization as complete regulatory discovery.
+No universal livestock weights or independent biological benchmark results are bundled. A high conditional fraction can occur when only a small subset is measurable; the default primary score is withheld in that case. Always report candidate construction, assay availability, exclusions and coverage. Do not interpret partial normalization as complete regulatory discovery.
 
 [Formula](FORMULA.md) · [Verification](validation.md) · [Migration](migration.md)

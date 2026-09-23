@@ -25,9 +25,10 @@ SCHEMAS = {
     "labels": "label_id assayed_region_id gene_id context_id perturbation_type effect_direction effect_size label_status assay_id group_id source_id",
     "evidence": "evidence_id evidence_type source_id parent_evidence_ids model_id unit processing_method checksum",
     "sources": "source_id path_or_accession source_type assembly processing_method normalization_id checksum",
+    "support_bounds": "element_id gene_id support_lower support_upper bound_source",
 }
 STATUSES = {"observed", "unmeasured", "low_coverage", "unmappable", "invalid", "not_applicable"}
-EVIDENCE_TYPES = {"observed", "contact_prior", "fused", "aggregate"}
+EVIDENCE_TYPES = {"observed", "contact_prior", "fused", "aggregate", "regularized"}
 CONTACT_ASSAYS = {
     "Hi-C",
     "HiC",
@@ -68,6 +69,7 @@ def validate_tables(t: dict, cfg: dict) -> None:
         "methylation": ("chrom", "dyad_start0", "sample_id", "assay"),
         "features": ("entity_type", "entity_id", "feature_name"),
         "labels": ("label_id",),
+        "support_bounds": ("element_id", "gene_id"),
     }
     for name, key in keys.items():
         unique(t[name], key, name)
@@ -142,6 +144,16 @@ def validate_tables(t: dict, cfg: dict) -> None:
             raise PaceError("Candidate lies outside catalog.candidate_radius_bp")
     if len({r["candidate_universe_id"] for r in t["candidates"]}) != 1:
         raise PaceError("candidates: mixed candidate_universe_id values")
+    candidate_keys = {(r["element_id"], r["gene_id"]) for r in t["candidates"]}
+    for row in t["support_bounds"]:
+        if (row["element_id"], row["gene_id"]) not in candidate_keys or not row["bound_source"]:
+            raise PaceError("Support bounds require a known candidate and bound_source")
+        row["support_lower"] = number(row["support_lower"], "support_lower", minimum=0)
+        row["support_upper"] = number(
+            row["support_upper"], "support_upper", minimum=0, missing=True
+        )
+        if row["support_upper"] < row["support_lower"]:
+            raise PaceError("support_upper must be at least support_lower")
     for row in t["samples"] + t["sources"]:
         if row["source_id"] not in sources:
             raise PaceError(f"Unknown source_id: {row['source_id']}")
@@ -173,6 +185,17 @@ def validate_tables(t: dict, cfg: dict) -> None:
                 if not all(row[k] for k in ("unit", "normalization_id", "window_id")):
                     raise PaceError("Activity requires unit, normalization_id and window_id")
             else:
+                if row.get("near_diagonal_value") is not None:
+                    row["near_diagonal_value"] = number(
+                        row["near_diagonal_value"], "near_diagonal_value", minimum=0, missing=True
+                    )
+                    if (
+                        math.isfinite(row["near_diagonal_value"])
+                        and row.get("near_diagonal_method") != "neighbor_max"
+                    ):
+                        raise PaceError(
+                            "Near-diagonal replacement requires a declared neighbor_max method"
+                        )
                 if samples[row["sample_id"]]["assay"] not in CONTACT_ASSAYS:
                     raise PaceError(
                         "Contact observation requires a chromosome-contact assay sample"
@@ -203,6 +226,10 @@ def validate_tables(t: dict, cfg: dict) -> None:
                 raise PaceError(f"{name}: unknown observation_sample_id")
             if row["evidence_type"] == "observed" and not sample:
                 raise PaceError("Observed evidence requires a real sample")
+            if row["evidence_type"] == "regularized" and not (
+                sample or row.get("parent_evidence_ids")
+            ):
+                raise PaceError("Regularized contacts require measured parent evidence")
             if row["evidence_type"] == "contact_prior" and sample:
                 raise PaceError("Contact prior evidence cannot impersonate a sample")
             if name == "resolved_activity":
