@@ -19,15 +19,15 @@ while (($#)); do
             esac
             shift 2 ;;
         -h|--help)
-            printf '%s\n' 'Usage: ./install.sh [--prefix ~/.local] [--python python3] [--extras io,sequence,ml]'
+            printf '%s\n' 'Usage: ./install.sh [--prefix ~/.local] [--python python3] [--extras io,ml]'
             printf '%s\n' 'Requires Python >=3.11. Installs into PREFIX/share/pace/venv and PREFIX/bin/PACE.'
             exit 0 ;;
         *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
     esac
 done
 
-if [[ ! "$pace_extras" =~ ^(io|sequence|ml|dev)(,(io|sequence|ml|dev))*$ && -n "$pace_extras" ]]; then
-    printf '%s\n' 'Extras must be a comma-separated subset of io,sequence,ml,dev.' >&2
+if [[ ! "$pace_extras" =~ ^(io|ml|dev)(,(io|ml|dev))*$ && -n "$pace_extras" ]]; then
+    printf '%s\n' 'Extras must be a comma-separated subset of io,ml,dev.' >&2
     exit 2
 fi
 "$pace_python" -c 'import sys; sys.exit("PACE requires Python >=3.11; use --python /path/to/python") if sys.version_info < (3,11) else None'

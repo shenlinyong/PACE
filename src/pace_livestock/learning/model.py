@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -317,6 +318,8 @@ def train_classifier(config_path, out):
             "contact_sources",
         ],
     )
+    if any(row["split"] in ("train", "calibration") and not _measured_scope(row) for row in rows):
+        raise PaceError("Classifier fitting requires measured activity evidence")
     rows, excluded = training_labels(rows)
     extras = cfg.get("extra_features", [])
     if not isinstance(extras, list) or not all(isinstance(v, str) and v for v in extras):
@@ -513,29 +516,33 @@ def train_classifier(config_path, out):
         "n_test": len(test),
         "n_excluded": len(excluded),
         "optimization_converged": model["converged"],
-        "test": binary_metrics(y[test], sigmoid(decision(transform(x[test], preprocessing), model)))
-        if len(test)
-        else {"reason": "no_independent_test"},
-        "base_only_test": binary_metrics(
-            y[test],
-            sigmoid(decision(transform(x[test, : len(CORE)], base_preprocessing), base_model)),
-        )
-        if len(test)
-        else {"reason": "no_independent_test"},
     }
+    base_asset = {
+        **asset,
+        "feature_names": CORE,
+        "preprocessing": base_preprocessing,
+        "model": base_model,
+        "calibrator": None,
+        "probability_scope": None,
+    }
+    test_rows = [rows[i] for i in test]
+    profile = "demonstration" if cfg["is_synthetic"] else "research"
+    tested = _evaluate_deployed(test_rows, asset, profile, cfg["context"], feature_contract)
+    base_tested = _evaluate_deployed(
+        test_rows, base_asset, profile, cfg["context"], feature_contract
+    )
+    report.update(
+        {
+            "test": tested["score"],
+            "test_probability": tested["probability"],
+            "test_status_counts": tested["statuses"],
+            "base_only_test": base_tested["score"],
+            "calibration_optimization_converged": calibrator["converged"] if calibrator else None,
+        }
+    )
     with output_directory(out) as dest:
         write_json(dest / "model.json", asset)
-        write_json(
-            dest / "base_only.json",
-            {
-                **asset,
-                "feature_names": CORE,
-                "preprocessing": base_preprocessing,
-                "model": base_model,
-                "calibrator": None,
-                "probability_scope": None,
-            },
-        )
+        write_json(dest / "base_only.json", base_asset)
         write_json(dest / "training_report.json", report)
         write_table(
             dest / "excluded_labels.tsv",
@@ -550,6 +557,61 @@ def predict_score_rows(
 ):
     path = Path(model_path)
     asset = read_json(path / "model.json" if path.is_dir() else path)
+    return _predict_from_asset(
+        rows,
+        features,
+        asset,
+        execution_profile=execution_profile,
+        context=context,
+        feature_contract=feature_contract,
+    )
+
+
+def _measured_scope(row):
+    sources = set(str(row.get("activity_sources", "")).split(";"))
+    return (
+        row.get("regime") == "measured" and bool(sources) and sources <= {"observed", "aggregate"}
+    )
+
+
+def _evaluate_deployed(rows, asset, profile, context, contract):
+    if not rows:
+        return {
+            "score": {"reason": "no_independent_test"},
+            "probability": {"reason": "no_independent_test"},
+            "statuses": {},
+        }
+    delivered = []
+    for row in rows:
+        features = [
+            {
+                "entity_type": "edge",
+                "entity_id": f"{row['element_id']}|{row['gene_id']}",
+                "feature_name": name,
+                "value": row.get(name),
+            }
+            for name in asset["feature_names"]
+            if name not in CORE
+        ]
+        delivered.extend(
+            _predict_from_asset(
+                [dict(row)],
+                features,
+                asset,
+                execution_profile=profile,
+                context=context,
+                feature_contract=contract,
+            )
+        )
+    y = [row["label"] for row in rows]
+    return {
+        "score": binary_metrics(y, [r["pace_ml_score"] for r in delivered]),
+        "probability": binary_metrics(y, [r["pace_ml_probability"] for r in delivered]),
+        "statuses": dict(Counter(r["ml_status"] for r in delivered)),
+    }
+
+
+def _predict_from_asset(rows, features, asset, *, execution_profile, context, feature_contract):
     if asset.get("kind") != "classifier":
         raise PaceError("Expected a classifier JSON artifact")
     if execution_profile != "demonstration" and asset.get("is_synthetic"):
@@ -607,7 +669,7 @@ def predict_score_rows(
                 row[k] = None
     x, valid = feature_matrix(enriched, asset["feature_names"])
     for i, row in enumerate(rows):
-        scope_ok = all(
+        scope_ok = _measured_scope(row) and all(
             row.get(field) in asset["scope"][scope]
             for field, scope in [
                 ("regime", "regimes"),

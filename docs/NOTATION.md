@@ -7,7 +7,7 @@ All symbols refer to the [current formula](FORMULA.md).
 | E, G | Canonical scoring unit and target gene | `element_id`, `gene_id` |
 | t | Deduplicated physical promoter/TSS | `promoter_id`, `tss0` |
 | M | Fixed assay panel | `activity.panel` |
-| x_star,m | Qualified resolved assay signal | `resolved_activity.resolved_value` |
+| x_star,m | Qualified measured assay signal | `resolved_activity.resolved_value` |
 | A_star | Equal geometric activity of the fixed panel | `A_used` |
 | r | Declared observed-contact mixing weight | Contact resolution policy |
 | pi(t given G) | Frozen within-gene promoter weight | `promoters.pi` |

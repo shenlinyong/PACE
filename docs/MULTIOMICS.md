@@ -99,7 +99,7 @@ transcript_mapping: prepared/catalog/transcript_mapping.tsv
 PACE prepare --config prepare_rna.yaml --out prepared/rna
 ```
 
-输出的 gene TPM 只按已提供的 transcript-to-gene/TSS 映射汇总，不会根据 gene TPM 反推转录本或 TSS 的使用比例。输出测量与元件预测来自不同个体时，应明确目标是群体注释还是个体分析，不能只靠相同组织名称混合。
+输出的 gene TPM 只按已提供的 transcript-to-gene/TSS 映射汇总，不会根据 gene TPM 反推转录本或 TSS 的使用比例。附加测量与主活性测量来自不同个体时，应明确目标是群体注释还是个体分析，不能只靠相同组织名称混合。
 
 ## 4. WGBS / RRBS：推荐直接把计数接入主流程
 
@@ -133,7 +133,7 @@ entity_type	entity_id	n_cpg
 
 entity_type 为 `element` 或 `promoter`，entity_id 对应 element_id 或 promoter_id，n_cpg 是**参考序列在同一窗口的总 CpG 数**。旧式 `element_id,n_cpg` 表仍可用于元件。缺少参考 CpG 分母时，coverage_fraction 保持 NA，不把“测到的 CpG 数”误作“所有 CpG 数”。
 
-主流程会自动生成元件和启动子层面的命名特征，并登记证据来源。WGBS 和 RRBS 同时存在时保留 assay 命名空间，不把不同覆盖设计的数据静默平均。RRBS 没有覆盖的区域是未知，不是零甲基化。
+主流程会自动生成元件和启动子层面的命名特征，并登记证据来源。WGBS 和 RRBS 始终保留 assay 命名空间，例如 DNA_methylation:WGBS:M_site 和 DNA_methylation:RRBS:M_site，不把不同覆盖设计的数据静默平均。RRBS 没有覆盖的区域是未知，不是零甲基化。
 
 | 输出指标 | 含义 |
 |---|---|
@@ -186,3 +186,5 @@ multiomics:
 这是 run 配置片段。也可独立 `PACE predict-ml --config predict_ml.yaml --out results/ml`。模型训练/推理合同不一致、缺乏可验证范围或无效核心分数时，软件给出明确状态，不输出貌似适用的校准概率。
 
 主 PACE 与附加分类器分开解释，并比较 base-only 和增加表观特征后的独立验证效果。数据使用范围、缺失率和功效不足的负标签同样影响结论。
+
+附加组学的单位、归一化、窗口、实验类型及甲基化平台会进入分类器输入定义。更换测量定义需重新核对适用范围；通用 features 建议明确填写 assay、unit、normalization_id 和 window_id。

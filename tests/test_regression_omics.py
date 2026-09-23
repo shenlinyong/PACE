@@ -145,9 +145,11 @@ def test_methylation_main_pipeline_uses_coverage_and_promoter_windows(tmp_path):
         for r in result["features"]
         if r["entity_type"] == "promoter" and r["entity_id"] == p["promoter_id"]
     }
-    assert features["DNA_methylation:M_site"]["value"] == 1
-    assert features["DNA_methylation:cpg_coverage_fraction"]["value"] == 0.25
-    assert any(r["feature_name"] == "promoter:DNA_methylation:M_site" for r in result["features"])
+    assert features["DNA_methylation:WGBS:M_site"]["value"] == 1
+    assert features["DNA_methylation:WGBS:cpg_coverage_fraction"]["value"] == 0.25
+    assert any(
+        r["feature_name"] == "promoter:DNA_methylation:WGBS:M_site" for r in result["features"]
+    )
 
 
 def test_unequal_technical_replicates_do_not_reweight_biological_replicates(tmp_path):

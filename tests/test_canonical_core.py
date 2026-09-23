@@ -5,9 +5,8 @@ import math
 import numpy as np
 import pytest
 
-from pace_livestock.core import activity, bulk_mean, fuse, score, tss_contact
+from pace_livestock.core import activity, bulk_mean, score, tss_contact
 from pace_livestock.errors import PaceError
-from pace_livestock.evidence.fusion import fit_fusion
 from pace_livestock.io.methylation import summarize_methylation
 
 
@@ -32,19 +31,18 @@ def test_hand_calculation(eta, expected):
     np.testing.assert_allclose([r["pace_score"] for r in rows], expected, atol=1e-10, rtol=0)
 
 
-def test_marginal_bulk_order():
+def test_measurement_aggregation_precedes_activity():
     first = activity(bulk_mean([[9, 1], [1, 9]]))
     second = activity(bulk_mean([[4, 4], [4, 4]]))
-    # Review §3.1: marginal means are (5,5),(4,4), hence 5/9 (not copy-sum 3/7).
+    # Review §3.1: marginal means are (5,5),(4,4), hence 5/9 (not a sum of replicate activities of 3/7).
     assert first / (first + second) == pytest.approx(5 / 9, abs=1e-10)
     assert first / (first + second) != pytest.approx(3 / 7)
 
 
-def test_activity_tss_fusion():
-    # Review §3.4: sqrt(4*9)=6; .75*2+.25*6=3; geometric fusion sqrt(40)-1.
+def test_activity_and_tss_contact():
+    # Review §3.4: sqrt(4*9)=6; .75*2+.25*6=3.
     assert activity([4, 9]) == pytest.approx(6, abs=1e-10)
     assert tss_contact([2, 6], [0.75, 0.25]) == pytest.approx(3, abs=1e-10)
-    assert fuse(9, 3, weight=0.5, scale=1) == pytest.approx(math.sqrt(40) - 1, abs=1e-10)
 
 
 def test_missing_and_true_zero():
@@ -52,8 +50,6 @@ def test_missing_and_true_zero():
     assert activity([0, 9]) == 0
     assert tss_contact([3, math.nan], [1, 0]) == 3
     assert math.isnan(tss_contact([3, math.nan], [0.5, 0.5]))
-    assert fuse(math.nan, 4, weight=0, scale=1) == 4
-    assert fuse(7, math.nan, weight=1, scale=1) == 7
     with pytest.raises(PaceError):
         activity([-1, 2])
 
@@ -81,13 +77,6 @@ def test_zero_denominator_and_overflow():
     # Three equal supports normalize to 1/3 even though each raw product overflows.
     np.testing.assert_allclose([r["pace_score"] for r in rows], 1 / 3, atol=1e-10, rtol=0)
     assert all(r["support_status"] == "overflow" for r in rows)
-
-
-def test_calibration_identifiability():
-    result = fit_fusion([9] * 4, [3] * 4, [math.sqrt(40) - 1] * 4, scale=1, minimum_samples=4)
-    # Supplied fusion example inverted analytically gives w=1/2.
-    assert result["weight"] == pytest.approx(0.5, abs=1e-10)
-    assert not fit_fusion([3] * 4, [3] * 4, [4] * 4, scale=1, minimum_samples=4)["identifiable"]
 
 
 def test_cpg_estimands():

@@ -10,9 +10,6 @@ from .errors import PaceError
 
 MODES = {
     "measured": "measured",
-    "hybrid": "hybrid",
-    "genome": "genome_only",
-    "genome_only": "genome_only",
 }
 PATH_OPTIONS = {
     "units": ("inputs", "units"),
@@ -25,17 +22,10 @@ PATH_OPTIONS = {
     "contacts": ("inputs", "observed_contacts"),
     "resolved_activity": ("inputs", "resolved_activity"),
     "resolved_contacts": ("inputs", "resolved_contacts"),
-    "predictions": ("inputs", "predictions"),
     "features": ("inputs", "features"),
     "expression": ("inputs", "expression"),
     "methylation": ("inputs", "methylation"),
-    "reference": ("genome", "reference_path"),
-    "vcf": ("genome", "variant_path"),
-    "callable": ("genome", "callability_path"),
-    "ploidy": ("genome", "ploidy_path"),
-    "sequence_model": ("sequence", "model_path"),
     "contact_prior": ("contact", "prior_path"),
-    "fusion_model": ("fusion", "calibrator_path"),
     "ml_model": ("multiomics", "model_path"),
     "eta_labels": ("allocation", "labels_path"),
     "eta_model": ("allocation", "calibrator_path"),
@@ -60,9 +50,6 @@ VALUE_OPTIONS = {
     "contact_reliability": ("contact", "reliability"),
     "reliability_source": ("contact", "reliability_source"),
     "allow_prior_fallback": ("contact", "allow_prior_fallback"),
-    "sample_id": ("genome", "sample_id"),
-    "individual_id": ("genome", "individual_id"),
-    "unrecorded_site_policy": ("genome", "unrecorded_site_policy"),
     "catalog_profile": ("catalog", "profile"),
     "unit_width": ("catalog", "width_bp"),
     "grid_offset": ("catalog", "offset_bp"),
@@ -81,8 +68,14 @@ def add_run_options(
         "--config", help="Optional YAML; relative paths are relative to the YAML file"
     )
     parser.add_argument(
-        "--mode", "--regime", choices=list(MODES),
-        help=(argparse.SUPPRESS if help_mode else "Evidence mode (required without --config)"),
+        "--mode",
+        "--regime",
+        choices=list(MODES),
+        help=(
+            argparse.SUPPRESS
+            if help_mode
+            else "Measured activity (the default and only supported mode)"
+        ),
     )
     if output:
         parser.add_argument(
@@ -92,7 +85,7 @@ def add_run_options(
             help="New output directory; existing paths are never overwritten",
         )
     context = parser.add_argument_group("sample and biological context")
-    for flag in ("species", "assembly", "tissue", "sample-id", "individual-id", "run-id"):
+    for flag in ("species", "assembly", "tissue", "run-id"):
         context.add_argument("--" + flag)
     context.add_argument("--target-level", choices=["individual", "population_mean"])
     context.add_argument(
@@ -106,11 +99,6 @@ def add_run_options(
         "--catalog-dir",
         help="Read available <table>.tsv[.gz] files from this directory; explicit file options take precedence",
     )
-    visible = {
-        "measured": {"units", "promoters", "candidates", "samples", "sources", "evidence", "activity", "contacts", "resolved_activity", "resolved_contacts", "predictions", "features", "expression", "methylation", "eta_labels", "eta_model"},
-        "hybrid": {"units", "promoters", "candidates", "samples", "sources", "evidence", "activity", "contacts", "predictions", "features", "expression", "methylation", "reference", "vcf", "callable", "ploidy", "sequence_model", "contact_prior", "fusion_model", "eta_labels", "eta_model"},
-        "genome": {"units", "promoters", "candidates", "samples", "sources", "evidence", "reference", "vcf", "callable", "ploidy", "sequence_model", "contact_prior", "eta_labels", "eta_model"},
-    }.get(help_mode)
     for flag, (section, key) in PATH_OPTIONS.items():
         aliases = ["--" + flag.replace("_", "-")]
         if flag == "activity":
@@ -123,15 +111,14 @@ def add_run_options(
             "samples": "Sample metadata table; list every biological/technical replicate with its sample_id",
             "expression": "Optional RNA-seq gene-expression table used as an annotation",
             "methylation": "Optional WGBS/RRBS methylation table used as an annotation",
-            "reference": "Reference genome FASTA for the selected assembly",
-            "vcf": "Individual variants in VCF/BCF format",
-            "callable": "Callable-site BED/TSV for the individual genome",
-            "ploidy": "Individual ploidy table",
         }
         files.add_argument(
             *aliases,
-            help=(descriptions.get(flag, f"{section}.{key}; paths are relative to the working directory")
-                  if visible is None or flag in visible else argparse.SUPPRESS),
+            help=(
+                descriptions.get(
+                    flag, f"{section}.{key}; paths are relative to the working directory"
+                )
+            ),
         )
     model = parser.add_argument_group("scoring and calibration")
     model.add_argument("--eta", help="auto (default; falls back to 0) or a fixed number in [0,1]")
@@ -158,7 +145,6 @@ def add_run_options(
     model.add_argument(
         "--allow-prior-fallback", action=argparse.BooleanOptionalAction, default=None
     )
-    model.add_argument("--unrecorded-site-policy", choices=["require_callable", "assume_reference"])
     catalog = parser.add_argument_group("candidate universe")
     catalog.add_argument("--catalog-profile", choices=["canonical_grid", "provided_regions"])
     catalog.add_argument("--unit-width", type=int)
@@ -184,8 +170,6 @@ def add_run_options(
 
 
 def config_from_args(args: argparse.Namespace) -> dict:
-    if not args.config and not args.mode:
-        raise PaceError("Specify --mode measured|hybrid|genome or --config; see PACE run --help")
     overrides = {}
 
     def put(section, key, value):
@@ -225,8 +209,6 @@ def config_from_args(args: argparse.Namespace) -> dict:
             overrides[key] = getattr(args, option)
     if args.mode:
         overrides["regime"] = MODES[args.mode]
-        if MODES[args.mode] == "genome_only" and args.contact_mode is None and not args.config:
-            put("contact", "mode", "prior_only")
     if args.ml_model:
         put("multiomics", "mode", "ml")
     if args.eta_labels or args.eta_model:

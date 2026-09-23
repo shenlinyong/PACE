@@ -2,20 +2,16 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from pathlib import Path
 
 import yaml
 
 from .catalog import candidate_edges, canonical_units
-from .config import load_config, operation_config
+from .config import operation_config
 from .errors import PaceError
-from .evidence.assets import load_asset
 from .evidence.contact import distance_prior, fit_distance_prior
-from .evidence.fusion import fit_fusion
 from .io.tables import integer, number, read_table, write_table
 from .provenance import file_hash, output_directory, write_json
-from .schemas import load_tables
 
 ASSET_KEYS = {"model_id", "species", "assembly", "context_id", "target_level", "is_synthetic"}
 
@@ -87,159 +83,6 @@ def fit_contact_command(path, out):
             fields=["bin_pair_id", "observed", "predicted", "residual"],
         )
     return manifest
-
-
-def fit_fusion_command(path, out):
-    required = ASSET_KEYS | {
-        "data",
-        "calibration_target",
-        "signal_unit",
-        "normalization_id",
-        "output_window",
-        "scales",
-        "minimum_samples",
-        "measurement_design",
-    }
-    cfg = operation_config(path, allowed=required, required=required, paths=["data"])
-    if cfg["calibration_target"] not in ("individual_state", "population_mean"):
-        raise PaceError("calibration_target must be individual_state or population_mean")
-    wanted = "individual" if cfg["calibration_target"] == "individual_state" else "population_mean"
-    if cfg["target_level"] != wanted or not cfg["measurement_design"]:
-        raise PaceError("Calibration target/target_level mismatch or missing measurement design")
-    rows = read_table(
-        cfg["data"],
-        required=[
-            "assay",
-            "quality_stratum",
-            "observed",
-            "predicted",
-            "target",
-            "split",
-            "group_id",
-            "input_donor",
-            "target_donor",
-            "input_measurement_id",
-            "target_measurement_id",
-        ],
-    )
-    groups, strata, held_out = {}, defaultdict(list), []
-    for row in rows:
-        if row["split"] not in ("calibration", "test"):
-            raise PaceError("Fusion split must be calibration or test")
-        if row["group_id"] in groups and groups[row["group_id"]] != row["split"]:
-            raise PaceError("Fusion groups overlap calibration and test")
-        groups[row["group_id"]] = row["split"]
-        if row["input_measurement_id"] == row["target_measurement_id"]:
-            raise PaceError("Input measurement cannot also be independent fusion truth")
-        if wanted == "individual" and row["input_donor"] != row["target_donor"]:
-            raise PaceError("individual_state calibration must use matching donors")
-        for k in ("observed", "predicted", "target"):
-            row[k] = number(row[k], k, minimum=0, missing=True)
-        if row["split"] == "calibration":
-            strata[row["quality_stratum"], row["assay"]].append(row)
-        else:
-            held_out.append(row)
-    if not strata:
-        raise PaceError("No fusion calibration rows")
-    fitted = defaultdict(dict)
-    for (quality, assay), values in strata.items():
-        if assay not in cfg["scales"]:
-            raise PaceError(f"Missing frozen training scale for {assay}")
-        fitted[quality][assay] = fit_fusion(
-            [r["observed"] for r in values],
-            [r["predicted"] for r in values],
-            [r["target"] for r in values],
-            scale=cfg["scales"][assay],
-            minimum_samples=cfg["minimum_samples"],
-        )
-    manifest = {
-        **asset_metadata(cfg, "fusion"),
-        "strata": dict(fitted),
-        **{
-            k: cfg[k]
-            for k in (
-                "calibration_target",
-                "signal_unit",
-                "normalization_id",
-                "output_window",
-                "measurement_design",
-                "minimum_samples",
-            )
-        },
-    }
-    manifest["calibration_sources"], manifest["training_sources"] = manifest["training_sources"], []
-    from .evidence.fusion import resolve_signal
-
-    for row in held_out:
-        calibration = fitted.get(row["quality_stratum"], {}).get(row["assay"])
-        if calibration is None:
-            raise PaceError("Held-out fusion quality stratum has no calibration fit")
-        row["fused"] = resolve_signal(
-            row["observed"], row["predicted"], regime="hybrid", calibration=calibration
-        )[0]
-    with output_directory(out) as dest:
-        write_json(dest / "manifest.json", manifest)
-        write_table(
-            dest / "held_out_predictions.tsv",
-            held_out,
-            fields=None if held_out else ["assay", "observed", "predicted", "target", "fused"],
-        )
-    return manifest
-
-
-def prepare_genome_command(path, out, *, predict=False):
-    from .sequence.binding import bind_predictions, genome_binding_id
-    from .sequence.genome import prepare_windows
-    from .sequence.model import predict_windows
-
-    cfg = load_config(path)
-    tables = load_tables(cfg)
-    asset = (
-        load_asset(cfg["sequence"]["model_path"], cfg, kind="sequence")
-        if cfg["sequence"]["model_path"]
-        else None
-    )
-    if asset is None:
-        raise PaceError(
-            "prepare-genome/predict-sequence requires a model manifest defining windows"
-        )
-    windows, _ = prepare_windows(cfg, tables["units"], input_length=asset["input_length"])
-    binding_id = genome_binding_id(cfg, tables["units"], asset)
-    with output_directory(out) as dest:
-        rows = [
-            {**{k: v for k, v in r.items() if k != "sequences"}, "genome_binding_id": binding_id}
-            for r in windows
-        ]
-        write_table(dest / "windows.tsv", rows)
-        with (dest / "haplotypes.fa").open("w", encoding="utf-8") as stream:
-            for row in windows:
-                for hap, seq in enumerate(row["sequences"]):
-                    stream.write(f">{row['element_id']}|hap{hap + 1}\n{seq}\n")
-        if predict:
-            write_table(
-                dest / "predictions.tsv",
-                bind_predictions(
-                    predict_windows(
-                        windows, asset, max_n_fraction=cfg["sequence"]["max_n_fraction"]
-                    ),
-                    binding_id,
-                ),
-            )
-        write_json(
-            dest / "manifest.json",
-            {
-                "reference_sha256": file_hash(cfg["genome"]["reference_path"]),
-                "variant_sha256": file_hash(cfg["genome"]["variant_path"])
-                if cfg["genome"]["variant_path"]
-                else None,
-                "model_manifest_sha256": asset["manifest_sha256"],
-                "input_length": asset["input_length"],
-                "output_window": asset["output_window"],
-                "reference_only": cfg["genome"]["variant_path"] is None,
-                "genome_binding_id": binding_id,
-            },
-        )
-    return rows
 
 
 def prepare_command(path, out):

@@ -4,7 +4,7 @@ Report bugs with the command, a minimal synthetic input, the software commit and
 QC reason. Please do not attach private animal or human data, credentials, or large model files.
 
 ```bash
-python -m pip install -e '.[dev,io,sequence,ml]'
+python -m pip install -e '.[dev,io,ml]'
 python -m pytest tests -q
 ruff check src/pace_livestock tests/test_canonical_*.py
 ruff format --check src/pace_livestock tests/test_canonical_*.py

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pace-livestock"
-version = "0.3.0"
+version = "0.4.0"
 description = "PACE: auditable activity-contact regulatory support for livestock research"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -14,8 +14,7 @@ dependencies = ["numpy>=1.26.4,<3", "PyYAML>=6.0.3,<7"]
 classifiers = ["Development Status :: 3 - Alpha", "Intended Audience :: Science/Research", "Programming Language :: Python :: 3", "Topic :: Scientific/Engineering :: Bio-Informatics"]
 
 [project.optional-dependencies]
-io = ["pyBigWig>=0.3.24,<0.4", "cooler>=0.10,<0.11", "pysam>=0.23,<0.25", "pandas>=2.2,<3"]
-sequence = ["torch>=2.6,<3", "safetensors>=0.5,<1"]
+io = ["pyBigWig>=0.3.24,<0.4", "cooler>=0.10,<0.11", "pandas>=2.2,<3"]
 ml = ["scikit-learn>=1.6,<2", "scipy>=1.15,<2"]
 dev = ["pytest>=8,<10", "pytest-cov>=6,<8", "build>=1.2,<2", "ruff>=0.11,<1", "pandas>=2.2,<3"]
 

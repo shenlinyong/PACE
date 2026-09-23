@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+- Restrict activity to measured ATAC, DNase or H3K27ac and valid experimental aggregates.
+- Remove hybrid/genome-only modes, sequence/fusion training and prediction, individual reconstruction and variant-effect scenarios.
+- Remove their examples, optional deep-learning dependencies and obsolete commands/configuration keys; fail explicitly on unsupported configurations.
+- Preserve measured multiomics annotations, multiple promoters, optional allocation and declared contact priors.
+- Apply same-bin contact checks to imported evidence and validate imported assay/sample identity.
+- Bind auxiliary assay definitions and methylation platform names to classifier inputs; report held-out raw scores, calibrated probabilities and deployment coverage separately.
+- Update installation, formulas, CLI, manuscript scope and supported test/CI workflows.
+
+This is a software scope change. It does not establish higher biological predictive accuracy.
+
 ## 0.3.0
 
 ### Scientific input and scoring checks

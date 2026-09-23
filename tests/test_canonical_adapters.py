@@ -11,8 +11,8 @@ from pace_livestock.io.bed_gtf import read_gtf
 from pace_livestock.io.bigwig import quantify_bigwig
 from pace_livestock.io.cooler import query_contacts
 from pace_livestock.io.methylation import merge_stranded_cpg
+from pace_livestock.io.reference import Reference
 from pace_livestock.io.rna import transcript_tpm_to_gene
-from pace_livestock.io.variants import Reference
 
 
 def test_catalog_duplicate_regions_and_bounds():

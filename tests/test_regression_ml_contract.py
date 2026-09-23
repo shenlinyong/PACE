@@ -316,7 +316,7 @@ def test_calibration_cannot_change_the_classifier_evidence_domain(tmp_path):
     path, _, rows = fixture_data(tmp_path)
     for row in rows:
         if row["split"] == "calibration":
-            row["activity_sources"] = "sequence_prediction"
+            row["activity_sources"] = "aggregate"
     write_table(tmp_path / "labels.tsv", rows)
     with pytest.raises(PaceError, match="Calibration evidence sources/regime"):
         train_classifier(path, tmp_path / "model")

@@ -1,7 +1,6 @@
 """Behavioral contracts spanning strict ingestion, evidence resolution and final outputs."""
 
 import copy
-import json
 import math
 
 import numpy as np
@@ -24,7 +23,7 @@ def measured(tmp_path):
     return create_example(tmp_path / "inputs", "measured")
 
 
-@pytest.mark.parametrize("regime", ["measured", "hybrid", "genome_only"])
+@pytest.mark.parametrize("regime", ["measured"])
 def test_complete_offline_modes(tmp_path, regime):
     demo(regime, tmp_path / regime)
     root = tmp_path / regime
@@ -35,11 +34,6 @@ def test_complete_offline_modes(tmp_path, regime):
         assert sum(float(r["pace_score"]) for r in rows if r["gene_id"] == gene) == pytest.approx(
             1, abs=1e-10
         )
-    if regime == "genome_only":
-        resolved = read_table(root / "results/resolved_activity.tsv")
-        assert all(r["observation_sample_id"] is None for r in resolved)
-        assert not (root / "inputs/samples.tsv").exists()
-        assert all(r["evidence_type"] == "sequence_prediction" for r in resolved)
     # The persisted inputs remain rerunnable after the demo transaction moves into place.
     cfg = load_config(root / "results/resolved_config.yaml")
     assert len(compute(cfg)["scores"]) == 6
@@ -166,40 +160,6 @@ def test_annotation_does_not_change_score(measured):
         rtol=0,
     )
     assert result["qc"]["multiomics_roles"]["RNA"] == "annotation_only"
-
-
-@pytest.mark.parametrize(
-    "change",
-    ["synthetic_research", "output_probability", "wrong_target", "wrong_window", "weight_tamper"],
-)
-def test_asset_contract_rejections(tmp_path, change):
-    path = create_example(tmp_path / "inputs", "hybrid")
-    cfg = load_config(path)
-    manifest = path.parent / "models/sequence/manifest.json"
-    data = json.loads(manifest.read_text())
-    if change == "synthetic_research":
-        cfg["execution_profile"] = "research"
-    elif change == "output_probability":
-        data["output_type"] = "peak_probability"
-    elif change == "wrong_target":
-        data["target_level"] = "population_mean"
-    elif change == "wrong_window":
-        data["output_window"] = 1000
-    elif change == "weight_tamper":
-        data["weights_sha256"] = "bad"
-    manifest.write_text(json.dumps(data))
-    with pytest.raises(PaceError):
-        compute(cfg)
-
-
-def test_fusion_target_rejected(tmp_path):
-    path = create_example(tmp_path / "inputs", "hybrid")
-    manifest = path.parent / "models/fusion/manifest.json"
-    data = json.loads(manifest.read_text())
-    data["calibration_target"] = "population_mean"
-    manifest.write_text(json.dumps(data))
-    with pytest.raises(PaceError, match="calibration target"):
-        compute(load_config(path))
 
 
 def test_transaction_and_compare(measured, tmp_path):

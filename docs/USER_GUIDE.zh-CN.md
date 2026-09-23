@@ -1,184 +1,6 @@
 # PACE 完整使用说明
 
-PACE 用于整合增强子活性和增强子—启动子接触，计算候选调控元件对同一个基因的相对支持。本文按“安装 → 跑通示例 → 准备自己的数据 → 选择模式 → 检查结果”的顺序介绍。作者与维护者：申林用（Linyong Shen，shenlinyong），西北农林科技大学。
-
-这里的“支持”是候选元件之间的相对份额。PACE 分数高，不等于该联系已经得到功能实验验证，也不等于该元件贡献了相同比例的基因表达。软件会保留原始支持、证据来源、缺失原因和实际分母，供研究者判断。
-
-## 0. 先把环境配置好
-
-下面的步骤在 Linux、macOS 或 WSL2 中适用。最省事的方式是使用 Conda；没有 Conda 时再使用 Python 虚拟环境。不要把系统 Python、另一个项目的 NumPy 和 PACE 混在一起。
-
-### 0.1 Conda 配置（推荐）
-
-```bash
-git clone https://github.com/shenlinyong/PACE.git
-cd PACE
-conda env create -f environment.yml
-conda activate pace
-python --version
-python -c "import numpy, yaml; print('numpy', numpy.__version__); print('PyYAML', yaml.__version__)"
-python -m pip install -e '.[io,ml]'
-PACE --version
-```
-
-`python --version` 应为 3.12 左右，不能低于 3.11。最后三条命令都成功，才算环境配置完成。若出现 `numpy.core._multiarray_umath`，说明调用了错误的 Python 环境；先执行 `conda activate pace`，再检查 `which python` 和 `which PACE`。
-
-### 0.2 Python venv 配置
-
-```bash
-git clone https://github.com/shenlinyong/PACE.git
-cd PACE
-python3.12 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e '.[io,ml]'
-PACE --version
-```
-
-如果只需要仓库内的 TSV 合成示例，核心安装 `python -m pip install -e .` 即可；bigWig、cool/mcool、BCF 和机器学习功能使用 `.[io,ml]`。序列 CNN 另需 `.[sequence]` 和匹配的 PyTorch。
-
-### 0.3 环境自检
-
-```bash
-PACE --help
-PACE measured --help
-PACE demo --regime measured --out results/check_measured
-```
-
-`PACE --help` 应只显示三种模式和基本工作流；`PACE measured --help` 应先显示一条可复制命令，再显示参数；demo 成功时会输出 `n_candidates` 和结果目录。若结果目录已存在，换一个目录名，不要覆盖旧结果。
-
-## 1. 三种情况先看懂
-
-不要从完整参数表开始。根据你手里的证据选择一条路径：
-
-| 情况 | 使用模式 | 你必须准备的主数据 | 适合回答的问题 |
-|---|---|---|---|
-| 有 ATAC/DNase/H3K27ac 和启动子接触实测 | `measured` | 活性表、接触表、样本表、候选目录 | 在实测证据背景下哪些候选更有相对支持 |
-| 有上述实测，并且还有适用序列模型或个体基因组 | `hybrid` | measured 全部数据，加 FASTA/VCF、序列模型；融合时加校准器 | 实测和序列预测共同支持下的候选排序 |
-| 主要只有参考/个体基因组和已验证序列模型 | `genome` | FASTA、VCF/BCF、callable、ploidy、序列模型、接触先验 | 指定组织背景下的遗传调控潜能 |
-
-RNA-seq、H3K4me1/3、H3K27me3、H3K9me3、CTCF 和 WGBS/RRBS 可以同时存在，但默认是带来源的注释或独立 ML 特征，不会自动成为主公式的额外乘数。每个生物学重复都可以有自己的 `sample_id`；重复数量可以是 1、2、3 或更多。
-
-## 2. 情况 A：只有实测组学，运行 measured
-
-### 2.1 环境和示例
-
-先确认环境已经按第 0 节配置。仓库中可直接运行的 measured 文件是：
-
-```text
-examples/measured/
-├── units.tsv, promoters.tsv, candidates.tsv   候选目录
-├── samples.tsv                                 样本和重复元数据
-├── observed_activity.tsv                       ATAC/H3K27ac 活性
-├── observed_contacts.tsv                       Hi-C/Prom-Hi-C 接触
-├── sources.tsv, evidence.tsv                   来源和证据链
-└── config.yaml                                 完整配置
-```
-
-### 2.2 先用配置文件跑通
-
-```bash
-PACE measured \
-  --config examples/measured/config.yaml \
-  --out results/measured_config
-```
-
-这是仓库内的合成数据，不代表真实物种准确率。成功后检查 `results/measured_config/scores.tsv.gz`、`gene_summary.tsv`、`qc_report.json` 和 `run_manifest.json`。
-
-### 2.3 再用真实存在的表格路径理解每个参数
-
-下面命令与仓库文件一一对应，可以直接复制运行：
-
-```bash
-PACE measured \
-  --catalog-dir examples/measured \
-  --samples examples/measured/samples.tsv \
-  --activity examples/measured/observed_activity.tsv \
-  --contacts examples/measured/observed_contacts.tsv \
-  --species synthetic --assembly toy_assembly --tissue toy_tissue \
-  --profile demonstration --contact-scale toy_contact \
-  --no-include-promoters \
-  --out results/measured_direct
-```
-
-真实项目把路径替换为自己的表，并把 `--profile demonstration` 改为 `research`。主活性组合在配置中用 `activity.panel` 固定，例如 `[ATAC, H3K27ac]`；不要让不同元件自动使用不同组合。
-
-### 2.4 真实 measured 项目的文件组织
-
-```text
-project/
-├── data/
-│   ├── samples.tsv
-│   ├── observed_activity.tsv       ATAC/DNase/H3K27ac
-│   ├── observed_contacts.tsv       Hi-C/Prom-Hi-C
-│   ├── expression.tsv              可选 RNA-seq
-│   ├── methylation.tsv             可选 WGBS/RRBS
-│   └── features.tsv                可选组蛋白/CTCF
-├── prepared/catalog/               units/promoters/candidates/sources/evidence
-├── configs/measured.yaml
-└── results/
-```
-
-`samples.tsv` 可以登记一个、两个或三个生物学重复。例如 `animal_001_rep1_liver_ATAC`、`animal_001_rep2_liver_ATAC` 和 `animal_001_rep3_liver_ATAC` 各占一行；活性和接触表用同样的 `sample_id`。技术重复写入 `technical_replicate`，不要只靠文件名区分。
-
-## 3. 情况 B：实测加序列预测，运行 hybrid
-
-### 3.1 hybrid 比 measured 多什么
-
-除了 measured 的候选目录、样本、活性和接触外，还需要参考基因组、个体变异、可调用区域、倍性和序列模型。只有同时拥有匹配的融合校准器时，软件才会执行实测—预测融合；没有校准器时按证据优先级选择合格来源，不会猜 50:50。
-
-### 3.2 直接运行仓库示例
-
-```bash
-PACE hybrid \
-  --catalog-dir examples/hybrid \
-  --samples examples/hybrid/samples.tsv \
-  --activity examples/hybrid/observed_activity.tsv \
-  --contacts examples/hybrid/observed_contacts.tsv \
-  --reference examples/hybrid/genome.fa \
-  --vcf examples/hybrid/sample.vcf \
-  --callable examples/hybrid/callable.bed \
-  --ploidy examples/hybrid/ploidy.tsv \
-  --sequence-model examples/hybrid/models/sequence \
-  --fusion-model examples/hybrid/models/fusion \
-  --species synthetic --assembly toy_assembly --tissue toy_tissue \
-  --profile demonstration --contact-scale toy_contact \
-  --no-include-promoters --sample-id toy_animal --individual-id toy_animal \
-  --out results/hybrid_direct
-```
-
-### 3.3 真实 hybrid 的一致性检查
-
-实测样本和 VCF 个体必须对应同一个研究对象，物种、assembly、组织、窗口、单位和归一化协议必须与序列模型 manifest 一致。若实测是群体平均而序列是单个动物，必须把目标层级写清楚，不能只因为组织名称相同就混合。
-
-## 4. 情况 C：主要只有基因组，运行 genome
-
-### 4.1 genome 需要哪些文件
-
-genome 模式不要求提供 ATAC 或 RNA 文件，但不能只给一个 FASTA。至少需要匹配的序列模型、接触先验和候选目录；个体分析还需要 VCF/BCF、callable 位点和 ploidy。只有参考基因组时，去掉 VCF、sample、individual、callable 和 ploidy，但仍要有适用模型和先验。
-
-### 4.2 直接运行仓库示例
-
-```bash
-PACE genome \
-  --catalog-dir examples/genome_only \
-  --reference examples/genome_only/genome.fa \
-  --vcf examples/genome_only/sample.vcf \
-  --callable examples/genome_only/callable.bed \
-  --ploidy examples/genome_only/ploidy.tsv \
-  --sequence-model examples/genome_only/models/sequence \
-  --contact-prior examples/genome_only/models/contact \
-  --species synthetic --assembly toy_assembly --tissue toy_tissue \
-  --profile demonstration --contact-scale toy_contact \
-  --no-include-promoters --sample-id toy_animal --individual-id toy_animal \
-  --out results/genome_direct
-```
-
-genome 输出表示在指定模型、候选目录和接触先验下的相对支持或调控潜能，不是该个体已经完成的 ATAC-seq、RNA-seq 或功能验证结果。`genome` 是 `genome_only` 的命令别名。
-
-## 5. 三种模式都要检查的结果
-
-先看 `qc_report.json` 和 `gene_summary.tsv`，确认有多少候选进入实际分母；再看 `scores.tsv.gz` 的 `pace_score`、`A_used`、`Cbar`、`support` 和 `reason`。`resolved_activity.tsv` 与 `resolved_contacts.tsv` 告诉你每个值来自实测、预测、融合还是先验；`run_manifest.json` 记录输入、模型和环境哈希。`partial` 只表示在剩余可评分候选上归一化，不代表缺失数据已经被补齐。
+当前软件只支持以实测活性为基础的分析。本文按下载、输入准备、运行和结果解释展开。
 
 ## 1. 第一次使用：下载、安装和运行
 
@@ -209,7 +31,7 @@ PACE --version
 PACE measured --help
 ```
 
-需事先安装 Conda。该环境包含核心程序及常用基因组文件读取依赖。真实序列 CNN 需要另外安装 PyTorch 和序列扩展；[安装手册](INSTALLATION.md)给出了 CPU 命令、Python venv、独立安装目录和 Docker 三种替代方式。
+需事先安装 Conda。该环境包含核心程序及常用基因组文件读取依赖。无需 GPU；[安装手册](INSTALLATION.md)给出了 Python venv、独立安装目录和 Docker 的安装方式。
 
 Docker 从源码本地构建，容器入口已经是 PACE：
 
@@ -220,31 +42,20 @@ docker run --rm --user "$(id -u):$(id -g)" \
   measured --config examples/measured/config.yaml --out results/docker_measured
 ```
 
-### 1.3 先运行三个自带示例
-
-在仓库根目录执行：
+### 1.3 运行合成示例
 
 ```bash
-PACE measured --config examples/measured/config.yaml --out results/demo_measured
-PACE hybrid --config examples/hybrid/config.yaml --out results/demo_hybrid
-PACE genome --config examples/genome_only/config.yaml --out results/demo_genome
+PACE demo --out results/demo
+PACE validate --config examples/measured/config.yaml
+PACE run --config examples/measured/config.yaml --out results/demo_measured
 ```
 
-这些命令可以直接运行，数据和示例权重已在仓库中，不需要另找文件，也不需要 GPU。它们全部是**合成数据**，用于熟悉命令和检查安装。输出目录必须尚不存在；重复运行时换一个名称。
+这些是合成软件检查，不能用作真实物种准确率。真实分析使用自己的实验数据并设 `execution_profile: research`。
 
-真实研究请使用自己的数据和适用模型，并把 `execution_profile` 设为 `research`。把合成模型的 `is_synthetic` 改为 false 不能让它成为真实模型。仓库没有附带已验证的鸡、猪、牛等物种权重。
+## 2. 实测数据要求
 
-## 2. 应该选择哪一种模式
-
-| 情况 | 模式 | 活性从哪里来 | 接触从哪里来 | 可以解释为什么 |
-|---|---|---|---|---|
-| 有质量合格的 ATAC/DNase/H3K27ac 等测量 | `measured` | 所选固定活性组合的实测信号 | 实测 Hi-C；也可显式配置适用先验 | 实测证据支持的调控候选排序 |
-| 部分测量缺失或不足，并有适用序列模型 | `hybrid` | 合格实测与定量序列预测；有匹配校准器才融合 | 实测、先验或二者按已声明可靠性组合 | 混合证据下的候选排序 |
-| 新个体只有基因组数据，但已有适用功能模型 | `genome_only`，命令别名 `genome` | 该个体序列的定量预测 | 已拟合的距离接触先验 | 指定组织背景下的遗传调控潜能 |
-
-三种模式共享同一个评分公式。模式差别是证据来源，不能把“实测”和“预测”混成同一种实验结果。`measured` 允许 H3K27ac 单层运行；没有 ATAC 时可以明确选择这个组合，不需要伪造 ATAC 数值。
-
-**没有合适序列模型时：**有实测数据就使用 measured；只有 WGS 则不能从这个仓库直接得到可靠的组织特异调控预测。某个新个体没有表观数据，与整个物种都没有训练和验证数据，是两种不同情况。
+活性必须来自合格 ATAC、DNase 或 H3K27ac。选择一个固定单层或双层组合。
+接触默认采用实测；可显式配置适用的距离先验或接触收缩，结果必须保留来源。
 
 ### 2.1 一份、两份还是三份重复都可以
 
@@ -278,7 +89,7 @@ A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}.
 |---|---|
 | E、G | 当前调控元件和目标基因 |
 | e | 分母中逐个遍历的候选元件 |
-| A_star | 最终用于计算的活性，可能来自实测、预测或已校准融合 |
+| A_star | 固定检测组合的合格实测活性 |
 | Cbar | 把同一个基因不同物理 TSS 的接触按固定权重汇总 |
 | B | 该元件对该基因的接触占其所有候选目标基因接触的份额 |
 | eta_used | 实际使用的可选分配参数；默认数值为 0，有合格功能证据才自动学习并验证 |
@@ -299,7 +110,7 @@ A_\star(E)=\sqrt{x_{\star,\mathrm{ATAC}}(E)\,x_{\star,\mathrm{H3K27ac}}(E)}.
 
 这里 pi 是同一基因的 TSS 权重，r 是接触中实测来源的权重；二者含义不同。r=1 只用实测，r=0 只用先验。程序不会仅凭测序文件的存在自动认定数据可信。
 
-[完整数学说明](FORMULA.zh-CN.md)依次列出了：简写总公式、全部展开的通用总公式、measured 详细总公式、hybrid 详细总公式、genome_only 详细总公式、逐个符号及零值/缺失规则。hybrid 的实测—预测权重在单个检测层的 log1p 空间校准；genome_only 先平均各条染色体拷贝的预测信号，再计算活性。两者都不是把几个最终 PACE 分数相加。
+[完整数学说明](FORMULA.zh-CN.md)给出总公式、完全展开式、接触策略、符号及零值/缺失规则。
 
 基因表达权重没有再乘入主分数。同一基因的 TPM 权重同时乘到分子和分母会抵消；只在归一化后乘则改变分数含义。因此 RNA 作为独立注释或经过验证的机器学习特征输出。
 
@@ -309,19 +120,18 @@ A_\star(E)=\sqrt{x_{\star,\mathrm{ATAC}}(E)\,x_{\star,\mathrm{H3K27ac}}(E)}.
 
 | 文件 | 是否需要 | 内容 |
 |---|---|---|
-| `units.tsv` | 所有模式必需 | 非重叠固定评分单元，默认 500 bp |
-| `promoters.tsv` | 所有模式必需 | 基因、物理 TSS、方向、TSS 权重 |
-| `candidates.tsv` | 所有模式必需 | 预先确定的元件—基因候选集合 |
+| `units.tsv` | 必需 | 非重叠固定评分单元，默认 500 bp |
+| `promoters.tsv` | 必需 | 基因、物理 TSS、方向、TSS 权重 |
+| `candidates.tsv` | 必需 | 预先确定的元件—基因候选集合 |
 | `samples.tsv` | 使用真实测量时必需 | 样本、个体、检测类型、生物/技术重复与背景 |
 | `sources.tsv` | 有来源引用时必需 | 文件或 accession、处理方法、归一化、校验和 |
 | `evidence.tsv` | 输入引用证据或导入解析结果时必需 | 证据身份和来源链；不能随意编造测量样本 |
-| `observed_activity.tsv` | measured；hybrid 可用 | 按固定单元汇总的定量活性及测量状态 |
+| `observed_activity.tsv` | 必需 | 按固定单元汇总的定量活性及测量状态 |
 | `observed_contacts.tsv` | 采用实测接触时 | 元件到各 TSS 的接触值、分辨率和尺度 |
-| 序列模型目录 | 需要定量序列预测时 | manifest 与真实模型权重；必须匹配物种、组织、输出量纲 |
 | 接触先验目录 | 使用先验或收缩时 | 同尺度、同分辨率且适用背景的已拟合先验 |
 | `expression.tsv`、甲基化、`features.tsv` | 可选 | RNA 和其他表观组学证据 |
 
-各表必须是带表头的 UTF-8 TSV；不要把 Excel xlsx 直接重命名为 tsv。`NA` 表示缺失，0 表示真实测得或预测的零。BED 和内部区间使用 0-based、左闭右开坐标；`tss0` 是 0-based 位点。[完整字段字典](data_dictionary.md)给出所有必需表头。
+各表必须是带表头的 UTF-8 TSV；不要把 Excel xlsx 直接重命名为 tsv。`NA` 表示缺失，0 表示真实测得的零。BED 和内部区间使用 0-based、左闭右开坐标；`tss0` 是 0-based 位点。[完整字段字典](data_dictionary.md)给出所有必需表头。
 
 建议项目中分开存放：`data/` 原始处理后文件，`prepared/` 规范表，`models/` 模型资产，`configs/` 配置，`results/` 输出。以下真实数据配置假设 YAML 放在项目根目录，因此路径直接写 `prepared/...`。如果移动到 configs 目录，路径需相应加 `../`。
 
@@ -448,7 +258,7 @@ PACE prepare --config prepare_hic.yaml --out prepared/animal1_hic
 
 `balanced` 必须符合文件实际处理方式；未存储 pixel 是否代表零也需核实。不同分辨率、raw counts、不同归一化不能直接平均。O/E 已去掉距离背景，需要先用匹配的 expected 还原为接触量；p 值不能作 contact。`.hic` 需在上游转换为可核验的 cool/mcool。
 
-## 6. 模式一：实测数据 measured
+## 6. 实测数据运行配置与参数
 
 以下是**真实项目配置模板**，需先准备所列文件；它不是仓库中开箱即用的示例。以一个鸡个体肝脏为例，保存为 `measured.yaml`：
 
@@ -518,175 +328,7 @@ PACE measured --config measured.yaml --out results/animal1_measured
 
 如果只有 H3K27ac，把 `panel` 明确改为 `[H3K27ac]`，其余处理不变。为了使 C1/C2 生物学重复可比较，建议每个个体分别评分，检查重复一致性，再决定是否另做 population_mean 图谱；技术重复不能充当独立个体。
 
-## 7. 模式二：混合证据 hybrid
-
-保存为 `hybrid.yaml`。此模板同时演示序列活性与接触收缩；模型和校准器需事先训练或取得适用资产：
-
-```yaml
-schema_version: pace-1
-run_id: chicken_liver_hybrid_animal1
-regime: hybrid
-execution_profile: research
-estimand: bulk_proxy
-target_level: individual
-context:
-  species: chicken
-  assembly: GRCg7w
-  context_id: liver
-inputs:
-  units: prepared/catalog/units.tsv
-  promoters: prepared/catalog/promoters.tsv
-  candidates: prepared/catalog/candidates.tsv
-  samples: prepared/samples.tsv
-  sources: prepared/sources.tsv
-  observed_activity: prepared/observed_activity.tsv
-  observed_contacts: prepared/animal1_hic/observed_contacts.tsv
-catalog:
-  profile: canonical_grid
-  width_bp: 500
-  include_promoter_units: true
-  chrom_sizes_path: prepared/catalog/chrom_sizes.tsv
-  candidate_radius_bp: 5000000
-activity:
-  panel: [ATAC, H3K27ac]
-  minimum_callable_fraction: 0.8
-contact:
-  mode: shrinkage
-  scale: balanced_contact_protocol_1
-  resolution: 5000
-  normalization_id: hic_norm_protocol_1
-  balancing: balanced
-  window_id: bin_pair
-  prior_path: models/chicken_liver_contact
-  reliability: 0.7
-  reliability_source: held_out_contact_reliability_protocol
-  allow_prior_fallback: true
-sequence:
-  model_path: models/chicken_liver_sequence
-  max_n_fraction: 0.05
-fusion:
-  calibrator_path: models/chicken_liver_fusion
-  quality_stratum: default
-genome:
-  individual_id: animal1
-  sample_id: animal1
-  reference_path: data/reference.fa
-  variant_path: data/animal1.vcf.gz
-  callability_path: data/animal1_callable.bed
-  ploidy_path: data/animal1_ploidy.tsv
-  unrecorded_site_policy: require_callable
-allocation:
-  eta: auto
-multiomics:
-  mode: annotate
-seed: 17
-```
-
-```bash
-PACE capabilities --config hybrid.yaml
-PACE validate --config hybrid.yaml
-PACE hybrid --config hybrid.yaml --out results/animal1_hybrid
-```
-
-| 新增参数 | 作用与要求 |
-|---|---|
-| `sequence.model_path` | 定量活性模型目录，物种/组装/组织/窗口/信号量纲必须匹配 |
-| `fusion.calibrator_path` | 实测与预测的融合校准资产；缺少时按来源优先规则选择，不猜测融合权重 |
-| `fusion.quality_stratum` | 选用校准器中实际存在的质量分层 |
-| `contact.mode: shrinkage` | 用已声明可靠性组合实测接触和先验 |
-| `contact.reliability` | 此处 0.7 仅演示语法，不能照抄为默认生物参数；由独立评估确定 |
-| `contact.prior_path` | 接触先验，须与实测的尺度、分辨率及背景兼容 |
-| `genome.*` | 个体序列重建所需参考、基因型、可调用区和倍性；实测 donor_id 需与 individual_id 一致 |
-
-如果接触数据充分，可以改用 `contact.mode: observed`，去掉 reliability、reliability_source、prior_path 并关闭 prior fallback。如果只做参考序列预测，可省略个体 VCF、callability、ploidy、individual_id 和 sample_id，但输出不再代表该个体的基因型效应。详细训练命令见[模型训练](training.md)。
-
-## 8. 模式三：只有新个体基因组数据 genome_only
-
-保存为 `genome.yaml`：
-
-```yaml
-schema_version: pace-1
-run_id: chicken_liver_genome_animal1
-regime: genome_only
-execution_profile: research
-estimand: bulk_proxy
-target_level: individual
-context:
-  species: chicken
-  assembly: GRCg7w
-  context_id: liver
-inputs:
-  units: prepared/catalog/units.tsv
-  promoters: prepared/catalog/promoters.tsv
-  candidates: prepared/catalog/candidates.tsv
-catalog:
-  profile: canonical_grid
-  width_bp: 500
-  include_promoter_units: true
-  chrom_sizes_path: prepared/catalog/chrom_sizes.tsv
-  candidate_radius_bp: 5000000
-activity:
-  panel: [ATAC, H3K27ac]
-contact:
-  mode: prior_only
-  scale: balanced_contact_protocol_1
-  resolution: 5000
-  normalization_id: hic_norm_protocol_1
-  balancing: balanced
-  window_id: bin_pair
-  prior_path: models/chicken_liver_contact
-  allow_prior_fallback: true
-sequence:
-  model_path: models/chicken_liver_sequence
-  max_n_fraction: 0.05
-genome:
-  individual_id: animal1
-  sample_id: animal1
-  reference_path: data/reference.fa
-  variant_path: data/animal1.vcf.gz
-  callability_path: data/animal1_callable.bed
-  ploidy_path: data/animal1_ploidy.tsv
-  phase_policy: require_phase_or_single_variant_scenario
-  unrecorded_site_policy: require_callable
-  sv_assessed: false
-allocation:
-  eta: auto
-multiomics:
-  mode: annotate
-seed: 17
-```
-
-```bash
-PACE capabilities --config genome.yaml
-PACE validate --config genome.yaml
-PACE genome --config genome.yaml --out results/animal1_genome
-```
-
-| 参数或输入 | 为什么需要 |
-|---|---|
-| 候选目录 | WGS 本身不会自动告诉软件哪些区域是组织增强子；需已有 atlas/可信候选来源 |
-| 参考 FASTA | 无压缩的 A/C/G/T/N 序列，与注释和 VCF 一致 |
-| VCF/BCF | 该个体规范化的变异；sample_id 必须是实际样本列名 |
-| callable BED | 说明哪些没有 VCF 记录的区域可以视为参考基因型；“没有记录”不等于“没有变异” |
-| `ploidy.tsv` | 有 chrom、ploidy 两列，显式说明各染色体 1 或 2 倍；鸡的性染色体不能全部默认二倍体 |
-| `phase_policy` | 个体单倍型需要可信相位；无法连通的相位区块或未定相杂合变异不会被任意拼接 |
-| `max_n_fraction` | 限制输入序列未知碱基比例；默认 0.05 是工程配置，需要按模型适用范围审查 |
-| `sv_assessed` | 记录是否评估结构变异，不能通过设为 true 代替真实 SV 分析 |
-
-`genome_only` 不能输入实测 activity/contact 表；若需要混合它们，应选择 hybrid。接触目前是距离先验，不是实测个体三维基因组。只有适用模型、基因型和结构检查都通过，结果才具备对应解释范围。
-
-常规 SNV 和保持固定输出目标的短 indel 可进入序列重建。改变目标窗口、已知结构变异、BND 断点等超出支持范围时保留明确不可用状态；软件不重建复杂 CNV 剂量和全基因组重排。未被个体 GT 选中的 ALT 不应影响该个体。
-
-需要分步重建并预测时：
-
-```bash
-PACE prepare-genome --config genome.yaml --out prepared/animal1_windows
-PACE predict-sequence --config genome.yaml --out prepared/animal1_predictions
-```
-
-导入外部个体预测仍需保留原参考、VCF、callability、ploidy 和相关配置，并使用匹配的 `genome_binding_id`。该标识将预测绑定到实际准备的个体输入；软件还会重新检查结构和窗口，不能用预计算数值覆盖失败状态。它是来源一致性记录，不是外部模型准确性的证明。
-
-## 9. RNA、甲基化及其他表观数据怎样使用
+## 7. RNA、甲基化及其他表观数据怎样使用
 
 | 数据 | 主公式中的角色 | 软件入口 |
 |---|---|---|
@@ -704,7 +346,7 @@ PACE predict-sequence --config genome.yaml --out prepared/animal1_predictions
 
 有独立功能标签时可训练额外分类器，输出 `pace_ml_score`，在适用校准通过时输出 `pace_ml_probability`。这些列独立于主 `pace_score`，不与主分数简单平均。模型适用范围、缺失处理、训练/校准/测试分离必须在报告中保留。
 
-## 10. 如何看结果
+## 8. 如何看结果
 
 ```bash
 python - <<'PY'
@@ -735,7 +377,7 @@ PY
 
 先检查覆盖与缺失，再看分数。`complete` 只表示计划候选可评分，不表示发现了全部生物学增强子；`partial` 表示分数只针对可评分子集。只有一个有效候选时它可能得到 1，但并没有因此成为已验证调控元件。所有支持为零时 PACE 是 NA，不能人为加常数凑出分数。
 
-## 11. 比较两只动物或两个处理
+## 9. 比较两只动物或两个处理
 
 两个结果必须使用相同候选背景和兼容的测量、模型与参数。`compare` 会在共同可评分元件上重新归一化，而不是直接连接两张分数表后相减。
 
@@ -755,22 +397,21 @@ PACE compare --config compare.yaml --out results/animal2_minus_animal1
 
 差值方向是右减左。完整差异与条件差异分开报告；分辨率、归一化或模型策略不兼容时不能当作完整个体生物效应。增强子自身支持不变，但其他元件改变，也会使它的 PACE 份额改变，因此应同时查看活性、support、基因总支持和 PACE 差值。
 
-## 12. 为什么这个框架适配家养动物
+## 10. 为什么这个框架适配家养动物
 
 | 家养动物分析中的实际问题 | PACE 的处理 | 仍需研究者解决的部分 |
 |---|---|---|
 | 物种、品种和参考版本多 | 显式绑定物种、组装、组织和模型范围 | 参考质量和跨版本坐标转换 |
-| 表观检测不齐全 | 固定单层/双层活性组合；合格时使用混合证据 | 没有合适模型不能补成可信实测 |
+| 表观检测不齐全 | 固定单层/双层活性组合，缺失保留 NA | 所选核心检测层仍需实测 |
 | Hi-C 深度、分辨率和组织覆盖有限 | 接触测量合同检查、显式先验或可靠性收缩 | 适用先验拟合和独立评估 |
 | 转录本/TSS 注释质量不均 | 对物理 TSS 去重并固定权重 | 不会自动修复错误注释或发现新 TSS |
 | 生物重复少，批次差异明显 | 技术/生物重复/供体分层聚合，保留来源和覆盖 | 不能凭软件增加独立样本数 |
-| 鸡等性染色体倍性不同 | 显式染色体倍性和 callability | 基因型、相位和 SV 输入质量 |
 | 亲缘关系、群体结构使验证容易偏高 | 独立分组验证并防止重复区域泄漏 | 用户需正确声明家系/群体/实验分组 |
 | RRBS 覆盖与 WGBS 不同 | 保留覆盖与缺失，不把未覆盖写成零甲基化 | 不同实验平台仍需匹配设计 |
 
 适配来自这些明确的数据条件和检查，而不是给所有畜禽套用一组所谓最优权重。当前软件能提供可重复、可追溯的计算；跨组织、跨品种的生物学准确性需要在相应数据上验证。
 
-## 13. 常见错误与继续阅读
+## 11. 常见错误与继续阅读
 
 - `PACE: command not found`：先 `conda activate pace`，确认安装和运行使用同一 Python 环境。
 - 文件找不到：YAML 内路径相对于 YAML 所在目录；CLI 路径相对于当前目录；Docker 路径必须在挂载范围内。

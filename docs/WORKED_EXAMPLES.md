@@ -26,10 +26,10 @@ is exactly the sum of those supports. A completely zero vector produces NA score
 
 ## Bulk aggregation and composition
 
-Two copies of E1 have assay pairs (9,1) and (1,9). Two copies of E2 each have (4,4).
+Two equally weighted measured replicates of E1 have assay pairs (9,1) and (1,9). Two equally weighted measured replicates of E2 each have (4,4).
 The bulk calculation first averages assays, producing activities 5 and 4. With
 identical contact and eta zero, E1 receives 5/9. Computing support separately per
-copy and summing gives 3/7 instead; that is a different, unimplemented estimand.
+replicate and summing gives 3/7 instead; that is a different, unimplemented estimand.
 
 Supports (1,1,2) and (1,1,NA) give original E1 shares 1/4 and 1/2. On the common
 first two elements, both recomputed shares are 1/2; a complete-background difference

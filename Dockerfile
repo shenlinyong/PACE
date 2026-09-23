@@ -7,10 +7,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /opt/pace
 COPY . .
-RUN case ",${PACE_EXTRAS}," in \
-        *,sequence,*) python -m pip install --no-cache-dir 'torch>=2.6,<3' --index-url https://download.pytorch.org/whl/cpu ;; \
-    esac \
-    && python -m pip install --no-cache-dir ".[${PACE_EXTRAS}]" \
+RUN python -m pip install --no-cache-dir ".[${PACE_EXTRAS}]" \
     && useradd --system --uid 10001 --create-home pace \
     && mkdir -p /work \
     && chown pace:pace /work

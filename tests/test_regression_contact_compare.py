@@ -2,7 +2,6 @@
 
 import json
 import math
-from pathlib import Path
 
 import pytest
 import yaml
@@ -17,6 +16,34 @@ from pace_livestock.io.tables import read_table, write_table
 from pace_livestock.operations import prepare_command
 from pace_livestock.pipeline import compute, run
 from pace_livestock.schemas import load_tables, universe_ids
+
+
+def contact_asset(tmp_path):
+    manifest = tmp_path / "contact-prior.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "kind": "contact_prior",
+                "model_id": "synthetic_contact",
+                "is_synthetic": True,
+                "species": "synthetic",
+                "assembly": "toy_assembly",
+                "context_id": "toy_tissue",
+                "target_level": "individual",
+                "training_sources": ["synthetic"],
+                "calibration_sources": [],
+                "test_sources": [],
+                "validation": {},
+                "a": 1.0,
+                "gamma": 1.0,
+                "d_min": 1000.0,
+                "d_ref": 1000.0,
+                "scale": "toy_contact",
+                "resolution": 500,
+            }
+        )
+    )
+    return manifest
 
 
 def test_contact_replicates_require_one_resolution(tmp_path):
@@ -53,10 +80,7 @@ def test_contact_measurement_metadata_cannot_change_between_pairs(tmp_path, fiel
 def test_prior_resolution_must_match_observed_contacts(tmp_path):
     path = create_example(tmp_path / "inputs", "measured")
     cfg = load_config(path)
-    genome = load_config(create_example(tmp_path / "genome", "genome_only"))
-    manifest = Path(genome["contact"]["prior_path"])
-    if manifest.is_dir():
-        manifest /= "manifest.json"
+    manifest = contact_asset(tmp_path)
     data = json.loads(manifest.read_text())
     data["resolution"] = 10000
     manifest.write_text(json.dumps(data))
@@ -178,8 +202,7 @@ def test_imported_observation_cannot_bypass_near_diagonal_policy(tmp_path):
 
 def test_imported_contacts_cannot_override_configured_evidence_policy(tmp_path):
     cfg = load_config(create_example(tmp_path / "inputs", "measured"))
-    genome = load_config(create_example(tmp_path / "genome", "genome_only"))
-    prior = load_asset(genome["contact"]["prior_path"], cfg, kind="contact_prior")
+    prior = load_asset(contact_asset(tmp_path), cfg, kind="contact_prior")
     prior["normalization_id"] = "toy_mean"
     tables = load_tables(cfg)
     imported = resolve_contacts(tables, cfg)

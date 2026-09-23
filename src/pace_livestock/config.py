@@ -30,7 +30,6 @@ DEFAULTS = {
             "observed_contacts",
             "resolved_activity",
             "resolved_contacts",
-            "predictions",
             "features",
             "methylation",
             "expression",
@@ -78,19 +77,6 @@ DEFAULTS = {
         "minimum_groups": 3,
         "validation_folds": 5,
         "minimum_positive_fraction": 0.8,
-    },
-    "sequence": {"model_path": None, "max_n_fraction": 0.05},
-    "fusion": {"calibrator_path": None, "quality_stratum": "default"},
-    "genome": {
-        "individual_id": None,
-        "reference_path": None,
-        "variant_path": None,
-        "callability_path": None,
-        "ploidy_path": None,
-        "sample_id": None,
-        "phase_policy": "require_phase_or_single_variant_scenario",
-        "unrecorded_site_policy": "require_callable",
-        "sv_assessed": False,
     },
     "multiomics": {"mode": "annotate", "model_path": None},
     "methylation": {
@@ -162,7 +148,7 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
             raise PaceError(f"context.{key} is required")
     enums = {
         "schema_version": {"pace-1"},
-        "regime": {"measured", "hybrid", "genome_only"},
+        "regime": {"measured"},
         "execution_profile": {"demonstration", "research", "validated"},
         "estimand": {"bulk_proxy"},
         "target_level": {"individual", "population_mean"},
@@ -185,8 +171,6 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         ("promoters", "weights", {"provided", "equal"}),
         ("multiomics", "mode", {"annotate", "ml"}),
         ("output", "format", {"tsv_gz"}),
-        ("genome", "phase_policy", {"require_phase_or_single_variant_scenario"}),
-        ("genome", "unrecorded_site_policy", {"require_callable", "assume_reference"}),
     ]
     for section, key, values in choices:
         if cfg[section][key] not in values:
@@ -242,9 +226,6 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         minimum=0,
         maximum=1,
     )
-    cfg["sequence"]["max_n_fraction"] = number(
-        cfg["sequence"]["max_n_fraction"], "max_n_fraction", minimum=0, maximum=1
-    )
     for key in ("minimum_coverage", "promoter_upstream_bp", "promoter_downstream_bp"):
         cfg["methylation"][key] = integer(
             cfg["methylation"][key],
@@ -262,7 +243,6 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
     for section, key in [
         ("catalog", "include_promoter_units"),
         ("contact", "allow_prior_fallback"),
-        ("genome", "sv_assessed"),
         ("output", "retain_all_candidates"),
         ("comparison", "full_delta_requires_complete"),
         ("comparison", "allow_conditional_intersection"),
@@ -278,23 +258,9 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         raise PaceError(
             "Contact scale must retain distance background; convert O/E using matching expected contacts"
         )
-    if cfg["regime"] == "genome_only" and (
-        cfg["contact"]["mode"] != "prior_only"
-        or any(cfg["inputs"][k] for k in ("observed_activity", "observed_contacts"))
-    ):
-        raise PaceError(
-            "genome_only requires prior_only contact and no experimental activity/contact input"
-        )
-    if cfg["catalog"]["profile"] == "provided_regions" and cfg["regime"] != "measured":
-        raise PaceError(
-            "provided_regions supports measured data only; no compatible sequence target is defined"
-        )
     for section in (
         "inputs",
         "contact",
-        "sequence",
-        "fusion",
-        "genome",
         "multiomics",
         "allocation",
         "catalog",
@@ -305,10 +271,6 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
                 if not isinstance(value, str):
                     raise PaceError(f"{section}.{key}: expected a path string")
                 cfg[section][key] = str((base / value).resolve())
-    if cfg["genome"]["variant_path"] and not cfg["genome"]["reference_path"]:
-        raise PaceError(
-            "genome.variant_path requires genome.reference_path for individual validation, including imported predictions"
-        )
     return cfg
 
 

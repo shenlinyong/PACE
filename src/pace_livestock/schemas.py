@@ -17,9 +17,8 @@ SCHEMAS = {
     "samples": "sample_id donor_id assay biological_replicate technical_replicate species assembly context_id source_id",
     "observed_activity": "element_id sample_id assay signal measurement_status callable_fraction unit normalization_id window_id",
     "observed_contacts": "element_id promoter_id sample_id contact_value measurement_status bin_pair_id scale resolution source_id",
-    "resolved_activity": "element_id assay observed_value predicted_value resolved_value evidence_id evidence_type observation_sample_id parent_evidence_ids model_id calibrator_id fusion_weight resolution_status reason unit window_id",
+    "resolved_activity": "element_id assay observed_value resolved_value evidence_id evidence_type observation_sample_id parent_evidence_ids resolution_status reason unit normalization_id window_id",
     "resolved_contacts": "element_id promoter_id resolved_value evidence_id evidence_type observation_sample_id prior_id reliability resolved_mode bin_pair_id resolution_status reason scale",
-    "predictions": "element_id assay predicted_value model_id unit normalization_id window_id status",
     "features": "entity_type entity_id feature_name value evidence_id status",
     "methylation": "chrom dyad_start0 methylated_count total_count sample_id assay",
     "expression": "gene_id sample_id tpm status",
@@ -28,7 +27,7 @@ SCHEMAS = {
     "sources": "source_id path_or_accession source_type assembly processing_method normalization_id checksum",
 }
 STATUSES = {"observed", "unmeasured", "low_coverage", "unmappable", "invalid", "not_applicable"}
-EVIDENCE_TYPES = {"observed", "sequence_prediction", "contact_prior", "fused", "aggregate"}
+EVIDENCE_TYPES = {"observed", "contact_prior", "fused", "aggregate"}
 CONTACT_ASSAYS = {
     "Hi-C",
     "HiC",
@@ -65,7 +64,6 @@ def validate_tables(t: dict, cfg: dict) -> None:
         "observed_contacts": ("element_id", "promoter_id", "sample_id"),
         "resolved_activity": ("element_id", "assay"),
         "resolved_contacts": ("element_id", "promoter_id"),
-        "predictions": ("element_id", "assay"),
         "expression": ("gene_id", "sample_id"),
         "methylation": ("chrom", "dyad_start0", "sample_id", "assay"),
         "features": ("entity_type", "entity_id", "feature_name"),
@@ -205,8 +203,15 @@ def validate_tables(t: dict, cfg: dict) -> None:
                 raise PaceError(f"{name}: unknown observation_sample_id")
             if row["evidence_type"] == "observed" and not sample:
                 raise PaceError("Observed evidence requires a real sample")
-            if row["evidence_type"] in {"sequence_prediction", "contact_prior"} and sample:
-                raise PaceError("Prediction/prior evidence cannot impersonate a sample")
+            if row["evidence_type"] == "contact_prior" and sample:
+                raise PaceError("Contact prior evidence cannot impersonate a sample")
+            if name == "resolved_activity":
+                if row["evidence_type"] not in ("observed", "aggregate"):
+                    raise PaceError("Activity imports must contain measured evidence")
+                if sample and samples[sample]["assay"] != row["assay"]:
+                    raise PaceError("Imported activity assay differs from samples table")
+            elif sample and samples[sample]["assay"] not in CONTACT_ASSAYS:
+                raise PaceError("Imported contact requires a chromosome-contact assay sample")
             if row["resolution_status"] not in ("resolved", "unresolved", "invalid"):
                 raise PaceError("Invalid resolution_status")
             row["resolved_value"] = number(
@@ -255,12 +260,6 @@ def validate_tables(t: dict, cfg: dict) -> None:
     for row in t["region_membership"]:
         if row["element_id"] not in units or row["source_id"] not in sources:
             raise PaceError("Region membership has an unknown element or source")
-    for row in t["predictions"]:
-        if row["element_id"] not in units:
-            raise PaceError("Prediction has unknown element_id")
-        row["predicted_value"] = number(
-            row["predicted_value"], "predicted_value", missing=True, minimum=0
-        )
     if cfg["catalog"]["include_promoter_units"]:
         cells = {(r["chrom"], r["start"], r["end"]) for r in t["units"]}
         width, offset = cfg["catalog"]["width_bp"], cfg["catalog"]["offset_bp"]

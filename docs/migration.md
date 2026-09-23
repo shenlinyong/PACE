@@ -1,22 +1,15 @@
-# Migration to the single current model
+# Migration to measured activity
 
-The current branch distributes one PACE scoring implementation under
-`src/pace_livestock`. Formula, file schemas, tutorials and command aliases all refer
-to it. Superseded region workflows, their configurations, results and model-specific
-tests were removed from this branch because retaining them alongside the current
-model led to incorrect public instructions.
+Software 0.4.0 restricts PACE to experimental activity. The removed `hybrid`, `genome` and `genome_only` modes, sequence activity prediction, activity-fusion calibration and variant-effect scenarios are no longer available.
 
-The previous source tree is available at
-[commit 8b5d12e](https://github.com/shenlinyong/PACE/tree/8b5d12e8f3ad3aa6948ee26b4ac099bde733579d).
-That is an archival snapshot, not current usage or validation guidance. Git history
-was preserved; historical outputs were not recomputed or relabelled.
+Removed commands: `train-sequence`, `predict-sequence`, `prepare-genome`, `fit-fusion`, `variant-effects`.
+Removed run sections: `sequence`, `fusion`, `genome`; removed input: `inputs.predictions`.
+Removed extras: `sequence`. PyTorch, safetensors and VCF/BCF readers are no longer required.
 
-Install the current package, prepare inputs with the [current schemas](data_dictionary.md),
-and use `PACE measured`, `PACE hybrid` or `PACE genome`. `scripts/pace.py` is only a
-compatibility launcher for this same installed package; it has no independent
-scientific implementation. Old options are rejected rather than silently translated.
+Old configurations using these entries fail validation. Do not convert a sequence-predicted activity column into an observed table or merely change a mode name. A new measured run requires actual qualified activity measurements and sample provenance.
 
-Existing raw inputs may be reusable after checking units, windows, fixed candidate
-sets and evidence provenance. Old normalized scores are not interchangeable with
-current results. Recompute from compatible evidence and evaluate changes with an
-explicit [comparison contract](comparison.md).
+Existing measured configurations remain supported. Use `PACE run` or `PACE measured`; mode defaults to measured. Imported activity now requires normalization_id, unit and window_id and is limited to observed/aggregate evidence. Contact observations, optional distance priors, multiple promoters, automatic eta and measured multiomics interfaces are retained. Reference FASTA access for CpG annotation remains available as `pace_livestock.io.reference.Reference`.
+
+Rerun analyses with the current version before preparing new comparisons or benchmarks. Refit auxiliary classifier contracts if their measurement definitions changed. Record the exact software commit. Older outputs retain their original meaning and should not be relabelled as experimental evidence.
+
+Historical source: [0.3.0-era snapshot](https://github.com/shenlinyong/PACE/tree/8c6f51e2ced192d26c17384893e4dd67305bdb25). Git history preserves it without exposing parallel current implementations.

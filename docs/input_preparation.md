@@ -41,10 +41,10 @@ This writes units, promoters, candidates, region membership, transcript mappings
 chrom_sizes.tsv and run_catalog_config.yaml. Merge that exported catalog block
 into the run configuration (or use --catalog-dir, which imports the metadata),
 so excluded terminal cells retain their reference-boundary justification. It does
-not invent quantitative values for the new windows: extract tracks again or provide genuinely
+not invent quantitative values for the new windows: extract tracks again or provide independently
 precomputed matching quantities. Add samples.tsv and sources.tsv with the scientific context
 before scoring. `provided_regions` is a distinct measured-only profile for user-defined regions;
-it does not enable sequence fusion or make old and canonical scores comparable.
+its candidate background must be matched explicitly when comparing results.
 
 ## bigWig activity and mark annotations
 
@@ -134,35 +134,3 @@ pass the raw CpG table as `inputs.methylation` and use the run's `methylation` b
 for minimum coverage, strand-aware promoter windows and reference CpG denominators.
 The standalone summary above is not itself a valid raw counts input. See the
 [complete multiomics guide](MULTIOMICS.md) for exact formats.
-
-## Individual sequence inputs
-
-The run configuration's genome block names an uncompressed A/C/G/T/N FASTA, normalized VCF
-(plain or gzip) or BCF, callable BED, and a `chrom,ploidy` table. BCF uses the IO extra. Current
-ploidies are one and two; no chromosome is assumed diploid. FASTA uses a byte-offset reader,
-so complete chromosomes are not loaded into memory. There is no automatic variant normalization.
-Convert gVCF confidence blocks to callable BED upstream when using gVCF-derived callability.
-
-Missing VCF records imply reference only inside callable intervals, unless the explicit
-`assume_reference` research policy is chosen. Missing GT is never repaired by that policy.
-Unphased heterozygotes and unrelated phase blocks are unresolved in individual reconstruction;
-use the separately labelled single-variant scenario command when appropriate. Short indels
-outside the output target may use additional verified context to preserve a fixed central
-target. Target-changing indels and altered E–TSS geometry remain unavailable for full scoring.
-Known SVs affect input windows and E–TSS intervals. Absent SV input evidence is `not_assessed`.
-
-### Reusing quantitative predictions safely
-
-`PACE prepare-genome` emits sequence windows and a manifest with `genome_binding_id`.
-`PACE predict-sequence` emits predictions carrying the same binding. An external
-adapter must predict those exact windows and preserve their binding; it must also
-provide a compatible quantitative sequence-model manifest. When reimporting a
-bound table, keep the reference, variants, sample, callability, ploidy, model and
-policies unchanged and set `inputs.predictions` to that table. The pipeline checks
-the binding and independently resolves structural validity.
-
-A VCF without the required reference/model context is rejected. Invalid windows
-cannot be restored by imported resolved activity. Only ALT alleles selected by the
-individual GT affect reconstruction; missing GT remains unknown, and both parsed
-BND endpoints are conservatively checked. These provenance checks do not verify
-the scientific accuracy of the external predictor.

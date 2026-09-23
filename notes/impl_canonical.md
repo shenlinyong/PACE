@@ -14,7 +14,7 @@ in the root review document.
 | Same-bin contacts use diagonal policy | Adapter/near-diagonal contract: these are not measured promoter self-support by default |
 | Sparse candidate search | Development I.13: index local anchors and emit actual pairs, no genome-wide dense E×G array |
 | Conservative indel/SV handling | Development F: preserve target identity, verify newly exposed context, mark changed geometry unavailable |
-| Safe model storage | Development G: JSON/NPZ for simple models and safetensors for CNN; no pickle loader |
+| Safe model storage | Development G: JSON contact priors and classifiers; no pickle loader |
 | Transparent elastic-net solver | Direct mean-weighted objective avoids ambiguous library C scaling; intercept unpenalized |
 | Training-only preprocessing | Development G/I.9: medians/IQR/tuning cannot observe external calibration/test data |
 | Explicit capability/validation boundaries | Development H: synthetic/research/validated assets and three biological tasks stay distinct |
@@ -22,7 +22,7 @@ in the root review document.
 Core reference tolerances are 1e-10 absolute for hand-derived fractions and 1e-12 where comparing
 the same deterministic kernel under reordered input. Optimizer tests use a 2e-6 intercept
 tolerance against the analytical Bernoulli intercept; classifier optimization records convergence.
-CNN tests check gradients, updates, masks and persistence, not an invented accuracy target.
+Classifier tests check optimization, held-out inference and persistence; no accuracy target is claimed for animal data.
 
 Public documentation is consolidated around the current model. Incompatible retained
 formulas, workflows and outputs were removed from the current branch after the user

@@ -1,2 +1,0 @@
-run_config: ../genome_only/config.yaml
-variants: ../genome_only/sample.vcf

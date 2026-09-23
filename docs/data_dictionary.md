@@ -1,169 +1,125 @@
-# Standard table dictionary
+# Input and output data dictionary
 
-All tables are UTF-8 TSV with a header. `NA` or an empty cell means missing; strings such as
-`nan`, `inf`, malformed numbers, duplicate primary keys and unknown foreign keys are rejected.
-BED coordinates are zero-based half-open; TSS is a zero-based base coordinate. All arrays use
-float64 in the formula kernel. Additional columns are retained; unknown YAML keys are errors.
+Tables are UTF-8 TSV (optionally gzip) with headers. BED/internal intervals are 0-based half-open; tss0 is a 0-based position. Use NA for unavailable values and 0 for true measurements of zero. All coordinates and experimental metadata must use the declared assembly and context.
 
-The following required headers are generated from `pace_livestock.schemas.SCHEMAS`.
-Requirements are conditional on the table being used; genome-only does not need fabricated
-samples or empty observed-assay files.
+## Inputs
 
-## units.tsv
+units, promoters and candidates must be nonempty. Activity must be available from qualified experimental rows or valid imports of experimentally aggregated activity. Register every real sample and source. Additional tables are required only when referenced; do not fabricate sample identities.
+
+### units
 
 ```text
 element_id	chrom	start	end	anchor0	element_roles	canonical_catalog_id
 ```
 
-## region_membership.tsv
+### region_membership
 
 ```text
 region_id	element_id	source_id	membership_rule
 ```
 
-## promoters.tsv
+### promoters
 
 ```text
 gene_id	promoter_id	chrom	tss0	strand	pi	pi_source
 ```
 
-## candidates.tsv
+### candidates
 
 ```text
 element_id	gene_id	candidate_universe_id
 ```
 
-## samples.tsv
+### samples
 
 ```text
 sample_id	donor_id	assay	biological_replicate	technical_replicate	species	assembly	context_id	source_id
 ```
 
-## observed_activity.tsv
+### observed_activity
 
 ```text
 element_id	sample_id	assay	signal	measurement_status	callable_fraction	unit	normalization_id	window_id
 ```
 
-## observed_contacts.tsv
+### observed_contacts
 
 ```text
 element_id	promoter_id	sample_id	contact_value	measurement_status	bin_pair_id	scale	resolution	source_id
 ```
 
-## resolved_activity.tsv
+### resolved_activity
 
 ```text
-element_id	assay	observed_value	predicted_value	resolved_value	evidence_id	evidence_type	observation_sample_id	parent_evidence_ids	model_id	calibrator_id	fusion_weight	resolution_status	reason	unit	window_id
+element_id	assay	observed_value	resolved_value	evidence_id	evidence_type	observation_sample_id	parent_evidence_ids	resolution_status	reason	unit	normalization_id	window_id
 ```
 
-## resolved_contacts.tsv
+### resolved_contacts
 
 ```text
 element_id	promoter_id	resolved_value	evidence_id	evidence_type	observation_sample_id	prior_id	reliability	resolved_mode	bin_pair_id	resolution_status	reason	scale
 ```
 
-## predictions.tsv
-
-```text
-element_id	assay	predicted_value	model_id	unit	normalization_id	window_id	status
-```
-
-## features.tsv
+### features
 
 ```text
 entity_type	entity_id	feature_name	value	evidence_id	status
 ```
 
-## methylation.tsv
+### methylation
 
 ```text
 chrom	dyad_start0	methylated_count	total_count	sample_id	assay
 ```
 
-## expression.tsv
+### expression
 
 ```text
 gene_id	sample_id	tpm	status
 ```
 
-## labels.tsv
+### labels
 
 ```text
 label_id	assayed_region_id	gene_id	context_id	perturbation_type	effect_direction	effect_size	label_status	assay_id	group_id	source_id
 ```
 
-## evidence.tsv
+### evidence
 
 ```text
 evidence_id	evidence_type	source_id	parent_evidence_ids	model_id	unit	processing_method	checksum
 ```
 
-## sources.tsv
+### sources
 
 ```text
 source_id	path_or_accession	source_type	assembly	processing_method	normalization_id	checksum
 ```
 
-## Values, identities and provenance
+## Status and measurement definitions
 
-- `measurement_status`: observed, unmeasured, low_coverage, unmappable, invalid, not_applicable.
-- `resolution_status`: resolved, unresolved, invalid. Physical structure is reported separately.
-- `evidence_type`: observed, sequence_prediction, contact_prior, fused, aggregate.
-- `normalization_status`: complete, partial, zero_support, empty. Complete concerns the planned
-  candidate set only, not discovery of all biological enhancers.
-- `target_level`: individual or population_mean; main `estimand` is bulk_proxy.
-- Canonical `window_id`: `grid:<width>:mean`, e.g. `grid:500:mean`. Imported resolved quantitative
-  activity must additionally include `normalization_id`; it is checked against source/model units.
-- `labels.label_status`: enhancing_positive, powered_negative, or an explicit excluded status
-  such as low_power or not_tested. Enhancing positives require effect_direction=down.
-- `features.entity_type`: element, promoter, gene, edge. Edge `entity_id` uses `element_id|gene_id`;
-  include element_id/gene_id columns when exporting structured E–G features. Use distinct feature
-  names for different biological levels. Status determines whether the value is usable.
+- measurement_status: observed, unmeasured, low_coverage, unmappable, invalid, not_applicable.
+- resolution_status: resolved, unresolved, invalid.
+- Activity evidence: observed or aggregate only. Imported measurements must identify the correct assay/sample and include unit, normalization_id and window_id.
+- Contact evidence: observed, aggregate, contact_prior or fused. Here fused refers solely to declared contact shrinkage between observed contacts and a distance prior.
+- Imported contacts require a resolution supplied by the table, matching raw contacts/prior or run configuration; scale alone is insufficient. Optional normalization_id, balancing and window_id must agree when declared.
+- Normalization status: complete, partial, zero_support, empty. Complete concerns the planned candidate set.
+- samples records identify donor, biological and technical repeats separately. Metadata checks do not replace batch correction.
+- Generic features should declare assay, unit, normalization_id and window_id; keep the same definitions during training and prediction.
 
-Observed rows reference actual samples and their assay/context. Predictions reference model
-assets with no experimental sample. Derived evidence carries parent IDs, method and row hash;
-run outputs include an expanded evidence.tsv and sources.tsv so parent IDs remain resolvable.
-Input-file and model-manifest SHA256 hashes are in run_manifest.json. Actual catalogs/candidates/
-promoters are hashed from contents, independent of caller-supplied human-readable IDs.
-`software_sha256` hashes the installed Python implementation independently of installation path,
-so two source revisions sharing a package version remain distinguishable.
+## Main outputs
 
-## Output-only fields
+| File | Meaning |
+|---|---|
+| scores.tsv.gz | Every candidate, pace_score, A_used, Cbar, support/log_support, scoreable, normalization_status and reasons |
+| gene_summary.tsv | Candidate counts, coverage and actual denominator |
+| resolved_activity.tsv | Qualified experimental activity per unit/assay |
+| resolved_contacts.tsv | Contact value, source, prior identity, resolution and policy |
+| evidence.tsv / sources.tsv | Traceable input and derived evidence identities |
+| multiomics_features.tsv.gz | RNA, histone, CTCF and methylation annotations |
+| eta_calibration.json | Actual eta, applicability, fitting and fallback reasons |
+| ml_feature_contract.json | Measurement definitions used for the optional classifier |
+| qc_report.json / run_manifest.json | QC, context, parameters, input and software hashes |
+| resolved_config.yaml / report.md | Reproducible configuration and concise interpretation |
 
-`eta_calibration.json` records the numeric exponent, status, applicability scope and
-calibration provenance. `run_manifest.json` repeats it under `allocation`, and the
-comparison contract stores the numeric eta. Functional eta calibration uses a dedicated
-element-level table; see [its schema](eta_calibration.md#required-functional-label-table).
-
-`scores.tsv.gz` retains all candidates with A_used, Cbar, B, support, log_support, denominator,
-log_denominator, pace_score, scoreable, support_status, normalization_status, actual normalization
-ID, distance_bp, n_tss, sources, structural_status and reasons. Raw overflow is NA with a finite
-log_support and status=overflow; true zero is support=0 and log_support=NA in TSV (mathematically
-negative infinity). The reader recovers that zero without conflating it with missing evidence.
-
-`pace_ml_score` and `pace_ml_probability` are separate optional fields, NA unless computed with
-an applicable model. An uncalibrated classifier only fills its score. Gene totals, coverage and
-actual denominator identities are reported in gene_summary.tsv. Comparison fields are documented
-in [comparison.md](comparison.md); all deltas are right minus left.
-
-## Additional contracts used by the current implementation
-
-- Contact observations and resolved rows retain `resolution`, `normalization_id`,
-  `balancing` and `window_id` when available. A prior used with observations must
-  match their measurement contract; a different field label is not a conversion.
-- Individual imported predictions, and reference imports with a supplied FASTA,
-  require the matching `genome_binding_id`; retain the original genomic inputs.
-- `expression.status` governs usability: only qualified observed RNA enters numeric
-  features. A residual number in an invalid row is not a valid measurement.
-- Raw methylation counts remain the `inputs.methylation` format. Optional run
-  reference denominators use `entity_type,entity_id,n_cpg` for element/promoter
-  windows; missing reference counts leave coverage unavailable.
-- `ml_feature_contract.json` is a structured JSON object exported by scoring, copied
-  as a mapping into non-synthetic classifier training configuration. It records
-  feature semantics, not the specific individual identity.
-- `genome_binding_id` is an input-consistency identity, not a security signature or
-  accuracy certificate.
-
-See [multiomics interfaces](MULTIOMICS.md), [input preparation](input_preparation.md)
-and [training](training.md) for how these fields are created.
+The classifier fields pace_ml_score and pace_ml_probability remain separate from pace_score. NA is preserved when inference is unavailable or out of scope. See [multiomics](MULTIOMICS.md), [parameters](parameters.md) and [formula](FORMULA.md).

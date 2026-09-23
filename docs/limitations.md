@@ -1,35 +1,22 @@
 # Scope and limitations
 
-The new package is research software implementing a specified mathematical contract. Its tests
-verify software behavior, not biological predictive performance. No real livestock model weights,
-independent individual-effect validation or enhancer–gene perturbation validation is bundled.
+PACE is research software for relative regulatory support from measured activity and declared contact evidence. Software tests check calculations and input handling; they do not establish predictive accuracy for a livestock species, tissue, breed or experimental condition.
 
-| Capability | Current boundary |
+| Capability | Boundary |
 |---|---|
-| Three evidence regimes | Implemented with shared bulk-proxy order and asset checks; synthetic examples only |
-| Quantitative CNN | Real CPU training/inference and safe weights; a baseline, not an optimized livestock model |
-| Genome-only candidates | Existing atlas and trusted promoter cells; no whole-genome novel-element discovery |
-| SNV/short indel | Normalized SNVs and fixed-target flanking indels of at most 50 bp; verified additional context when needed |
-| Target-changing indel | Unresolved if the central training target changes length or correspondence |
-| E–TSS geometry changes | Conservatively unresolved; no haplotype-specific distance reconstruction |
-| Phase and ploidy | Explicit haploid/diploid; unphased heterozygotes and disconnected local PS blocks are unresolved |
-| Callability | Callable BED or explicit reference-assumption policy; no automatic gVCF confidence-block conversion |
-| SV/CNV | Flags reported input SV effects; does not discover unreported SVs or reconstruct complex dosage |
-| Multiomics | Standard tables and track/count/interval adapters; annotation by default, named features in independent ML |
-| Functional labels | First implementation uses unambiguous one-to-one region/unit mappings; multi-tile labels are excluded and reported |
-| Continuous eta | Bounded candidate fit with grouped out-of-fold AP selection and stability gates; internal selection does not establish external biological accuracy |
-| Probability calibration | Specific to independent supplied labels and their sampling design; no universal causal probability |
-| Contact uncertainty | Explicit observed/prior/shrinkage point estimates; no Poisson–Gamma or posterior sampling |
-| Statistical uncertainty | Replicate consistency and coverage; no invented small-sample confidence intervals |
-| External methods | Provenance-tagged score ingestion, not a claimed complete reimplementation of gABC |
-| Scalability | Sparse candidate/bin-pair algorithms; current training TSV and model input batches reside in memory |
-| Cross-species transfer | Scope mismatch is rejected; train/provide a target-scope asset rather than silently reusing another species |
+| Activity | Requires measured ATAC, DNase or H3K27ac; no replacement of unavailable activity |
+| Candidate catalog | Supplied/experimental regions and trusted promoter annotations; completeness refers to this planned catalog |
+| Contact | Measured contacts or an explicitly supplied applicable distance prior; prior evidence is not an observed regulatory loop |
+| Contact shrinkage | Declared observed/prior point estimate and reliability source; no automatically fitted edge-wise posterior |
+| Multiple TSSs | Fixed distinct physical promoters and weights; incorrect annotations remain a limitation |
+| Replicates | Declared technical/biological/donor aggregation; no automatic batch correction or increase in independent sample size |
+| Additional omics | Named experimental annotations; optional separate classifier with its own validation |
+| Allocation | Grouped functional-label selection with zero fallback; final independent evaluation remains necessary |
+| Calibrated probability | Specific to supplied functional labels and sampling design; not universal causality |
+| Between-animal comparison | Comparable measured states on common denominators; not an isolated genetic or causal effect |
+| Cross-species/tissue use | Explicit background checks; any accuracy claim requires target-scope evaluation |
+| Scalability | Sparse candidate contact processing; training tables reside in memory |
 
-Additional-reference context is conservative: unknown sequence, callability, target correspondence
-or structural relationships can reduce coverage. A complete denominator only means every planned
-candidate was handled, not that every biological enhancer was discovered. Conditional comparisons
-describe their common measurable subset and must not be represented as complete genetic effects.
+No universal livestock weights or independent biological benchmark results are bundled. A high PACE fraction can occur when only a small subset is measurable. Always report candidate construction, assay availability, exclusions and coverage. Do not interpret partial normalization as complete regulatory discovery.
 
-Potential research extensions do not imply implemented capabilities. Unsupported extensions have no fake-success command. Full posterior inference,
-copy-resolved support, arbitrary assembly mapping and de novo contact-network training remain
-explicit research extensions.
+[Formula](FORMULA.md) · [Verification](validation.md) · [Migration](migration.md)

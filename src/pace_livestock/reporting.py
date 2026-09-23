@@ -133,7 +133,6 @@ def multiomics_features(tables, scores, resolved_activity, cfg):
     if tables["methylation"]:
         settings = cfg.get("methylation", {})
         denominators = load_reference_cpg(settings.get("reference_cpg_path"))
-        multiple_assays = len({r["assay"] for r in tables["methylation"]}) > 1
         for entity_type, regions in methylation_regions(tables, cfg).items():
             reference_cpg = {
                 identifier: count
@@ -153,9 +152,7 @@ def multiomics_features(tables, scores, resolved_activity, cfg):
                     "total_reads",
                     "cpg_coverage_fraction",
                 ):
-                    prefix = (
-                        f"DNA_methylation:{row['assay']}" if multiple_assays else "DNA_methylation"
-                    )
+                    prefix = f"DNA_methylation:{row['assay']}"
                     rows.append(
                         {
                             "entity_type": entity_type,
@@ -245,7 +242,14 @@ def multiomics_features(tables, scores, resolved_activity, cfg):
                 }
             )
     roles = {layer: "disabled" for layer in LAYERS}
-    roles["Hi-C"] = "active_core"
+    if cfg["contact"]["mode"] != "prior_only" and (
+        tables["observed_contacts"]
+        or any(
+            r["evidence_type"] in ("observed", "aggregate", "fused")
+            for r in tables["resolved_contacts"]
+        )
+    ):
+        roles["Hi-C"] = "active_core"
     if panel & {"ATAC", "DNase"}:
         roles["accessibility"] = "active_core"
     if "H3K27ac" in panel:

@@ -1,49 +1,12 @@
 # PACE
 
-[![Software tests](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml/badge.svg)](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml)
+PACE estimates relative enhancer–gene regulatory support from **measured activity**
+and declared promoter-contact evidence in livestock research.
 
-**Activity–contact modelling for livestock enhancer–gene research.**
-
-PACE combines quantitative regulatory activity and contact to a gene's physical
-promoters into a relative support score. It supports measured, hybrid and
-sequence-only evidence with explicit quality, missingness and provenance checks.
-Author and maintainer: **申林用 (Linyong Shen, shenlinyong), Northwest A&F University**.
-
-[中文完整使用说明](docs/USER_GUIDE.zh-CN.md) · [中文首页](README.zh-CN.md) ·
-[Installation: Conda / pip / Docker](docs/INSTALLATION.md) ·
-[Three-mode tutorial](docs/TUTORIAL.md) · [Equations](docs/FORMULA.md)
-
-## Start with the data you have
-
-Choose the first row that matches your project. The mode describes the evidence available for this run; it does not make a biological quality claim.
-
-| Available data | Start with | Main files | Optional files |
-|---|---|---|---|
-| ATAC-seq, DNase-seq or H3K27ac plus promoter contacts | `measured` | `observed_activity.tsv`, `observed_contacts.tsv`, `samples.tsv` | RNA-seq, histone marks, CTCF, methylation |
-| Measured data plus a sequence model or individual genome | `hybrid` | measured files plus FASTA/VCF and `sequence_model` | RNA-seq, histone marks, CTCF, methylation |
-| Reference/individual genome plus a validated sequence model | `genome` | FASTA, VCF/BCF, callable sites, ploidy, sequence model | RNA-seq, histone marks, CTCF, methylation |
-
-The primary score uses one fixed activity panel for the whole run: ATAC, DNase, H3K27ac, ATAC+H3K27ac or DNase+H3K27ac. RNA-seq, H3K4me1/3, H3K27me3, H3K9me3, CTCF and WGBS/RRBS remain named annotations or separately validated machine-learning features; they are not silently multiplied into the primary score. See [multi-omics inputs](docs/MULTIOMICS.md).
-
-There is no fixed number of biological replicates. Put every biological and technical replicate in `samples.tsv`, give each row a distinct `sample_id`, and keep those IDs in activity, contact, expression and methylation tables. PACE aggregates technical replicates within biological replicates and preserves donor and assay metadata before scoring. See the [input table dictionary](docs/data_dictionary.md#samples.tsv).
-
-The repository's own files are a runnable example. They contain the synthetic sample IDs `S_ATAC`, `S_H3K27ac` and `S_Hi-C`, so the following command uses real files that exist after cloning:
-
-```bash
-PACE measured --catalog-dir examples/measured \
-  --samples examples/measured/samples.tsv \
-  --activity examples/measured/observed_activity.tsv \
-  --contacts examples/measured/observed_contacts.tsv \
-  --species synthetic --assembly toy_assembly --tissue toy_tissue \
-  --profile demonstration --contact-scale toy_contact \
-  --no-include-promoters --out results/measured_direct
-```
-
-For your own study, replace those paths with files whose names identify the individual, tissue, assay and replicate, for example `animal_001_rep2_liver_ATAC.tsv` and `animal_001_rep2_liver_HiC_5kb.tsv`. The names are for humans; the table columns and `sample_id` values are what PACE validates.
+[中文](README.zh-CN.md) · [Full Chinese manual](docs/USER_GUIDE.zh-CN.md) ·
+[Formula](docs/FORMULA.md) · [Inputs](docs/data_dictionary.md) · [Parameters](docs/parameters.md)
 
 ## Download and install
-
-The commands below run on a Linux server with Git and Conda installed:
 
 ```bash
 git clone https://github.com/shenlinyong/PACE.git
@@ -53,7 +16,7 @@ conda activate pace
 PACE --version
 ```
 
-Alternatively, use Python >=3.11 in an isolated environment:
+Alternatively, use Python >=3.11:
 
 ```bash
 python3 -m venv .venv
@@ -61,65 +24,45 @@ source .venv/bin/activate
 python -m pip install '.[io,ml]'
 ```
 
-Or build the included Docker image locally:
+For Docker:
 
 ```bash
 docker build -t pace:local .
-docker run --rm pace:local --version
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work pace:local \
+  demo --out /work/results/docker_demo
 ```
 
-Real CNN inference/training requires the optional `sequence` dependencies. The
-[installation guide](docs/INSTALLATION.md) includes wget source downloads, CPU
-PyTorch, Docker volume mounts and development installation. No published PyPI
-package, registry image or validated livestock weight download is assumed.
+See [installation](docs/INSTALLATION.md) for a wget source archive, paths and upgrades.
+No GPU or deep-learning framework is required.
 
-## Run the bundled examples
-
-From the repository root, after installation:
+## First run
 
 ```bash
-PACE measured --config examples/measured/config.yaml --out results/measured
-PACE hybrid --config examples/hybrid/config.yaml --out results/hybrid
-PACE genome --config examples/genome_only/config.yaml --out results/genome
+PACE demo --out results/demo
+PACE validate --config examples/measured/config.yaml
+PACE run --config examples/measured/config.yaml --out results/measured
+PACE measured --help
 ```
 
-These are complete **synthetic** fixtures that run offline without a GPU. They
-check installation and demonstrate the workflow; they are not biological models.
-Choose a new output directory each time. `PACE`, `pace` and `pace-livestock` are
-aliases for the same implementation.
+The bundled data are synthetic software examples. Use experimental data with
+`execution_profile: research` for scientific analysis. Output directories must be new.
 
-If you want to see which file supplies which evidence, run the same measured example with explicit paths:
+## Required evidence
 
-```bash
-PACE measured --catalog-dir examples/measured \
-  --samples examples/measured/samples.tsv \
-  --activity examples/measured/observed_activity.tsv \
-  --contacts examples/measured/observed_contacts.tsv \
-  --species synthetic --assembly toy_assembly --tissue toy_tissue \
-  --profile demonstration --contact-scale toy_contact \
-  --no-include-promoters --out results/measured_direct
-```
+| Component | Input and role |
+|---|---|
+| Activity | Measured ATAC, DNase or H3K27ac; one fixed supported single/two-assay panel |
+| Contact | Compatible Hi-C or other contact assays; an explicitly supplied distance prior is optional |
+| Candidate catalog | Fixed units, distinct TSSs and candidate element–gene pairs |
+| Samples | Donor, biological/technical replicate, species, assembly and tissue metadata |
+| Additional omics | RNA, histone marks, CTCF and methylation annotations; optional separate classifier |
 
-For your own data, read the [step-by-step tutorial](docs/TUTORIAL.md),
-[three complete project configurations](docs/USER_GUIDE.zh-CN.md), and
-[input preparation guide](docs/input_preparation.md). Paths in YAML resolve from
-the YAML file's directory; direct CLI paths resolve from the working directory.
+Use [input preparation](docs/input_preparation.md) for BED/GTF, bigWig and cool/mcool.
+PACE starts from processed experimental data; it does not align raw reads or call peaks.
+Missing activity remains unavailable. `PACE run` and `PACE measured` call the same
+measured-activity implementation. [Migration](docs/migration.md) describes removed APIs.
 
-## Choose the evidence mode
-
-| Mode | Activity | Contact | Requirements beyond the candidate catalog |
-|---|---|---|---|
-| `measured` | Qualified observed signals in a fixed assay panel | Observations, or an explicitly configured applicable prior | Actual sample/source metadata and quantitative measurements |
-| `hybrid` | Qualified observations and applicable quantitative predictions; calibrated fusion where available | Observations, prior or explicit reliability shrinkage | Matching sequence model and, for fusion, a matching calibrator |
-| `genome` / `genome_only` | Quantitative predictions from reference or individual sequences | Applicable distance prior | Matching trained weights, reference and prior; individual work also requires genotypes, callability and ploidy |
-
-Every mode uses fixed candidate units, distinct physical TSSs, the same activity
-panel throughout a run and the same scoring kernel. RNA, H3K4me1, H3K4me3,
-H3K27me3, H3K9me3, CTCF and WGBS/RRBS have [explicit interfaces](docs/MULTIOMICS.md).
-They are annotations by default and may enter a separately validated classifier;
-they are not arbitrary multipliers in the primary score.
-
-## The model
+## Total formula
 
 ```math
 \boxed{
@@ -130,69 +73,39 @@ they are not arbitrary multipliers in the primary score.
 }
 ```
 
-The numerator is the current unit's activity × multi-TSS contact × optional
-allocation factor. The denominator sums the same support across this gene's
-actually scoreable planned candidates. Activity is the equal geometric mean of
-the selected quantitative ATAC/DNase/H3K27ac signals. TSS contact uses fixed promoter
-weights and compatible measurement scales. Optional allocation describes how an
-unit's contact is distributed across its fixed candidate genes.
+A_star is the fixed-panel geometric mean of measured signals. Cbar integrates
+distinct promoters with fixed weights. B is optional target allocation; eta defaults
+to zero without eligible independent functional validation. The denominator is the
+sum of support for the actually scoreable candidates of the same gene.
+See [fully expanded equations](docs/FORMULA.md) and [worked examples](docs/WORKED_EXAMPLES.md).
 
-Automatic allocation uses a numerical exponent of zero without sufficient
-applicable functional labels and successful grouped validation. An accepted
-estimate lies in [0,1]. Details are in [calibration](docs/eta_calibration.md).
+## Analyze your experiment
 
-The [equation manual](docs/FORMULA.md) provides **the fully expanded total formula,
-fully expanded formulas for all three modes, every symbol, and a numerical example**.
-A score is a relative support share, not a causal probability or expression effect.
-Missing evidence stays NA; observed zeros stay zero. No arbitrary denominator
-pseudocount or gene-expression multiplier is added.
+```bash
+PACE run --config experiment.yaml --out results/experiment
+```
 
-## Inspect the output before interpreting a score
+A complete configuration and all required table fields are explained in the
+[tutorial](docs/TUTORIAL.md). YAML paths are relative to the YAML file, whereas
+direct CLI file paths are relative to the current working directory. For multiple
+animals use separate individual runs or explicitly declare `target_level: population_mean`.
+Replicates require correct sample metadata and comparable normalization.
 
-| File | What to inspect |
+## Read the results
+
+| Output | Meaning |
 |---|---|
-| `scores.tsv.gz` | Every candidate, `pace_score`, activity, contact, support/log support, missing reasons and normalization status |
-| `gene_summary.tsv` | Planned/scoreable candidates, coverage and actual denominator |
-| `resolved_activity.tsv`, `resolved_contacts.tsv` | Source selection, prediction/fusion/prior, scale and status |
-| `multiomics_features.tsv.gz` | RNA, auxiliary marks, methylation and other named annotations |
-| `evidence.tsv`, `sources.tsv` | Traceable source and derived evidence identities |
-| `eta_calibration.json` | Actual parameter, fitting/validation decision or fallback reason |
-| `qc_report.json`, `report.md` | Coverage, limitations and unavailable evidence |
-| `run_manifest.json`, `resolved_config.yaml` | Input/model hashes, environment, configuration and scientific contracts |
-| `ml_feature_contract.json` | Measurement and feature semantics required by a compatible classifier |
+| scores.tsv.gz | Relative support, activity, contact, reasons and coverage for every candidate |
+| gene_summary.tsv | Actual denominator and complete/partial/zero-support status |
+| resolved_activity.tsv / resolved_contacts.tsv | Measurements and the contact evidence actually used |
+| multiomics_features.tsv.gz | Additional measured annotations |
+| eta_calibration.json | Actual exponent, validation result and fallback reason |
+| qc_report.json / run_manifest.json | QC, context, input hashes and reproducibility information |
 
-Both complete and partial score sets can sum to one. `partial` means conditional
-on the remaining scoreable candidates, not repaired missing data. Use
-[`PACE compare`](docs/comparison.md) to recompute a common background when comparing
-runs. Changes in relative support alone do not establish activity or expression
-changes. There is no universal PACE significance threshold.
+PACE scores are relative support shares. They are not causal probabilities or
+expression effects. Additional classifier outputs are separate. Software tests do
+not demonstrate livestock predictive accuracy. See [limitations](docs/limitations.md),
+[verification](docs/validation.md), [benchmarking](docs/comparison.md) and
+[manuscript scope](docs/MANUSCRIPT_SCOPE.zh-CN.md).
 
-## Why the design is useful for livestock
-
-The framework declares species, assembly and tissue; handles incomplete assay
-panels without treating missing data as zeros; averages distinct promoters;
-separates technical replicates from animals; and checks contact resolution and
-normalization before combining data. Genomic reconstruction requires explicit
-chromosome ploidy, callability and actual carried alleles. Frozen model scope and
-grouped functional validation limit inappropriate reuse and repeated-locus leakage.
-These are practical responses to heterogeneous livestock data, not evidence of
-universal cross-species performance.
-
-**The repository includes working software and synthetic examples, but no
-independently validated real livestock weights or general biological accuracy
-claim.** Measured data analysis can be used without a sequence model. A new
-individual's WGS is informative for this workflow only when an applicable model
-and candidate atlas already exist. A species with no functional training data
-requires separately validated transfer. See [limitations](docs/limitations.md).
-
-## Documentation and reproducibility
-
-- [All parameters and defaults](docs/parameters.md), [CLI](docs/cli.md), [table dictionary](docs/data_dictionary.md).
-- [Input preparation](docs/input_preparation.md), [multiomics interfaces](docs/MULTIOMICS.md), [training](docs/training.md).
-- [Comparisons and benchmarks](docs/comparison.md), [worked calculations](docs/WORKED_EXAMPLES.md), [troubleshooting](docs/TROUBLESHOOTING.md).
-- [Validation](docs/validation.md), [contributing](CONTRIBUTING.md), [citation](CITATION.cff), [MIT license](LICENSE).
-
-Record the exact commit with `git rev-parse HEAD`. Save the configuration, manifest,
-QC and all model identities with the analysis. File reproducible issues through
-[GitHub Issues](https://github.com/shenlinyong/PACE/issues). No software-paper DOI is
-claimed by this repository.
+Maintainer: Linyong Shen (申林用). [MIT license](LICENSE).

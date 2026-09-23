@@ -1,4 +1,4 @@
-"""Actual command paths for calibration, preparation, benchmarks and variant scenarios."""
+"""Actual command paths for calibration, preparation, benchmarks and measured evidence."""
 
 import math
 
@@ -7,11 +7,9 @@ import yaml
 
 from pace_livestock.cli import main
 from pace_livestock.demo import create_example
-from pace_livestock.errors import PaceError
 from pace_livestock.evaluation.benchmark import benchmark_command
 from pace_livestock.io.tables import read_table, write_table
-from pace_livestock.operations import fit_contact_command, fit_fusion_command, prepare_command
-from pace_livestock.sequence.effects import variant_effects_command
+from pace_livestock.operations import fit_contact_command, prepare_command
 
 
 def metadata():
@@ -60,45 +58,6 @@ def test_fit_contact_includes_zeros(tmp_path):
     assert asset["gamma"] == pytest.approx(1, abs=1e-10)
     residual = read_table(tmp_path / "model/held_out_residuals.tsv")[0]
     assert float(residual["residual"]) == pytest.approx(0, abs=1e-10)
-
-
-def test_fit_fusion_independent_target(tmp_path):
-    rows = [
-        dict(
-            assay="ATAC",
-            quality_stratum="default",
-            observed=9,
-            predicted=3,
-            target=math.sqrt(40) - 1,
-            split="calibration" if i < 4 else "test",
-            group_id=str(i),
-            input_donor=f"D{i}",
-            target_donor=f"D{i}",
-            input_measurement_id=f"low{i}",
-            target_measurement_id=f"independent{i}",
-        )
-        for i in range(6)
-    ]
-    write_table(tmp_path / "fusion.tsv", rows)
-    cfg = dict(
-        **metadata(),
-        data="fusion.tsv",
-        calibration_target="individual_state",
-        signal_unit="signal",
-        normalization_id="norm",
-        output_window=500,
-        scales={"ATAC": 1},
-        minimum_samples=4,
-        measurement_design="independent_technical_replicates_same_donor",
-    )
-    p = tmp_path / "fit.yaml"
-    p.write_text(yaml.safe_dump(cfg))
-    asset = fit_fusion_command(p, tmp_path / "model")
-    assert asset["strata"]["default"]["ATAC"]["weight"] == pytest.approx(0.5, abs=1e-10)
-    rows[0]["target_donor"] = "other_animal"
-    write_table(tmp_path / "fusion.tsv", rows)
-    with pytest.raises(PaceError, match="matching donors"):
-        fit_fusion_command(p, tmp_path / "bad")
 
 
 def test_catalog_prepare_command(tmp_path):
@@ -153,17 +112,6 @@ def test_benchmark_four_explicit_baselines(tmp_path):
     assert all(
         math.isnan(r["precision"]) for r in report
     )  # No frozen deployment threshold supplied.
-
-
-def test_variant_effects_are_explicit_scenarios(tmp_path):
-    cfg = create_example(tmp_path / "inputs", "genome_only")
-    p = tmp_path / "effects.yaml"
-    p.write_text(yaml.safe_dump(dict(run_config=str(cfg), variants=str(cfg.parent / "sample.vcf"))))
-    rows = variant_effects_command(p, tmp_path / "effects")
-    assert len(rows) == 6  # Variant lies inside three model input windows, two assay heads each.
-    assert all(r["scenario"] == "single_variant_on_reference_context" for r in rows)
-    assert all(math.isnan(r["full_delta_pace"]) for r in rows)
-    assert any(abs(r["delta_signal"]) > 0 for r in rows)
 
 
 def test_cli_help_and_errors(tmp_path, capsys):

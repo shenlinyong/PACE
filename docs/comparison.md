@@ -1,4 +1,4 @@
-# Comparisons, variants and benchmarks
+# Measured-run comparisons and functional benchmarks
 
 PACE preserves each original run and recomputes conditional support shares on the intersection
 of measurable units. A simple join-and-subtract of existing normalized scores is not valid when
@@ -23,8 +23,8 @@ units, normalization and formula parameters. At least two common units and posit
 denominators are required. Complete Delta also requires complete planned backgrounds and
 compatible structural status. Technical absence leaves complete Delta as NA, even when a
 conditional Delta can be reported. Eta comparisons can be explicitly enabled, but then no
-complete individual effect is claimed. B retains its original candidate-gene set in each run.
-Mode/model/fusion-policy comparisons can similarly enable `allow_evidence_difference`; these
+complete-background score difference is claimed. B retains its original candidate-gene set in each run.
+Contact-policy and measurement-quality comparisons can similarly enable `allow_evidence_difference`; these
 produce conditional comparisons, with full Delta withheld because the inference policy differs.
 
 The table contains original/common scores, full/conditional Delta, delta A, delta support,
@@ -43,20 +43,6 @@ replicate type is biological or technical. Every pair is compared on recomputed 
 denominators. Pearson correlation is NA for constant or insufficient vectors. Distinct-donor
 counts are reported; technical replicates are never counted as independent animals. No
 confidence interval is manufactured from a small number of animals.
-
-## Variant scenarios
-
-```yaml
-run_config: examples/genome_only/config.yaml
-variants: examples/genome_only/sample.vcf
-sample_id: toy_animal
-```
-
-`variant-effects` evaluates each ALT independently against reference context. It writes
-per-assay reference/alternate signals and delta signal. These are labelled single-variant
-scenarios, do not resolve global phase, and never receive an invented full Delta PACE. A
-target-changing indel remains unavailable. Full individual comparisons instead require two
-complete compatible individual runs and the `compare` command.
 
 ## Functional-label benchmark
 

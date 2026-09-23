@@ -21,8 +21,8 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install . pytest build
-      - name: Core, schema, genotype, command and public-documentation tests
-        run: python -m pytest tests --ignore=tests/test_canonical_sequence.py -q
+      - name: Core, schema, command and public-documentation tests
+        run: python -m pytest tests -q
       - name: Build and test wheel outside checkout
         run: |
           python -m build
@@ -31,8 +31,6 @@ jobs:
           cd /tmp
           /tmp/pace-wheel/bin/PACE --version
           /tmp/pace-wheel/bin/PACE demo --regime measured --out wheel-measured
-          /tmp/pace-wheel/bin/PACE demo --regime hybrid --out wheel-hybrid
-          /tmp/pace-wheel/bin/PACE demo --regime genome_only --out wheel-genome
           /tmp/pace-wheel/bin/PACE measured --config wheel-measured/inputs/config.yaml --eta 0.5 --out wheel-fractional
   minimum-core:
     runs-on: ubuntu-latest
@@ -42,20 +40,18 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m pip install 'numpy==1.26.4' 'PyYAML==6.0.3' pytest .
-      - run: python -m pytest tests --ignore=tests/test_canonical_sequence.py -q
+      - run: python -m pytest tests -q
   extras:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        extra: [io, sequence, ml]
+        extra: [io, ml]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - if: matrix.extra == 'sequence'
-        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: python -m pip install ".[${{ matrix.extra }}]" pytest
       - run: python -m pytest tests -q
   regression:
@@ -75,11 +71,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build --tag pace:ci .
-      - name: Run three modes in the container as the host user
+      - name: Run measured evidence in the container as the host user
         run: |
           mkdir container-results
           docker run --rm pace:ci --version
-          for regime in measured hybrid genome_only; do
+          for regime in measured; do
             docker run --rm --user "$(id -u):$(id -g)" \
               -v "$PWD/container-results:/work" pace:ci \
               demo --regime "$regime" --out "/work/$regime"
@@ -98,6 +94,6 @@ jobs:
         shell: bash -el {0}
         run: |
           PACE --version
-          for regime in measured hybrid genome_only; do
+          for regime in measured; do
             PACE demo --regime "$regime" --out "conda-results/$regime"
           done

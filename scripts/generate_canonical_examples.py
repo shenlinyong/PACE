@@ -1,17 +1,42 @@
 """Regenerate explicitly synthetic canonical examples; never fetch data or real weights."""
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import yaml
 
+from pace_livestock.config import load_config
 from pace_livestock.demo import create_example
-from pace_livestock.io.tables import write_table
+from pace_livestock.io.tables import read_table, write_table
+from pace_livestock.pipeline import compute
+from pace_livestock.provenance import clean
 
 
-def main():
-    root = Path(__file__).resolve().parents[1] / "examples"
-    for regime in ("measured", "hybrid", "genome_only"):
-        create_example(root / regime, regime)
+def classifier_contract():
+    """Match the published H3K4me1 example to the actual measured pipeline."""
+    with TemporaryDirectory() as directory:
+        cfg = load_config(create_example(Path(directory) / "inputs"))
+        samples = read_table(cfg["inputs"]["samples"])
+        samples.append({**samples[0], "sample_id": "S_H3K4me1", "assay": "H3K4me1"})
+        write_table(cfg["inputs"]["samples"], samples)
+        observations = read_table(cfg["inputs"]["observed_activity"])
+        for element, value in (("E1", 0), ("E2", 5), ("E3", 10)):
+            observations.append(
+                {
+                    **observations[0],
+                    "element_id": element,
+                    "sample_id": "S_H3K4me1",
+                    "assay": "H3K4me1",
+                    "signal": value,
+                }
+            )
+        write_table(cfg["inputs"]["observed_activity"], observations)
+        return clean(compute(cfg)["manifest"]["ml_feature_contract"])
+
+
+def main(destination=None):
+    root = Path(destination) if destination else Path(__file__).resolve().parents[1] / "examples"
+    create_example(root / "measured")
     advanced = root / "training"
     advanced.mkdir(parents=True, exist_ok=True)
 
@@ -55,74 +80,6 @@ def main():
             d_min=500,
         ),
     )
-    fusion = [
-        dict(
-            assay=assay,
-            quality_stratum="default",
-            observed=9,
-            predicted=3,
-            target=40**0.5 - 1,
-            split="calibration" if i < 20 else "test",
-            group_id=f"{assay}_{i}",
-            input_donor=f"D{i}",
-            target_donor=f"D{i}",
-            input_measurement_id=f"{assay}_low_{i}",
-            target_measurement_id=f"{assay}_independent_{i}",
-        )
-        for assay in ("ATAC", "H3K27ac")
-        for i in range(24)
-    ]
-    write_table(advanced / "fusion.tsv", fusion)
-    yaml_file(
-        "fusion.yaml",
-        dict(
-            **meta,
-            model_id="synthetic_fitted_fusion",
-            data="fusion.tsv",
-            calibration_target="individual_state",
-            signal_unit="toy_signal",
-            normalization_id="toy_mean",
-            output_window=500,
-            scales={"ATAC": 1, "H3K27ac": 1},
-            minimum_samples=20,
-            measurement_design="synthetic_independent_same_donor_measurements",
-        ),
-    )
-    sequences = []
-    for split, n in [("train", 4), ("validation", 2), ("test", 2)]:
-        for i in range(n):
-            sequences.append(
-                dict(
-                    sequence_id=f"{split}_{i}",
-                    sequence=("ACGT" if i % 2 else "AAAA") * 2048,
-                    split=split,
-                    group_id=f"{split}_{i}",
-                    chrom=f"{split}_{i}",
-                    start=5000,
-                    end=5500,
-                    ATAC=i + 1,
-                    H3K27ac=None if i == 0 else i + 2,
-                )
-            )
-    write_table(advanced / "sequence.tsv", sequences)
-    yaml_file(
-        "sequence.yaml",
-        dict(
-            **meta,
-            model_id="synthetic_cnn",
-            data="sequence.tsv",
-            assays=["ATAC", "H3K27ac"],
-            signal_unit="toy_signal",
-            normalization_id="toy_mean",
-            input_length=8192,
-            output_window=500,
-            seed=17,
-            epochs=2,
-            batch_size=2,
-            channels=[8, 8, 8],
-            threads=1,
-        ),
-    )
     learning = []
     for split, n in [("train", 6), ("calibration", 2), ("test", 2)]:
         for group in range(n):
@@ -161,6 +118,7 @@ def main():
             folds=3,
             seed=17,
             calibrate=True,
+            feature_contract=classifier_contract(),
         ),
     )
     analysis = root / "analysis"
@@ -202,12 +160,6 @@ def main():
                 region_membership="membership.tsv",
                 stratify=["gene_id"],
             )
-        ),
-        encoding="utf-8",
-    )
-    (analysis / "variants.yaml").write_text(
-        yaml.safe_dump(
-            dict(run_config="../genome_only/config.yaml", variants="../genome_only/sample.vcf")
         ),
         encoding="utf-8",
     )

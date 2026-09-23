@@ -1,4 +1,4 @@
-"""PACE September 2026 equations, evaluated in log space without pseudocounts."""
+"""PACE measured-activity equations, evaluated in log space without pseudocounts."""
 
 from __future__ import annotations
 
@@ -28,38 +28,20 @@ def activity(values) -> float:
 
 
 def bulk_mean(values, weights=None) -> np.ndarray:
-    """Average marginal assay signals across declared copies BEFORE constructing activity."""
+    """Average declared assay measurements before constructing activity."""
     x = nonnegative(values)
     if x.ndim < 1 or len(x) == 0:
-        raise PaceError("bulk_mean requires at least one copy")
+        raise PaceError("bulk_mean requires at least one measurement")
     w = np.full(len(x), 1 / len(x)) if weights is None else nonnegative(weights)
     if (
         w.shape != (len(x),)
         or not np.all(np.isfinite(w))
         or not math.isclose(float(w.sum()), 1, abs_tol=1e-12)
     ):
-        raise PaceError("Copy weights must be finite, nonnegative and sum to one")
+        raise PaceError("Measurement weights must be finite, nonnegative and sum to one")
     # Zero-weight sources are not required; scaled summation avoids finite-value overflow.
     used = w > 0
     return np.sum(x[used] * w[used].reshape((-1,) + (1,) * (x.ndim - 1)), axis=0)
-
-
-def fuse(observed: float, predicted: float, *, weight: float, scale: float) -> float:
-    if not math.isfinite(weight) or not 0 <= weight <= 1 or not math.isfinite(scale) or scale <= 0:
-        raise PaceError("Fusion requires weight in [0,1] and positive finite scale")
-    if weight == 1:
-        return float(nonnegative([observed])[0])
-    if weight == 0:
-        return float(nonnegative([predicted])[0])
-    x = nonnegative([observed, predicted])
-    # logaddexp avoids overflow in x / scale for otherwise finite input.
-    z = np.logaddexp(np.log(x, where=x > 0, out=np.full(2, -np.inf)), math.log(scale)) - math.log(
-        scale
-    )
-    combined = float(z @ np.array([weight, 1 - weight]))
-    if combined < 700:
-        return scale * math.expm1(combined)
-    return safe_exp(math.log(scale) + combined) - scale
 
 
 def logsum(values) -> float:

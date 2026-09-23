@@ -1,2 +1,0 @@
-source_id	path_or_accession	source_type	assembly	processing_method	normalization_id	checksum
-toy_source	generated:PACE-synthetic-fixture	synthetic	toy_assembly	deterministic_fixture	toy_mean	synthetic_recipe

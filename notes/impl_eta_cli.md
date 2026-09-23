@@ -29,20 +29,20 @@ scientific contract. Final performance needs independent functional data.
 
 ## Command contract and acceptance
 
-`PACE --mode measured|hybrid|genome --out DIR` accepts either a run YAML or direct
-input/model options. `PACE measured`, `PACE hybrid`, and `PACE genome` are aliases.
+`PACE run --mode measured --out DIR` accepts either a run YAML or direct
+input/model options. `PACE measured` and `PACE run` are equivalent.
 CLI paths resolve from the working directory; paths inside YAML resolve from the
 YAML directory. Overrides are validated by the same configuration code. The
 existing `pace-livestock` entry point remains usable.
 
 Acceptance covers independently derived fractional scores and an interior eta
 optimum, endpoint/zero/missing cases, split leakage and artifact mismatch, all
-three modes with flags alone, installation outside the checkout, documentation,
+measured runs with flags alone, installation outside the checkout, documentation,
 full regression tests and hosted CI. Synthetic fixtures verify computation only.
 
 Continuous calibration was introduced in software 0.2.0. Its numerical and behavior
 tests remain in the current suite, including fractional-score and interior-optimum fixtures.
-Direct flag-only measured, hybrid and genome modes, prefix installation and
+Direct flag-only measured runs, prefix installation and
 wheel execution outside the checkout are exercised. The [validation record](../docs/validation.md)
 and GitHub workflow track distribution and hosted regression results.
 

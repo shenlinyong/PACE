@@ -1,55 +1,35 @@
 # Verification and release acceptance
 
-Software tests check implementation behavior with synthetic inputs and small real
-file formats. They do not establish biological accuracy for an animal species,
-tissue, breed or individual. The package includes no independently validated
-livestock weights or claimed functional benchmark result.
+Software verification and biological validation answer different questions. The test suite uses synthetic data and small real file formats to check implementation behavior. It supplies no measured accuracy claim for an animal species or tissue.
 
-## Reproduce the software checks
-
-From an editable installation with `dev,io,sequence,ml` dependencies:
+## Reproduce software checks
 
 ```bash
-python -m pytest -q
+python -m pip install -e '.[dev,io,ml]'
+python -m pytest tests -q
 python scripts/check_public_docs.py
-python -m ruff check .
+ruff check src tests scripts
+ruff format --check src tests scripts
+python -m build
 ```
 
-The exact passing count depends on the checked-out revision. Use the test log for
-that revision and the [CI run](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml),
-not an earlier release's count. Required extras should be installed when evaluating
-the complete suite; inspect skips as well as failures.
+Inspect skipped optional IO tests and the [CI run for the exact commit](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml). A configured CI job alone does not mean it has passed.
 
-## Regression coverage
+## Required behavioral coverage
 
-| Area | Important invariant |
+| Area | Invariant |
 |---|---|
-| Core formula | Hand-derived activity, TSS, allocation and fractional exponent results; fixed candidate sets |
-| Numerical comparison | Finite log support survives raw product underflow/overflow and round trips |
-| Contact integrity | Mixed resolution or declared measurement contracts cannot be silently pooled or compared as full biological deltas |
-| Automatic allocation | Zero fallback, grouped held-out selection, stability and calibration confirmation; test-label exclusion |
-| Classifier | Connected repeated entities cannot leak across tuning folds; feature scope must match inference |
-| Genomic reconstruction | Only carried alleles matter; missing GT, unsupported geometry and both BND endpoints remain conservative |
-| External predictions | Genomic binding is checked and imports cannot restore invalid windows |
-| Omics | Invalid RNA cannot enter ML; extra marks and methylation have resolvable evidence identities |
-| CpG features | Element/promoter windows, coverage thresholds, reference CpG denominators and WGBS/RRBS separation |
-| Catalog preparation | End-of-chromosome partial windows are explicitly handled by the generated configuration |
-| User interface | Three modes, CLI/YAML paths, transactional outputs, consistent defaults and resolvable documentation links |
+| Formula | Independent hand calculations; fixed assay and candidate sets; exact zeros and NA |
+| Measured scope | Retired modes/options/configurations fail; unavailable activity is never imputed |
+| Contact | Compatible resolutions and sources; same-bin imports use the same policy as raw inputs |
+| Imports | Real sample identities and correct assay; measured activity only |
+| Allocation | Zero fallback, grouped validation, bounded fit and test-set isolation |
+| Comparison | Common denominators; underflow-safe reloads; partial results remain conditional |
+| Multiomics | Experimental annotations, measurement definitions, CpG coverage and RNA status |
+| Classifier | Grouped splits, inference scope, separate score and probability evaluation |
+| Packaging | Supported Python versions, wheel outside checkout, measured demo, Conda and Docker |
+| Documentation | Shared total equation, current defaults, working links and executable interfaces |
 
-## Installation checks
+## Biological acceptance
 
-CI configurations cover supported Python environments, optional IO/sequence
-adapters, source/wheel distribution, Conda installation and the three Docker
-example modes. A configured job is not evidence that its latest execution passed:
-inspect the workflow attached to the exact commit. Local environments without
-Conda or Docker cannot substitute a source-file inspection for an actual build.
-
-## Biological validation
-
-Quantitative assay prediction, within-locus individual effects and functional
-regulatory-link prediction require separate appropriate validation. Use independent
-animals, loci or experimental groups according to the intended claim. Include
-coverage and unavailable tested positives; avoid selecting parameters with the
-final test set. Association/QTL and contact data used as inputs are not independent
-functional ground truth. More details: [training](training.md),
-[comparison and benchmark](comparison.md), [limitations](limitations.md).
+Use independent functional perturbation labels suitable for the claim. Record candidate selection, sampling design, tissue and experiment. Do not treat input contact data or associations as independent functional truth. Separate fitting, selection and final evaluation; report coverage and unavailable tested positives. Comparisons across families, breeds or tissues require a split appropriate to that claim. See [manuscript scope](MANUSCRIPT_SCOPE.zh-CN.md).

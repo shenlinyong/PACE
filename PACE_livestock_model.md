@@ -1,4 +1,4 @@
-# PACE model specification
+# PACE 实测活性模型
 
 ```math
 \boxed{
@@ -9,10 +9,6 @@
 }
 ```
 
-The maintained specification is [Model equations and interpretation](docs/FORMULA.md).
-It includes the fully expanded total equation and measured, hybrid and genome-only
-forms, definitions, missing-data rules and numerical examples.
+A_star 来自固定检测组合的实测信号；其余符号和完整展开式见[中文公式](docs/FORMULA.zh-CN.md)。
 
-For installation and actual commands use the [Chinese user manual](docs/USER_GUIDE.zh-CN.md)
-or [English tutorial](docs/TUTORIAL.md). Biological validation boundaries are
-listed in [limitations](docs/limitations.md).
+[完整手册](docs/USER_GUIDE.zh-CN.md) · [能力边界](docs/limitations.md)

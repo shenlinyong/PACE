@@ -23,9 +23,7 @@ def invoke(*args, cwd=None):
     )
 
 
-@pytest.mark.parametrize(
-    "mode,regime", [("measured", "measured"), ("hybrid", "hybrid"), ("genome", "genome_only")]
-)
+@pytest.mark.parametrize("mode,regime", [("measured", "measured")])
 def test_direct_modes_without_yaml(tmp_path, mode, regime):
     root = tmp_path / "files with spaces"
     config = create_example(root, regime)
@@ -49,27 +47,6 @@ def test_direct_modes_without_yaml(tmp_path, mode, regime):
         "--out",
         tmp_path / "result",
     ]
-    if regime != "measured":
-        argv += [
-            "--sequence-model",
-            root / "models/sequence",
-            "--reference",
-            root / "genome.fa",
-            "--vcf",
-            root / "sample.vcf",
-            "--callable",
-            root / "callable.bed",
-            "--ploidy",
-            root / "ploidy.tsv",
-            "--sample-id",
-            "toy_animal",
-            "--individual-id",
-            "toy_animal",
-        ]
-        if regime == "hybrid":
-            argv += ["--fusion-model", root / "models/fusion"]
-        else:
-            argv += ["--contact-prior", root / "models/contact"]
     # Remove the YAML: the command must use only the flags and supplied data files.
     config.unlink()
     result = invoke(*argv)
