@@ -52,8 +52,7 @@ For every candidate element–gene pair within 5 Mb, PACE computes one score. Re
 \boxed{
 \begin{aligned}
 \mathrm{PACE}(E,G)
-&=\frac{\text{Activity of }E\;\times\;\text{Contact of }E\text{ with }G}
-{\displaystyle\sum_{\text{all candidate elements }e\text{ of }G}\text{Activity of }e\;\times\;\text{Contact of }e\text{ with }G}\\
+&=\frac{\text{Activity}\times\text{Contact}}{\sum\left(\text{Activity}\times\text{Contact}\right)}\\
 &=\frac{A_\star(E)\,\overline C(E,G)}
 {\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}\\
 &=\frac{\left[\displaystyle\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}
