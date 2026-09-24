@@ -185,6 +185,8 @@ def fit_cooler_command(args):
             args.max_distance,
         ],
         "zero_pixel_policy": "all_callable_bin_opportunities_included",
+        # Distances were measured between bins, so the prior is applied at bin centres.
+        "fitting_coordinate_policy": "bin_centers",
     }
     for row in rows:
         row["predicted"] = (

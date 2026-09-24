@@ -15,6 +15,7 @@ from ..core import score
 from ..errors import PaceError
 from ..evaluation.metrics import binary_metrics
 from ..io.tables import integer, number, read_table
+from ..labels import classify_label
 from ..provenance import digest, file_hash, read_json
 
 LABEL_FIELDS = (
@@ -162,12 +163,8 @@ def _eligible_labels(rows: list[dict], cfg: dict) -> tuple[list[dict], list[dict
             and cfg["execution_profile"] != "demonstration"
         ):
             raise PaceError("Synthetic eta labels require execution_profile=demonstration")
-        elif row["label_status"] not in ("enhancing_positive", "powered_negative"):
-            reason = "unusable_label_status"
-        elif row["label_status"] == "enhancing_positive" and row["effect_direction"] != "down":
-            reason = "positive_requires_downregulation"
-        elif row["label_status"] == "powered_negative" and row["effect_direction"] != "none":
-            reason = "negative_requires_no_effect"
+        elif classify_label(row)[0] is None:
+            reason = classify_label(row)[1]
         if reason:
             excluded.append({"label_id": row["label_id"], "reason": reason})
         else:

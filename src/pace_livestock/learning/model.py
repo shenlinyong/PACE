@@ -13,6 +13,7 @@ from ..config import operation_config
 from ..errors import PaceError
 from ..evaluation.metrics import binary_metrics
 from ..io.tables import integer, number, read_table, write_table
+from ..labels import classify_label
 from ..provenance import file_hash, output_directory, read_json, write_json
 
 CORE = ["log1p_A", "log1p_C", "log1p_distance", "pace_score"]
@@ -251,19 +252,12 @@ def feature_matrix(rows, feature_names):
 def training_labels(rows):
     usable, excluded = [], []
     for row in rows:
-        status = row["label_status"]
+        label, reason = classify_label(row)
         if str(row.get("mapping_count", "1")) != "1":
             reason = "ambiguous_region_mapping"
-        elif row["effect_direction"] == "up":
-            reason = "potential_repressive_or_complex"
-        elif status == "enhancing_positive" and row["effect_direction"] == "down":
-            usable.append({**row, "label": 1})
+        elif label is not None:
+            usable.append({**row, "label": label})
             continue
-        elif status == "powered_negative":
-            usable.append({**row, "label": 0})
-            continue
-        else:
-            reason = "unusable_label_status"
         excluded.append({**row, "reason": reason})
     return usable, excluded
 

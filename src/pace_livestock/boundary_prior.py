@@ -270,13 +270,17 @@ def unique_count_pairs(rows, *, resolution, boundaries):
             abs_tol=1e-12,
         ):
             raise PaceError("Raw counts and count_to_contact do not reproduce contact_value")
-        key = row.get("sample_id"), row.get("bin_pair_id")
-        if not all(key) or not row.get("chrom"):
+        if not row.get("sample_id") or not row.get("bin_pair_id") or not row.get("chrom"):
             raise PaceError("Contact fitting needs sample_id, bin_pair_id and chrom")
-        signature = (row["chrom"], left, right, y, factor)
+        # Identity is the physical measurement (sample, chromosome, resolution and the
+        # two bins), never its label: a renamed copy of one pixel is still one pixel.
+        key = row["sample_id"], row["chrom"], resolution, left, right
+        signature = (y, factor)
         if key in seen:
             if seen[key] != signature:
-                raise PaceError("Shared sample/bin pairs disagree on raw counts or coordinates")
+                raise PaceError(
+                    "Measurements of one sample/bin pair disagree (conflicting raw counts or conversion factors)"
+                )
             continue
         seen[key] = signature
         output.append(

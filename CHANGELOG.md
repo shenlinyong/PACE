@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.2
+
+- Resolved contacts record the content hash of the prior used (`prior_sha256`). Importing contacts resolved with a different prior, including one changed under the same model name, is rejected, and imported `prior_value`s are recomputed and checked (prior-only, fixed-weight shrinkage and regularized rows).
+- The prior asset alone decides whether it is evaluated at genomic anchors or bin centres, in every contact mode; `per_pair` shrinkage no longer switches coordinates. Priors from `pace fit-prior` declare bin centres, the coordinates they were fitted on.
+- Chunked runs report the same catalog, candidate and promoter identities as a single run, independent of chunk size and threads; chromosomes without candidate pairs are kept in the merged tables.
+- Hi-C count fitting identifies a measurement by sample, chromosome, resolution and bin coordinates, so a renamed copy of a pixel is counted once and conflicting copies are rejected.
+- One functional-label rule (`pace_livestock.labels.classify_label`) for benchmarks, classifier training and eta calibration: positives need `down`, powered negatives need `none`, and unknown directions are errors.
+
 ## 0.8.1
 
 - Enforce contact measurement and resolved activity scale consistency across chromosome chunks.

@@ -95,3 +95,104 @@ def test_fitted_bin_prior_uses_same_coordinates_in_all_contact_modes(tmp_path):
         )
         assert found["prior_value"] == pytest.approx(expected)
         assert found["prior_coordinate_policy"] == "bin_centers"
+
+
+def test_identities_do_not_depend_on_chunk_size(tmp_path):
+    """Chunk size is an execution detail; chunked and single runs stay comparable."""
+    import json
+
+    from pace_livestock.evaluation.compare import compare_runs
+    from pace_livestock.pipeline import run
+
+    cfg = two_chromosomes(tmp_path)
+    run(copy.deepcopy(cfg), tmp_path / "single")
+    run_by_chromosome(copy.deepcopy(cfg), tmp_path / "small", max_pairs=1)
+    run_by_chromosome(copy.deepcopy(cfg), tmp_path / "large", max_pairs=1000)
+    ids = [
+        json.loads((tmp_path / name / "run_manifest.json").read_text())["universe_ids"]
+        for name in ("single", "small", "large")
+    ]
+    assert ids[0] == ids[1] == ids[2]
+    for left, right in (("small", "large"), ("single", "small")):
+        rows, _, _ = compare_runs(tmp_path / left, tmp_path / right)
+        assert all(r["full_delta_pace"] == 0 for r in rows if r["reason"] == "complete")
+
+
+def test_renamed_copy_of_a_pixel_is_counted_once():
+    from pace_livestock.boundary_prior import unique_count_pairs
+
+    row = dict(
+        measurement_status="observed",
+        resolution=500,
+        anchor0=5249,
+        tss0=10000,
+        raw_count=3,
+        count_to_contact=1.0,
+        contact_value=3,
+        sample_id="S",
+        bin_pair_id="a",
+        chrom="c1",
+    )
+    other = dict(row, anchor0=20249, bin_pair_id="b")
+    renamed = dict(row, bin_pair_id="renamed")
+    assert (
+        len(unique_count_pairs([row, other, renamed], resolution=500, boundaries=BoundaryIndex([])))
+        == 2
+    )
+    conflicting = dict(renamed, raw_count=4, contact_value=4)
+    with pytest.raises(PaceError, match="conflicting"):
+        unique_count_pairs([row, conflicting], resolution=500, boundaries=BoundaryIndex([]))
+
+
+@pytest.mark.parametrize("module", ["benchmark", "training", "eta"])
+def test_one_label_rule_everywhere(module):
+    from pace_livestock.catalog import map_labels
+    from pace_livestock.labels import classify_label
+    from pace_livestock.learning.model import training_labels
+
+    negative_down = dict(label_status="powered_negative", effect_direction="down")
+    typo = dict(label_status="powered_negative", effect_direction="donw")
+    assert classify_label(negative_down) == (None, "negative_requires_no_effect")
+    if module == "benchmark":
+        membership = [dict(region_id="R", element_id="E")]
+        usable, rejected = map_labels([dict(negative_down, assayed_region_id="R")], membership)
+        assert not usable and rejected[0]["reason"] == "negative_requires_no_effect"
+        with pytest.raises(PaceError, match="effect_direction"):
+            map_labels([dict(typo, assayed_region_id="R")], membership)
+    elif module == "training":
+        usable, rejected = training_labels([negative_down])
+        assert not usable and rejected[0]["reason"] == "negative_requires_no_effect"
+        with pytest.raises(PaceError, match="effect_direction"):
+            training_labels([typo])
+    else:
+        with pytest.raises(PaceError, match="effect_direction"):
+            classify_label(typo)
+
+
+def test_anchor_prior_is_identical_in_prior_only_and_per_pair_modes(tmp_path):
+    cfg = load_config(create_example(tmp_path / "inputs", "measured"))
+    contacts = read_table(cfg["inputs"]["observed_contacts"])
+    for row in contacts:
+        row.update(raw_count=row["contact_value"], count_to_contact=1.0)
+    write_table(cfg["inputs"]["observed_contacts"], contacts)
+    tables = load_tables(cfg)
+    prior = dict(
+        a=1.0,
+        gamma=1.0,
+        beta=0.0,
+        d_ref=500.0,
+        d_min=500.0,
+        kappa=2.0,
+        model_id="anchors",
+        scale=cfg["contact"]["scale"],
+        resolution=500,
+        normalization_id="toy_mean",
+        manifest_sha256="x",
+    )
+    values = {}
+    for mode, reliability in (("prior_only", None), ("shrinkage", "per_pair")):
+        cfg["contact"].update(mode=mode, reliability=reliability, reliability_source="test")
+        rows = resolve_contacts(tables, cfg, prior_asset=prior)
+        values[mode] = {(r["element_id"], r["promoter_id"]): r["prior_value"] for r in rows}
+        assert {r["prior_coordinate_policy"] for r in rows} == {"genomic_anchors"}
+    assert values["prior_only"] == values["shrinkage"]

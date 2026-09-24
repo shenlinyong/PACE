@@ -206,6 +206,15 @@ def contact_measurement_contract(t, cfg, *, prior_asset=None):
     return {"contract_version": 1, **(baseline or normalize({}, source="contact"))}
 
 
+def prior_policy(prior_asset):
+    """Coordinates at which a prior is evaluated: genomic_anchors or bin_centers."""
+    if not prior_asset:
+        return None
+    return prior_asset.get(
+        "fitting_coordinate_policy", prior_asset.get("prior_coordinate_policy", "genomic_anchors")
+    )
+
+
 def resolve_contacts(t, cfg, *, prior_asset=None):
     measurement = contact_measurement_contract(t, cfg, prior_asset=prior_asset)
     samples = {r["sample_id"]: r for r in t["samples"]}
@@ -310,11 +319,9 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 observations = list(by_sample.values())
             obs, used = aggregate_observations(observations, samples, "contact_value")
             resolution = measurement["resolution"]
+            # The prior asset's own coordinate policy (anchors or bin centres) applies in
+            # every contact mode, so switching modes never changes the prior itself.
             left, right = unit["anchor0"], p["tss0"]
-            if per_pair:
-                left, right = (
-                    x // resolution * resolution + resolution // 2 for x in (left, right)
-                )
             prior = (
                 contact_prior(unit["chrom"], left, right, prior_asset, boundaries)
                 if prior_asset
@@ -405,14 +412,8 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 "promoter_id": key[1],
                 "observed_value": obs,
                 "prior_value": prior,
-                "prior_coordinate_policy": "bin_centers"
-                if per_pair
-                else prior_asset.get(
-                    "fitting_coordinate_policy",
-                    prior_asset.get("prior_coordinate_policy", "genomic_anchors"),
-                )
-                if prior_asset
-                else None,
+                "prior_coordinate_policy": prior_policy(prior_asset),
+                "prior_sha256": prior_asset.get("manifest_sha256") if prior_asset else None,
                 "resolved_value": value,
                 "evidence_id": digest([key, source, used]),
                 "evidence_type": "aggregate" if source == "observed" and len(used) > 1 else source,
@@ -453,7 +454,6 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 row.update(
                     kappa=kappa,
                     kappa_source=kappa_source,
-                    prior_coordinate_policy="bin_centers",
                     posterior_samples=json.dumps(posteriors, sort_keys=True),
                 )
             if key in imported and per_pair:
@@ -530,6 +530,24 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                     not prior_asset or imported_row["prior_id"] != prior_asset["model_id"]
                 ):
                     raise PaceError("Imported contacts need a matching prior asset")
+                if imported_row["evidence_type"] in ("contact_prior", "fused", "regularized"):
+                    # A model name is not enough: parameters may change under the same name.
+                    if imported_row.get("prior_sha256") != prior_asset.get("manifest_sha256"):
+                        raise PaceError(
+                            "Imported contacts were resolved with a different contact prior "
+                            "(prior_sha256 differs); recompute them from observed contacts"
+                        )
+                    expected_prior = contact_prior(
+                        unit["chrom"], unit["anchor0"], p["tss0"], prior_asset, boundaries
+                    )
+                    recorded = number(
+                        imported_row.get("prior_value"), "imported prior_value", minimum=0
+                    )
+                    if not math.isclose(recorded, expected_prior, rel_tol=1e-9, abs_tol=0):
+                        raise PaceError(
+                            "Imported prior_value differs from the current contact prior; "
+                            "recompute the contacts"
+                        )
                 imported_row["distance_bp"] = distance
                 imported_row.update(
                     {k: v for k, v in measurement.items() if k != "contract_version"}

@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use PACE, cite this repository and the exact Git commit used."
 type: software
 title: PACE
-version: 0.8.1
+version: 0.8.2
 authors:
   - family-names: Shen
     given-names: Linyong

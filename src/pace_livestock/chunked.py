@@ -122,6 +122,12 @@ def plan_chunks(cfg: dict, maps, max_pairs: int) -> list[list[str]]:
         size += counts[chrom]
     if current:
         chunks.append(current)
+    # Chromosomes with elements or genes but no candidate pair still belong to the
+    # catalog; keep them (in the last chunk) so merged tables equal a single run.
+    element, promoter, _ = maps
+    idle = sorted((set(element.values()) | set(promoter.values())) - set(counts), key=natural_key)
+    if chunks and idle:
+        chunks[-1].extend(idle)
     return chunks
 
 
@@ -367,7 +373,7 @@ def run_by_chromosome(
         {"chromosomes": r["chromosomes"], "n_candidates": r["n_candidates"]} for r in results
     ]
     qc["execution"] = {"mode": "by_chromosome", "chunks": chunk_table}
-    manifest = merge_manifest(cfg, results)
+    manifest = merge_manifest(cfg, results, dest)
     write_json(dest / "qc_report.json", qc)
     write_json(dest / "run_manifest.json", manifest)
     from .pipeline import write_config_and_report
@@ -483,15 +489,36 @@ def global_metadata(cfg: dict, infer) -> dict:
     return infer(tables, cfg)
 
 
-def merge_manifest(cfg: dict, results: list[dict]) -> dict:
+def global_universe_ids(cfg: dict, dest: Path) -> dict:
+    """Catalog, candidate and promoter identities of the whole run.
+
+    Computed from the complete tables exactly as a single run computes them, so they
+    do not depend on chunk size or threads (those are execution details).
+    """
+    from .io.tables import integer, number
+    from .schemas import universe_ids
+
+    units = read_table(cfg["inputs"]["units"], required=["element_id", "chrom", "start", "end"])
+    for row in units:
+        row["start"], row["end"] = integer(row["start"], "start"), integer(row["end"], "end")
+    promoters = read_table(dest / "promoter_weights.tsv")
+    for row in promoters:
+        row["tss0"] = integer(row["tss0"], "tss0")
+        row["pi"] = number(row["pi"], "pi")
+    tables = {
+        "units": units,
+        "candidates": read_table(cfg["inputs"]["candidates"]),
+        "promoters": promoters,
+    }
+    return universe_ids(tables, cfg)
+
+
+def merge_manifest(cfg: dict, results: list[dict], dest: Path) -> dict:
     manifest = copy.deepcopy(max(results, key=lambda r: r["n_candidates"])["manifest"])
     chunk_ids = [
         {"chromosomes": r["chromosomes"], **r["manifest"]["universe_ids"]} for r in results
     ]
-    merged_ids = {
-        key: digest([(c["chromosomes"], c[key]) for c in chunk_ids])
-        for key in results[0]["manifest"]["universe_ids"]
-    }
+    merged_ids = global_universe_ids(cfg, dest)
     manifest["universe_ids"] = merged_ids
     manifest["comparison_contract"].update(merged_ids)
     manifest["chunk_universe_ids"] = chunk_ids

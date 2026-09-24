@@ -2,6 +2,7 @@
 
 import json
 import math
+from pathlib import Path
 
 import pytest
 import yaml
@@ -206,8 +207,17 @@ def test_imported_contacts_cannot_override_configured_evidence_policy(tmp_path):
     prior["normalization_id"] = "toy_mean"
     tables = load_tables(cfg)
     imported = resolve_contacts(tables, cfg)
+    from pace_livestock.boundary_prior import contact_prior
+
+    units = {u["element_id"]: u for u in tables["units"]}
+    tss = {p["promoter_id"]: p["tss0"] for p in tables["promoters"]}
     for row in imported:
+        unit = units[row["element_id"]]
+        value = contact_prior(unit["chrom"], unit["anchor0"], tss[row["promoter_id"]], prior)
         row.update(
+            resolved_value=value,
+            prior_value=value,
+            prior_sha256=prior["manifest_sha256"],
             evidence_type="contact_prior",
             prior_id=prior["model_id"],
             observation_sample_id=None,
@@ -286,3 +296,32 @@ def test_catalog_identity_uses_reference_content_not_file_location(tmp_path):
         cfg["catalog"]["chrom_sizes_path"] = str(sizes)
         ids.append(universe_ids(load_tables(cfg), cfg))
     assert ids[0] == ids[1]
+
+
+def test_imported_contacts_are_bound_to_prior_content(tmp_path):
+    """Changing gamma under the same model name must not reuse old resolved contacts."""
+    import json
+
+    cfg = load_config(create_example(tmp_path / "inputs", "measured"))
+    asset = contact_asset(tmp_path)
+    prior = load_asset(asset, cfg, kind="contact_prior")
+    prior["normalization_id"] = "toy_mean"
+    cfg["contact"].update(mode="prior_only")
+    tables = load_tables(cfg)
+    tables["observed_contacts"] = []
+    old = resolve_contacts(tables, cfg, prior_asset=prior)
+    assert {r["prior_sha256"] for r in old} == {prior["manifest_sha256"]}
+    manifest = Path(asset) / "manifest.json" if Path(asset).is_dir() else Path(asset)
+    changed = json.loads(manifest.read_text())
+    changed["gamma"] = 2.0
+    manifest.write_text(json.dumps(changed))
+    new_prior = load_asset(asset, cfg, kind="contact_prior")
+    new_prior["normalization_id"] = "toy_mean"
+    assert new_prior["model_id"] == prior["model_id"]
+    tables["resolved_contacts"] = old
+    with pytest.raises(PaceError, match="different contact prior"):
+        resolve_contacts(tables, cfg, prior_asset=new_prior)
+    for row in old:
+        row["prior_sha256"] = new_prior["manifest_sha256"]  # forged hash, stale value
+    with pytest.raises(PaceError, match="prior_value differs"):
+        resolve_contacts(tables, cfg, prior_asset=new_prior)

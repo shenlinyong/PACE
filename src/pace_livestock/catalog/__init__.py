@@ -4,6 +4,7 @@ from bisect import bisect_left, bisect_right
 from collections import defaultdict
 
 from ..errors import PaceError
+from ..labels import classify_label
 from ..provenance import digest
 
 
@@ -108,24 +109,11 @@ def map_labels(labels, memberships):
     usable, rejected = [], []
     for row in labels:
         elements = mapping[row["assayed_region_id"]]
-        status = row["label_status"]
-        reason = None
+        label, reason = classify_label(row)
         if len(elements) != 1:
             reason = "ambiguous_or_unmapped_region"
-        elif row["effect_direction"] == "up":
-            reason = "potential_repressive_or_complex"
-        elif status not in ("enhancing_positive", "powered_negative"):
-            reason = "unusable_label_status"
-        elif status == "enhancing_positive" and row["effect_direction"] != "down":
-            reason = "positive_requires_downregulation"
-        if reason:
+        if len(elements) != 1 or label is None:
             rejected.append({**row, "reason": reason})
         else:
-            usable.append(
-                {
-                    **row,
-                    "element_id": next(iter(elements)),
-                    "label": int(status == "enhancing_positive"),
-                }
-            )
+            usable.append({**row, "element_id": next(iter(elements)), "label": label})
     return usable, rejected
