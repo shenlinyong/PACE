@@ -185,6 +185,31 @@ def validate_tables(t: dict, cfg: dict) -> None:
                 if not all(row[k] for k in ("unit", "normalization_id", "window_id")):
                     raise PaceError("Activity requires unit, normalization_id and window_id")
             else:
+                for field in (
+                    "raw_count",
+                    "count_to_contact",
+                    "balance_weight_1",
+                    "balance_weight_2",
+                ):
+                    if row.get(field) is not None:
+                        row[field] = number(row[field], field, minimum=0)
+                if row.get("raw_count") is not None and row["raw_count"] != math.floor(
+                    row["raw_count"]
+                ):
+                    raise PaceError("raw_count must contain integer counts")
+                if (
+                    cfg["contact"]["reliability"] == "per_pair"
+                    and row["measurement_status"] == "observed"
+                ):
+                    if row.get("raw_count") is None or not row.get("count_to_contact"):
+                        raise PaceError("per_pair requires raw_count and positive count_to_contact")
+                    if not math.isclose(
+                        row[value_col],
+                        row["raw_count"] * row["count_to_contact"],
+                        rel_tol=1e-8,
+                        abs_tol=1e-12,
+                    ):
+                        raise PaceError("Raw counts/factor do not reproduce contact_value")
                 if row.get("near_diagonal_value") is not None:
                     row["near_diagonal_value"] = number(
                         row["near_diagonal_value"], "near_diagonal_value", minimum=0, missing=True

@@ -1,0 +1,9 @@
+gene_id	promoter_id	chrom	tss0	strand	pi	pi_source
+c1G1	c1P1	c1	10000	+	1	synthetic_equal
+c1G2	c1P2	c1	40000	+	1	synthetic_equal
+c2G1	c2P1	c2	10000	+	1	synthetic_equal
+c2G2	c2P2	c2	40000	+	1	synthetic_equal
+c3G1	c3P1	c3	10000	+	1	synthetic_equal
+c3G2	c3P2	c3	40000	+	1	synthetic_equal
+c4G1	c4P1	c4	10000	+	1	synthetic_equal
+c4G2	c4P2	c4	40000	+	1	synthetic_equal

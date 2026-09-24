@@ -1,0 +1,13 @@
+element_id	chrom	start	end	anchor0	element_roles	canonical_catalog_id
+c1E1	c1	5000	5500	5249	enhancer	toy_grid
+c1E2	c1	20000	20500	20249	enhancer	toy_grid
+c1E3	c1	30000	30500	30249	enhancer	toy_grid
+c2E1	c2	5000	5500	5249	enhancer	toy_grid
+c2E2	c2	20000	20500	20249	enhancer	toy_grid
+c2E3	c2	30000	30500	30249	enhancer	toy_grid
+c3E1	c3	5000	5500	5249	enhancer	toy_grid
+c3E2	c3	20000	20500	20249	enhancer	toy_grid
+c3E3	c3	30000	30500	30249	enhancer	toy_grid
+c4E1	c4	5000	5500	5249	enhancer	toy_grid
+c4E2	c4	20000	20500	20249	enhancer	toy_grid
+c4E3	c4	30000	30500	30249	enhancer	toy_grid

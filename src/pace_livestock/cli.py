@@ -12,6 +12,11 @@ from .provenance import clean, output_policy
 from .run_options import add_run_options, config_from_args
 
 COMMANDS = {
+    "boundaries": "Scan CTCF motifs or convert occupied motifs into candidate boundaries",
+    "fit-hic": "Fit distance, boundary attenuation and count dispersion from raw Hi-C pairs",
+    "prior": "Create an explicit boundary-aware contact prior asset",
+    "fuse": "Run PACE with per-pair Gamma-Poisson contact shrinkage",
+    "fit-labels": "Fit gamma, beta and eta with chromosome-held-out eQTL weak labels",
     "run": "Compute PACE from measured activity and contact evidence",
     "validate": "Check input tables, measurement compatibility and scoring settings",
     "capabilities": "Inspect available contact assets and validation scope",
@@ -87,6 +92,10 @@ def main(argv=None):
 
 def dispatch(args):
     command = args.command
+    if command in ("boundaries", "fit-hic", "prior", "fuse", "fit-labels"):
+        from .contact_cli import contact_command
+
+        return contact_command(command, args.config, args.out)
     if command in (
         "init",
         "prepare-pairs",

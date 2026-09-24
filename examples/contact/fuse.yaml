@@ -1,0 +1,36 @@
+schema_version: pace-1
+run_id: toy_measured
+regime: measured
+execution_profile: demonstration
+estimand: bulk_proxy
+target_level: individual
+context:
+  species: synthetic
+  assembly: toy_assembly
+  context_id: toy_tissue
+inputs:
+  units: units.tsv
+  promoters: promoters.tsv
+  candidates: candidates.tsv
+  sources: sources.tsv
+  evidence: evidence.tsv
+  samples: samples.tsv
+  observed_activity: observed_activity.tsv
+  observed_contacts: observed_contacts.tsv
+catalog:
+  include_promoter_units: false
+activity:
+  panel:
+  - ATAC
+  - H3K27ac
+contact:
+  scale: toy_contact
+  mode: shrinkage
+  reliability: per_pair
+  prior_path: prior_asset
+  normalization_id: toy_mean
+  balancing: unbalanced
+  window_id: bin_pair
+allocation:
+  eta: auto
+seed: 17

@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import math
 from collections import defaultdict
 
+from ..boundary_prior import (
+    contact_prior,
+    fit_kappa,
+    load_boundaries,
+    posterior_contact,
+    unique_count_pairs,
+)
 from ..core import bulk_mean
 from ..errors import PaceError
 from ..io.tables import integer, number
@@ -214,6 +222,8 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
         same_tss_bin[row["element_id"], p["chrom"], p["tss0"] // row["resolution"]].append(row)
         key = row["sample_id"], row["bin_pair_id"], row["resolution"]
         value = row["contact_value"] if row["measurement_status"] == "observed" else None
+        if cfg["contact"]["reliability"] == "per_pair" and value is not None:
+            value = (value, row.get("raw_count"), row.get("count_to_contact"))
         if key in shared and shared[key] != value:
             raise PaceError("Rows sharing one sample/bin pair disagree on contact measurement")
         shared[key] = value
@@ -232,6 +242,44 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
     r = cfg["contact"]["reliability"]
     if mode == "shrinkage" and (r is None or not cfg["contact"]["reliability_source"]):
         raise PaceError("Shrinkage needs explicit reliability and reliability_source")
+    per_pair = r == "per_pair"
+    boundaries = load_boundaries(prior_asset) if prior_asset else None
+    kappa, kappa_source = None, None
+    if per_pair:
+        if not t["observed_contacts"]:
+            raise PaceError(
+                "per_pair shrinkage requires raw observed_contacts, including when reusing resolved contacts"
+            )
+        kappa = cfg["contact"]["kappa"]
+        if kappa == "auto":
+            kappa = prior_asset.get("kappa")
+            kappa_source = "prior_asset"
+        else:
+            kappa_source = "configuration"
+        if kappa is None:
+            raw = [
+                {
+                    **row,
+                    "chrom": units[row["element_id"]]["chrom"],
+                    "anchor0": units[row["element_id"]]["anchor0"],
+                    "tss0": promoter_lookup[row["promoter_id"]]["tss0"],
+                }
+                for row in t["observed_contacts"]
+            ]
+            fitting = unique_count_pairs(
+                raw, resolution=measurement["resolution"], boundaries=boundaries
+            )
+            expected = [
+                distance_prior(x["distance_bp"], prior_asset)
+                * math.exp(-prior_asset.get("beta", 0) * x["boundary_strength"])
+                / x["count_to_contact"]
+                for x in fitting
+            ]
+            kappa = fit_kappa([x["raw_count"] for x in fitting], expected)["kappa"]
+            kappa_source = "run_unique_bin_pairs"
+        kappa = number(kappa, "kappa", minimum=0)
+        if kappa == 0:
+            raise PaceError("kappa must be positive")
     output, done = [], set()
     for edge in t["candidates"]:
         unit = units[edge["element_id"]]
@@ -261,8 +309,18 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                         by_sample[sid] = candidate
                 observations = list(by_sample.values())
             obs, used = aggregate_observations(observations, samples, "contact_value")
-            prior = distance_prior(distance, prior_asset) if prior_asset else math.nan
             resolution = measurement["resolution"]
+            left, right = unit["anchor0"], p["tss0"]
+            if per_pair:
+                left, right = (
+                    x // resolution * resolution + resolution // 2 for x in (left, right)
+                )
+            prior = (
+                contact_prior(unit["chrom"], left, right, prior_asset, boundaries)
+                if prior_asset
+                else math.nan
+            )
+            posteriors = []
             same_bin = (
                 resolution is not None and unit["anchor0"] // resolution == p["tss0"] // resolution
             )
@@ -300,6 +358,39 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 )
             elif mode == "prior_only":
                 value, source, weight = prior, "contact_prior", 0.0
+            elif per_pair:
+                for observation in observations:
+                    if observation["measurement_status"] != "observed":
+                        continue
+                    posterior = posterior_contact(
+                        observation.get("raw_count"),
+                        observation.get("count_to_contact"),
+                        prior,
+                        kappa,
+                    )
+                    if not math.isclose(
+                        observation["contact_value"],
+                        float(observation["raw_count"]) * float(observation["count_to_contact"]),
+                        rel_tol=1e-8,
+                        abs_tol=1e-12,
+                    ):
+                        raise PaceError("Raw counts/factor do not reproduce the measured contact")
+                    posteriors.append(
+                        {
+                            **posterior,
+                            "sample_id": observation["sample_id"],
+                            "raw_count": float(observation["raw_count"]),
+                            "count_to_contact": float(observation["count_to_contact"]),
+                            "measurement_status": "observed",
+                        }
+                    )
+                if posteriors:
+                    value, used = aggregate_observations(posteriors, samples, "resolved_value")
+                    weight, _ = aggregate_observations(posteriors, samples, "reliability")
+                    source = "fused"
+                else:
+                    value, source, weight = prior, "contact_prior", 0.0
+                    reason = "unavailable_bin_prior"
             elif mode == "shrinkage":
                 value, source, weight = shrink(obs, prior, r), "fused", r
             elif math.isfinite(obs):
@@ -350,7 +441,30 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 "pseudocount_value": 0.0,
                 "structural_status": structural,
             }
-            if key in imported:
+            if per_pair:
+                row.update(
+                    kappa=kappa,
+                    kappa_source=kappa_source,
+                    prior_coordinate_policy="bin_centers",
+                    posterior_samples=json.dumps(posteriors, sort_keys=True),
+                )
+            if key in imported and per_pair:
+                old = imported[key]
+                for field in ("resolved_value", "reliability", "kappa", "prior_value"):
+                    if not math.isclose(
+                        number(old.get(field), field), row[field], rel_tol=1e-10, abs_tol=1e-12
+                    ):
+                        raise PaceError(
+                            "Imported per-pair posterior differs from raw-data recomputation"
+                        )
+                if (
+                    old.get("prior_id") != row["prior_id"]
+                    or old.get("posterior_samples") != row["posterior_samples"]
+                ):
+                    raise PaceError(
+                        "Imported per-pair posterior has different prior/sample provenance"
+                    )
+            if key in imported and not per_pair:
                 imported_row = dict(imported[key])
                 if imported_row["scale"] != cfg["contact"]["scale"]:
                     raise PaceError("Imported contact scale mismatch")

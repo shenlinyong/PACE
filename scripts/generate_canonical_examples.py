@@ -37,6 +37,7 @@ def classifier_contract():
 def main(destination=None):
     root = Path(destination) if destination else Path(__file__).resolve().parents[1] / "examples"
     create_example(root / "measured")
+    contact_examples(root / "contact")
     advanced = root / "training"
     advanced.mkdir(parents=True, exist_ok=True)
 
@@ -175,6 +176,145 @@ def main(destination=None):
         ],
     )
     (analysis / "stability.yaml").write_text("replicates: replicates.tsv\n", encoding="utf-8")
+
+
+def contact_examples(root):
+    """Small, synthetic four-chromosome inputs for the complete contact workflow."""
+    create_example(root)
+    cfg = yaml.safe_load((root / "config.yaml").read_text())
+    originals = {
+        k: read_table(root / f"{k}.tsv")
+        for k in ("units", "promoters", "candidates", "observed_activity", "observed_contacts")
+    }
+    batches = {k: [] for k in originals}
+    variants, motifs = [], []
+    for chrom in ("c1", "c2", "c3", "c4"):
+        for row, start in zip(originals["units"], [5000, 20000, 30000], strict=True):
+            batches["units"].append(
+                {
+                    **row,
+                    "element_id": chrom + row["element_id"],
+                    "chrom": chrom,
+                    "start": start,
+                    "end": start + 500,
+                    "anchor0": start + 249,
+                }
+            )
+        for row, tss in zip(originals["promoters"], [10000, 40000], strict=True):
+            batches["promoters"].append(
+                {
+                    **row,
+                    "gene_id": chrom + row["gene_id"],
+                    "promoter_id": chrom + row["promoter_id"],
+                    "chrom": chrom,
+                    "tss0": tss,
+                }
+            )
+        batches["candidates"] += [
+            {**r, "element_id": chrom + r["element_id"], "gene_id": chrom + r["gene_id"]}
+            for r in originals["candidates"]
+        ]
+        batches["observed_activity"] += [
+            {
+                **r,
+                "element_id": chrom + r["element_id"],
+                "signal": {"E1": 1.0, "E2": 2.8, "E3": 1.0}[r["element_id"]],
+            }
+            for r in originals["observed_activity"]
+        ]
+        for row in originals["observed_contacts"]:
+            batches["observed_contacts"].append(
+                {
+                    **row,
+                    "element_id": chrom + row["element_id"],
+                    "promoter_id": chrom + row["promoter_id"],
+                    "bin_pair_id": chrom + row["bin_pair_id"],
+                    "raw_count": int(row["contact_value"]),
+                    "count_to_contact": 1.0,
+                    "chrom": chrom,
+                    "anchor0": {"E1": 5249, "E2": 20249, "E3": 30249}[row["element_id"]],
+                    "tss0": {"P1": 10000, "P2": 40000}[row["promoter_id"]],
+                    "normalization_id": "toy_mean",
+                    "balancing": "unbalanced",
+                    "window_id": "bin_pair",
+                }
+            )
+        variants += [
+            dict(
+                variant_id=chrom + gene,
+                chrom=chrom,
+                pos0=pos,
+                gene_id=chrom + gene,
+                pip=0.9,
+                signal_id="signal",
+            )
+            for gene, pos in [("G1", 5000), ("G2", 30000)]
+        ]
+        motifs += [
+            dict(chrom=chrom, start=x, end=x + 10, strand=strand, strength=0.8)
+            for x, strand in [(24900, "-"), (25100, "+")]
+        ]
+    for key, rows in batches.items():
+        write_table(root / f"{key}.tsv", rows)
+    write_table(root / "eqtl.tsv", variants)
+    write_table(root / "motifs.tsv", motifs)
+
+    def config(name, content):
+        (root / name).write_text(yaml.safe_dump(content, sort_keys=False), encoding="utf-8")
+
+    config("boundaries.yaml", dict(motifs="motifs.tsv"))
+    prior = dict(
+        **cfg["context"],
+        target_level=cfg["target_level"],
+        is_synthetic=True,
+        model_id="synthetic_boundary_prior",
+        scale="toy_contact",
+        resolution=500,
+        normalization_id="toy_mean",
+        balancing="unbalanced",
+        window_id="bin_pair",
+        boundaries="boundary_asset/boundaries.tsv",
+        d_ref=1000,
+        d_min=1000,
+    )
+    config("prior.yaml", dict(**prior, a=1, gamma=1, beta=0, kappa=2))
+    config(
+        "fit-hic.yaml",
+        dict(
+            **prior,
+            data="observed_contacts.tsv",
+            gamma_grid=[0.5, 1.0, 1.5],
+            beta_grid=[0.0, 0.5, 1.0],
+            test_chromosomes=["c4"],
+        ),
+    )
+    cfg["contact"].update(
+        mode="shrinkage",
+        reliability="per_pair",
+        prior_path="prior_asset",
+        normalization_id="toy_mean",
+        balancing="unbalanced",
+        window_id="bin_pair",
+    )
+    config("fuse.yaml", cfg)
+    cfg["contact"].update(mode="prior_only", reliability=None)
+    cfg["inputs"]["observed_contacts"] = None
+    config("config.yaml", cfg)
+    config(
+        "fit-labels.yaml",
+        dict(
+            run_config="config.yaml",
+            labels="eqtl.tsv",
+            **cfg["context"],
+            gamma_grid=[1.0],
+            beta_grid=[0.0, 0.5],
+            eta_grid=[0.0, 0.5, 1.0],
+            aggregation="independent_signals",
+            test_chromosomes=["c4"],
+        ),
+    )
+    cfg["allocation"]["weak_model_path"] = "weak_fit/weak_model.json"
+    config("calibrated.yaml", cfg)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from collections import defaultdict
 
 from ..catalog import map_labels
 from ..config import load_config, operation_config, strict_keys
-from ..core.scoring import log_normalize, safe_exp
+from ..core.scoring import log_normalize, safe_exp, score
 from ..errors import PaceError
 from ..io.tables import number, read_table, write_table
 from ..pipeline import compute
@@ -90,7 +90,11 @@ def benchmark_command(path, out):
         )
     methods = {}
     calibration = None
-    if run_cfg["allocation"]["labels_path"] or run_cfg["allocation"]["calibrator_path"]:
+    if run_cfg["allocation"].get("weak_model_path"):
+        calibrated = compute(run_cfg)
+        calibration = calibrated["eta_calibration"]
+        methods["PACE_eqtl_weak"] = calibrated["scores"]
+    elif run_cfg["allocation"]["labels_path"] or run_cfg["allocation"]["calibrator_path"]:
         calibrated = compute(run_cfg)
         calibration = calibrated["eta_calibration"]
         if any(
@@ -106,8 +110,15 @@ def benchmark_command(path, out):
     elif run_cfg["allocation"]["eta"] not in ("auto", 0, 1):
         methods["PACE_fixed_eta"] = compute(run_cfg)["scores"]
     for eta in (0, 1):
+        if run_cfg["allocation"].get("weak_model_path"):
+            methods[f"PACE_eta{eta}"] = score(
+                calibrated["scores"], eta=eta, partial_policy=run_cfg["scoring"]["partial_policy"]
+            )[0]
+            continue
         c = copy.deepcopy(run_cfg)
-        c["allocation"].update(eta=eta, labels_path=None, calibrator_path=None)
+        c["allocation"].update(
+            eta=eta, labels_path=None, calibrator_path=None, weak_model_path=None
+        )
         methods[f"PACE_eta{eta}"] = compute(c)["scores"]
     # ABC-style single physical TSS: choose smallest tss0, then promoter_id, before evaluation.
     from ..schemas import load_tables
@@ -118,14 +129,14 @@ def benchmark_command(path, out):
         selected.setdefault(p["gene_id"], p["promoter_id"])
     # Reuse resolved per-TSS contacts; this is an explicit ABC-style baseline, not an external reproduction.
     base_cfg = copy.deepcopy(run_cfg)
-    base_cfg["allocation"].update(eta=0, labels_path=None, calibrator_path=None)
-    resolved = compute(base_cfg)
+    base_cfg["allocation"].update(
+        eta=0, labels_path=None, calibrator_path=None, weak_model_path=None
+    )
+    resolved = calibrated if run_cfg["allocation"].get("weak_model_path") else compute(base_cfg)
     contact = {
         (r["element_id"], r["promoter_id"]): r["resolved_value"]
         for r in resolved["resolved_contacts"]
     }
-    from ..core import score
-
     abc_edges = [
         {**r, "Cbar": contact[r["element_id"], selected[r["gene_id"]]], "reason": ""}
         for r in resolved["scores"]

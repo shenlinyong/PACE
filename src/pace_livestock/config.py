@@ -65,6 +65,7 @@ DEFAULTS = {
         "allow_prior_fallback": False,
         "allow_cross_context_prior": False,
         "reliability": None,
+        "kappa": "auto",
         "reliability_source": None,
         "resolution": None,
         "normalization_id": None,
@@ -86,6 +87,7 @@ DEFAULTS = {
         "missing_policy": "fixed_gene_set",
         "labels_path": None,
         "calibrator_path": None,
+        "weak_model_path": None,
         "minimum_genes": 3,
         "minimum_groups": 3,
         "validation_folds": 5,
@@ -212,6 +214,15 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         allocation["eta"] = number(allocation["eta"], "allocation.eta", minimum=0, maximum=1)
         if allocation["labels_path"] or allocation["calibrator_path"]:
             raise PaceError("Use allocation.eta=auto with functional labels or a frozen calibrator")
+    if allocation["weak_model_path"]:
+        if (
+            allocation["eta"] != "auto"
+            or allocation["labels_path"]
+            or allocation["calibrator_path"]
+        ):
+            raise PaceError("weak_model_path requires eta=auto and no functional calibrator/labels")
+        if cfg["execution_profile"] == "validated":
+            raise PaceError("eQTL weak calibration is not functional validation")
     if allocation["labels_path"] and allocation["calibrator_path"]:
         raise PaceError("Provide eta labels OR a frozen eta calibrator, not both")
     allocation["minimum_genes"] = integer(
@@ -271,7 +282,15 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
             raise PaceError(f"contact.{key} must be a nonempty string or null")
     if cfg["contact"]["scale"] is None:
         raise PaceError("contact.scale must name the contact measurement scale")
-    if cfg["contact"]["reliability"] is not None:
+    if cfg["contact"]["kappa"] != "auto":
+        cfg["contact"]["kappa"] = number(cfg["contact"]["kappa"], "contact.kappa", minimum=0)
+        if cfg["contact"]["kappa"] == 0:
+            raise PaceError("contact.kappa must be positive")
+    if cfg["contact"]["reliability"] == "per_pair":
+        if cfg["contact"]["mode"] != "shrinkage":
+            raise PaceError("per_pair reliability requires shrinkage mode")
+        cfg["contact"]["reliability_source"] = "gamma_poisson"
+    elif cfg["contact"]["reliability"] is not None:
         cfg["contact"]["reliability"] = number(
             cfg["contact"]["reliability"], "contact.reliability", minimum=0, maximum=1
         )

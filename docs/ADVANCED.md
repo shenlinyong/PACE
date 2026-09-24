@@ -9,6 +9,7 @@ synthetic.
 - [Evidence preparation](#evidence-preparation)
 - [Sparse activity and alternative TSSs](#sparse-activity-and-alternative-tsss)
 - [Contact policies and priors](#contact-policies-and-priors)
+- [Boundary priors and weak calibration](#boundary-priors-and-weak-calibration)
 - [Incomplete scores and support bounds](#incomplete-scores-and-support-bounds)
 - [Additional omics](#additional-omics)
 - [Experimental target allocation](#experimental-target-allocation)
@@ -538,7 +539,7 @@ B(E,G)=\frac{\overline C(E,G)}{\sum_{H\in\mathcal G(E)}\overline C(E,H)},\qquad
 {\sum_{e\in\mathcal E(G)}A_\star(e)\overline C(e,G)B(e,G)^\eta}.
 ```
 
-At eta=0 the allocation term and its data requirements are omitted, giving the main formula. `allocation.eta: auto` uses zero without eligible independent functional labels. A fixed nonzero value is an explicit experimental choice. At nonzero eta, missing contact to any candidate target prevents resolving B for that element; candidate genes are not silently removed.
+At eta=0 the allocation term and its data requirements are omitted, giving the main formula. `allocation.eta: auto` uses zero without functional calibration or an explicitly supplied eQTL weak model. A fixed nonzero value is an explicit experimental choice. At nonzero eta, missing contact to any candidate target prevents resolving B for that element; candidate genes are not silently removed.
 
 Cbar × B^eta equals Cbar^(1+eta) / (sum_H Cbar)^eta. This strengthens contact contrasts and depends on gene annotation density. It is not an established biological competition law. Compare it against eta=0 and the separate `contact_power_2` control using held-out functional data. The calibration procedure below uses independent functional labels.
 
@@ -974,17 +975,271 @@ PACE is research software for relative regulatory support from measured activity
 | Activity | Requires measured ATAC, DNase or H3K27ac; no replacement of unavailable activity |
 | Candidate catalog | Supplied/experimental regions and trusted promoter annotations; completeness refers to this planned catalog |
 | Contact | Measured contacts or an explicitly supplied applicable distance prior; prior evidence is not an observed regulatory loop |
-| Contact shrinkage | Specified observed/prior point estimate and reliability source; no automatically fitted edge-wise posterior |
+| Contact shrinkage | Fixed weights or per-pair Gamma–Poisson posteriors; the count model and matching measurement scale must be appropriate |
 | Multiple TSSs | Fixed distinct physical promoters and weights; incorrect annotations remain a limitation |
 | Replicates | Specified technical/biological/donor aggregation; no automatic batch correction or increase in independent sample size |
 | Additional omics | Named experimental annotations; optional separate classifier with its own validation |
-| Allocation | Grouped functional-label selection with zero fallback; final independent evaluation remains necessary |
+| Allocation | Separate functional and eQTL weak calibration; neither forces a positive eta, and independent evaluation remains necessary |
 | Calibrated probability | Specific to supplied functional labels and sampling design; not universal causality |
 | Between-animal comparison | Comparable measured states on common denominators; not an isolated genetic or causal effect |
 | Cross-species/tissue use | Explicit background checks; any accuracy claim requires target-scope evaluation |
 | Scalability | Sparse candidate contact processing; training tables reside in memory |
 
 No universal livestock weights or independent biological benchmark results are bundled. A high conditional fraction can occur when only a small subset is measurable; the default primary score is withheld in that case. Always report candidate construction, assay availability, exclusions and coverage. Do not interpret partial normalization as complete regulatory discovery.
+
+## Boundary priors and weak calibration
+
+### Contact prior
+
+The boundary-aware prior is an optional contact model:
+
+```math
+C_0(E,t)=a\left(\frac{\max(d(E,t),d_{\min})}{d_{\mathrm{ref}}}\right)^{-\gamma}
+\exp\!\left[-\beta\sum_{b\;\mathrm{between}\;E,t}s_b\right].
+```
+
+Boundary positions strictly between the two anchors contribute; boundary points
+at either endpoint do not. Beta is nonnegative. At beta=0 the implementation
+returns the existing distance-prior function exactly. This nests the distance
+shape, without asserting that all ABC preprocessing is identical. The standard
+reference distance is 5,000 bp; fitted assets record their actual reference and
+minimum distances.
+
+`pace boundaries --config boundaries.yaml --out boundary_asset` accepts either:
+
+```yaml
+motifs: ctcf_motifs.tsv
+chip: ctcf_peaks.tsv       # optional; omit if no occupancy data
+max_gap_bp: 1000000
+```
+
+or a FASTA scan:
+
+```yaml
+fasta: reference.fa
+pwm: ctcf_pwm.tsv
+threshold: 12.0           # example log2-odds threshold; choose for your supplied PWM
+max_gap_bp: 1000000
+```
+
+Motif tables require `chrom`, `start`, `end`, `strand` (+ or -), and `strength`
+(0–1). Coordinates are zero-based, half-open. PWM tables have one row per motif
+position and columns `A`, `C`, `G`, `T` containing counts or probabilities. A 0.01
+pseudocount is added to each entry before row normalization; scores use uniform
+background frequencies and both strands. Ambiguous bases cannot match. This
+scanner does not calculate motif p-values or learn a species-specific motif.
+ChIP tables require `chrom`, `start`, `end`; only overlapping motifs are retained.
+
+Overlapping motif hits collapse to their strongest representative. Each adjacent
+minus-strand then plus-strand pair within `max_gap_bp` contributes a point at the
+midpoint of the intervening gap. Its strength is the smaller normalized motif
+strength. This is a sequence/occupancy heuristic, not a demonstrated boundary.
+Outputs retain `candidate_unvalidated` status. Supply a calibrated threshold and
+check chromosome naming before interpreting a whole-genome scan.
+
+`pace prior --config prior.yaml --out prior_asset` packages supplied parameters:
+
+```yaml
+model_id: pig_liver_boundary_prior
+species: Sus scrofa
+assembly: Sscrofa11.1
+context_id: liver
+target_level: population_mean
+is_synthetic: false
+scale: cooler_native
+resolution: 10000
+normalization_id: liver_cooler_v1
+balancing: balanced
+window_id: bin_pair
+boundaries: boundary_asset/boundaries.tsv
+a: 1.0                  # illustrative: must match the intended contact scale
+gamma: 1.0              # explicit assumption until fitted
+beta: 0.0
+d_ref: 5000
+d_min: 10000
+# kappa: 2.0            # optional fixed dispersion shape
+# pairs: pairs.tsv     # optional chrom/anchor0/tss0 queries
+```
+
+For prior-only ranking an arbitrary positive amplitude cancels within a gene.
+For fusion it does not: fit amplitude on the same measurement scale as the Hi-C.
+The boundary table is copied into the asset and checksum-bound. A positive beta
+requires an explicit table. Empty tables are allowed if they have headers and
+represent an intentional absence of candidate boundaries.
+
+### Fitting raw Hi-C and estimating reliability
+
+`pace fit-hic --config fit-hic.yaml --out fitted_prior` uses the same metadata,
+`boundaries`, `d_ref` and `d_min`, replacing `a`, `gamma`, `beta` and `kappa` with:
+
+```yaml
+data: prepared_contacts/observed_contacts.tsv
+gamma_grid: [0.6, 0.8, 1.0, 1.2]
+beta_grid: [0.0, 0.5, 1.0, 2.0]
+test_chromosomes: [chr18]   # optional here; mandatory for fit-labels
+```
+
+Input columns include `chrom`, `anchor0`, `tss0`, `sample_id`, `bin_pair_id`,
+`resolution`, `measurement_status`, `raw_count`, `count_to_contact`,
+`contact_value`, `scale`, `normalization_id`, `balancing`, and `window_id`.
+The cooler adapter exports these with the two balance weights. Raw counts must
+be integers; `raw_count * count_to_contact` must reproduce the observed value.
+For native balanced coolers the conversion is the product of the two weights;
+for native unbalanced coolers it is one. If contacts undergo further depth
+normalization, the conversion factor must incorporate that exact transformation.
+Do not feed O/E, log contacts, correlations, or normalized noninteger values as
+Poisson counts. This model treats balancing factors as fixed exposures; it does
+not model uncertainty introduced by balancing itself.
+
+Fit input must retain measured zero pixels. With sparse coolers, use the
+explicit preparation option `missing_pixels_are_zero: true` only when absent
+stored pixels really mean measured zero. Missing or masked rows are excluded
+from fitting. Shared sample/bin pairs count once. Diagonal pairs are excluded;
+other pairs use bin centers, matching the resolution of the measurement. At
+least three distinct callable pairs with some positive counts are required.
+
+For each gamma/beta grid point, the Poisson profile likelihood estimates the
+amplitude analytically. The best grid point defines the expected raw counts.
+The Gamma shape is then estimated by moments, bounded to [1e-6, 1e6]:
+
+```math
+\widehat{\kappa}^{-1}=
+\frac{\sum_i[(y_i-\mu_i)^2-y_i]}{\sum_i\mu_i^2}.
+```
+
+Nonpositive excess variation uses the upper bound, recorded in `fit_report.json`.
+Held-out chromosomes do not enter amplitude, grid selection or dispersion.
+`held_out_residuals.tsv` reports their observed and expected raw counts. The
+report also includes the correlation between log distance and boundary strength;
+large correlation makes individual gamma/beta estimates difficult to interpret.
+Select/query fitting pairs independently of their positive contact counts.
+A candidate-enriched fitting set estimates its own background, not necessarily
+the genome-wide background.
+
+Enable the posterior in an ordinary run configuration:
+
+```yaml
+contact:
+  mode: shrinkage
+  prior_path: fitted_prior
+  scale: cooler_native
+  reliability: per_pair
+  kappa: auto
+```
+
+Keep the standard `inputs.observed_contacts` path. No separate
+`contact.observed_path` setting is needed. `pace fuse --config run.yaml --out
+fused` runs the same complete scoring pipeline as `pace run`, requiring the above
+mode. With conversion factor f and prior contact C0:
+
+```math
+C\sim\mathrm{Gamma}(\kappa,\mathrm{rate}=\kappa/C_0),\qquad
+Y\mid C\sim\mathrm{Poisson}(C/f),\qquad
+r=\frac{C_0/f}{C_0/f+\kappa},\qquad
+\mathrm{E}(C\mid Y)=r\,fY+(1-r)C_0.
+```
+
+Reliability depends on expected information under the prior, not the observed
+count alone. True zero counts remain observations and receive a positive
+posterior mean. Masked/unavailable pairs use the prior with reliability zero and
+no invented observation sample. Diagonal pairs retain the configured
+near-diagonal policy. Each valid sample is shrunk separately, then aggregated
+using the existing technical/biological/donor hierarchy. Missing samples do not
+become extra prior-only replicates.
+
+`kappa: auto` first uses the fitted asset's kappa; without it, the run estimates
+kappa from unique callable bin pairs. A positive numeric kappa overrides this.
+The resolved table records the actual kappa, its source, the bin-center prior
+policy, and `posterior_samples` containing per-sample means, variances, raw
+counts, factors and reliabilities. The variance is conditional on fitted
+parameters; it is not a posterior for the final normalized gene score.
+Imported per-pair resolved tables require their raw observations and are checked
+against recomputation. This prevents reusing posteriors after changing the prior
+or count conversion.
+
+### Learning gamma, beta and eta from eQTLs
+
+`pace fit-labels --config weak.yaml --out weak_fit` accepts fine-mapping results
+converted to a simple table. Downloading or harmonizing FarmGTEx releases is not
+part of this command. The table requires `variant_id`, `chrom`, `pos0`, `gene_id`,
+and `pip`; `independent_signals` also requires `signal_id`. Use one row per
+variant/gene with PIP in [0,1], already harmonized to the reference assembly and
+tissue. Restrict genes to the cis candidate catalog. Duplicate gene/variant rows
+are rejected rather than silently counted twice.
+
+```yaml
+run_config: run.yaml
+labels: eqtl_finemapping.tsv
+species: Sus scrofa
+assembly: Sscrofa11.1
+context_id: liver
+aggregation: independent_signals
+gamma_grid: [0.8, 1.0, 1.2]
+beta_grid: [0.0, 0.5, 1.0]
+eta_grid: [0.0, 0.5, 1.0]
+test_chromosomes: [chr18]
+abc_gamma: 1.0242386
+```
+
+Two aggregation choices are explicit:
+
+- `independent_variants`: element/gene mass is `1 - product(1 - PIP)`. This is an
+  independence approximation, not the exact probability for mutually exclusive
+  variants in one credible set.
+- `independent_signals`: sum PIPs of variants inside the element within each
+  signal, then take `1 - product(1 - signal_mass)` across signals. Each gene/signal
+  must have total PIP at most one. This still assumes the supplied signals can be
+  treated as independent.
+
+All candidate elements for genes present in the fine-mapping table enter the
+assessed universe. Elements without PIP mass are marked `unlabelled_background`,
+not validated negatives; genes without fine-mapping rows are excluded. Omitted
+credible-set mass, eQTL power, LD, expression and variant frequency all affect
+this weak target. The model does not infer LD or perform fine-mapping itself.
+
+The run must use `prior_only` or `shrinkage` contact with a frozen source prior,
+`allocation.eta: auto`, and no existing functional or weak calibrator. For
+per-pair fusion, freeze kappa in the prior or configuration before fitting.
+Boundary checksums, candidate coordinates, promoter weights, activity scales and
+processing policies bind the model to its source setup.
+
+At least three training chromosomes and one final test chromosome are required.
+The command performs nested leave-one-chromosome-out selection on the training
+set, selects final parameters on all training chromosomes, and evaluates the
+untouched test chromosomes once. Candidate gene normalization always uses the
+full candidate set, including unlabelled elements. Exact selection ties prefer
+eta=0 and beta=0; both values must be in the grid. Eta is allowed to remain zero.
+At most 50 values per parameter and 2,000 combinations are accepted; start small
+because contact resolution is repeated for each gamma/beta combination.
+
+The metric is tie-aware fractional AP of PIP mass, averaged equally across
+chromosomes. It is a descriptive soft-label ranking score, not CRISPR AP, a
+calibrated probability, or an unbiased estimate of causal accuracy. Baselines
+include nearest TSS (ties retained) and a pure power-law ABC-style score with
+matched activity, catalog and TSS weights; this is not a full external ABC
+software reproduction. The source contact prior remains fixed across folds;
+the held-out claim concerns eQTL labels, not every earlier Hi-C training input.
+
+Apply the saved parameters in the same compatible run:
+
+```yaml
+allocation:
+  eta: auto
+  weak_model_path: weak_fit/weak_model.json
+```
+
+`pace run` loads gamma/beta before resolving contacts and eta before final
+scoring. Output marks `allocation_evidence: eqtl_weak` and retains chromosome
+membership, source hashes and weak validation status in `eta_calibration.json`.
+Functional-label calibrators continue to use `calibrator_path`; the two cannot
+be combined. Weak calibration is unavailable in the `validated` execution
+profile. `benchmark` keeps `PACE_eqtl_weak` separate from fixed-eta ablations.
+
+The four-chromosome [offline example](../examples/contact/config.yaml) exercises
+all five commands. It verifies the implementation only. Evaluate real livestock
+data with distance/LD-aware controls and independent functional evidence before
+claiming an improvement. Cross-tissue prior transfer remains explicit;
+automatic tissue-hierarchical contact learning is not implemented.
 
 ## Complete configuration defaults
 
@@ -1049,6 +1304,7 @@ contact:
   allow_prior_fallback: false
   allow_cross_context_prior: false
   reliability: null
+  kappa: auto
   reliability_source: null
   resolution: null
   normalization_id: null
@@ -1069,6 +1325,7 @@ allocation:
   missing_policy: fixed_gene_set
   labels_path: null
   calibrator_path: null
+  weak_model_path: null
   minimum_genes: 3
   minimum_groups: 3
   validation_folds: 5

@@ -102,6 +102,14 @@ def load_asset(path, cfg: dict, *, kind: str) -> dict:
         if not m["validation"].get(required_task, {}).get("validated", False):
             raise PaceError(f"validated profile requires {required_task} evidence for {kind}")
     m["asset_directory"] = str(manifest_path.parent.resolve())
+    if "beta" in m or "boundary_table" in m:
+        from ..boundary_prior import load_boundaries
+        from ..io.tables import number
+
+        number(m.get("beta", 0), "contact prior beta", minimum=0)
+        load_boundaries(m)
+        if "kappa" in m and number(m["kappa"], "prior kappa", minimum=0) == 0:
+            raise PaceError("Prior kappa must be positive")
     m["manifest_sha256"] = file_hash(manifest_path)
     if transferred:
         m["source_context_id"] = m["context_id"]

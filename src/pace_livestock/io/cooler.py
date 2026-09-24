@@ -66,7 +66,8 @@ def query_contacts(
         neighbors[i] = near
         for x, y in near:
             grouped[x].add(y)
-    lookup = {}
+    lookup, raw_lookup = {}, {}
+    raw_selector = c.matrix(balance=False, sparse=True)
     selector = c.matrix(balance=balanced, sparse=True)
     for i, js in grouped.items():
         low, high = min(js), max(js) + 1
@@ -74,7 +75,12 @@ def query_contacts(
         stored = {
             low + int(j): float(value) for j, value in zip(block.col, block.data, strict=True)
         }
+        raw_block = raw_selector[i : i + 1, low:high].tocoo()
+        raw_stored = {
+            low + int(j): float(v) for j, v in zip(raw_block.col, raw_block.data, strict=True)
+        }
         for j in js:
+            raw_lookup[i, j] = raw_stored.get(j, 0.0 if missing_pixels_are_zero else np.nan)
             value = stored.get(j, 0.0 if missing_pixels_are_zero else np.nan)
             if not valid[i] or not valid[j]:
                 value = np.nan
@@ -85,6 +91,14 @@ def query_contacts(
         {
             **pair,
             "contact_value": lookup[i, j],
+            "raw_count": raw_lookup[i, j],
+            "balance_weight_1": float(bins.iloc[i]["weight"]) if balanced else 1.0,
+            "balance_weight_2": float(bins.iloc[j]["weight"]) if balanced else 1.0,
+            "count_to_contact": float(bins.iloc[i]["weight"] * bins.iloc[j]["weight"])
+            if balanced and valid[i] and valid[j]
+            else 1.0
+            if not balanced
+            else np.nan,
             "bin_pair_id": f"{i}:{j}",
             "resolution": resolution,
             "measurement_status": "observed" if np.isfinite(lookup[i, j]) else "unmappable",

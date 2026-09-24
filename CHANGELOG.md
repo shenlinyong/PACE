@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
+
+- Add CTCF motif scanning, candidate-boundary priors and Poisson-profile Hi-C fitting.
+- Export raw cooler counts and balancing factors; resolve per-pair Gamma–Poisson posteriors with masked-bin fallback and sample provenance.
+- Add separate eQTL weak calibration of gamma, beta and eta with chromosome-separated selection, final holdout and explicit zero-eta fallback.
+- Connect `boundaries`, `fit-hic`, `prior`, `fuse` and `fit-labels` to the main pipeline; include an offline four-chromosome example.
+- Keep functional calibration separate and preserve true fixed-eta benchmark ablations.
+
 
 - Consolidate user documentation into README and `docs/ADVANCED.md`; preserve advanced methods, labels, examples and full defaults.
 - Remove obsolete installation wrappers and dependency snapshots; install with pip, Conda or Docker.

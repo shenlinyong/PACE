@@ -393,7 +393,7 @@ Hi-C is the data type livestock projects most often lack. PACE has three contact
 | `contact.mode` | Uses                                                     | When to use                               |
 | -------------- | -------------------------------------------------------- | ----------------------------------------- |
 | `observed` | Measured Hi-C, optional matching-prior regularization | A contact matrix with suitable coverage and resolution |
-| `shrinkage` | Observed contact and a compatible distance prior | An independently chosen observation weight and matching measurement scales |
+| `shrinkage` | Observed contact and a compatible distance prior | A fixed observation weight, or raw counts and conversion factors for per-pair shrinkage |
 | `prior_only`   | Distance-decay prior only                                | No usable Hi-C                            |
 
 The distance-decay prior has the form
@@ -406,7 +406,7 @@ where `d` is the element–TSS distance. Point `contact.prior_path` at a prior f
 
 Without any usable Hi-C, the explicit research baseline `prior_preset: abc_human` with `mode: prior_only` uses the human ABC reference gamma=1.024238616787792 on a relative scale. Omit contact tables for this baseline. It is not a fitted livestock parameter. See [the model](docs/ADVANCED.md#fitting-and-transferring-a-prior).
 
-For `shrinkage`, set `contact.reliability` to the weight given to observed contacts (1 = observed only, 0 = prior only) and `contact.reliability_source` to a short note saying how you chose it.
+For `shrinkage`, either set `contact.reliability` to a fixed weight (0–1) with `contact.reliability_source`, or choose `reliability: per_pair` to estimate the weight from raw counts and a compatible prior. `pace prepare` for cooler now exports the required counts and conversion factors. See [boundary priors and weak calibration](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
 
 Results from `prior_only` and `shrinkage` runs are labelled as such in the output. Report the mode you used in your methods.
 
@@ -547,7 +547,7 @@ If an element is missing one assay of a two-assay panel, its activity is NA. PAC
 | `contact.scale` | `depth_normalized_contact` | Must match the actual measurement scale in Step 3 |
 | `contact.normalization_id` | none | Must match the processing used in Step 3 |
 | `contact.prior_path`                 | none                | Distance-decay prior, needed for `shrinkage` and `prior_only` |
-| `contact.reliability`                | none                | Weight on observed contacts in `shrinkage` mode, 0–1         |
+| `contact.reliability`                | none                | Observed-contact weight: 0–1 or `per_pair` for Gamma–Poisson shrinkage         |
 | `contact.near_diagonal_policy`       | `prior_or_neighbor` | How to handle elements in the same bin as the TSS            |
 | `contact.pseudocount`                | `auto`              | Distance-based pseudocount for sparse matrices               |
 | `contact.pseudocount_distance_bp`    | `5000`              | Distance the pseudocount is anchored at                      |
@@ -564,7 +564,7 @@ If an element is missing one assay of a two-assay panel, its activity is NA. PAC
 
 | Setting          | Default | What it does                                                 |
 | ---------------- | ------- | ------------------------------------------------------------ |
-| `allocation.eta` | `auto`  | Exponent on an optional cross-gene contact-share term; a biological competition interpretation has not been established. `auto` stays at 0 unless you supply functional labels that support a higher value. Leave it alone unless you have CRISPR data |
+| `allocation.eta` | `auto`  | Exponent on an optional cross-gene contact-share term; a biological competition interpretation has not been established. `auto` stays at 0 without a calibrator. Functional labels or an explicit eQTL weak model may support a higher value; these evidence types remain separate |
 
 ## Input table reference
 
@@ -635,6 +635,35 @@ normalization agrees with the ABC-style formula. That algebraic agreement does n
 imply identical rankings from different preprocessing pipelines. Software tests do
 not establish superiority over ABC. See [comparison methods](docs/ADVANCED.md#comparisons-and-benchmarks).
 
+## Boundary priors and sparse Hi-C
+
+The optional contact workflow adds three components:
+
+- A distance prior attenuated by candidate CTCF boundaries. `boundaries` scans a supplied CTCF PWM or reads motif hits; optional CTCF ChIP peaks filter occupied sites. Divergent motifs are boundary candidates, not verified TAD borders.
+- Per-pair Gamma–Poisson shrinkage using integer raw counts and the conversion to the declared contact scale. Masked bins use the prior; repeated queries of one bin do not create additional fitting observations.
+- Chromosome-separated eQTL calibration of gamma, beta and eta. `fit-labels` compares a grid with nearest-TSS and matched-catalog ABC power-law baselines. The selected eta, including zero, is applied by `pace run` through `allocation.weak_model_path`.
+
+A small offline workflow is included. Every input in this example is synthetic:
+
+```bash
+cp -r examples/contact contact-demo
+pace boundaries --config contact-demo/boundaries.yaml --out contact-demo/boundary_asset
+pace prior --config contact-demo/prior.yaml --out contact-demo/prior_asset
+pace fit-hic --config contact-demo/fit-hic.yaml --out contact-demo/fitted_prior
+pace fuse --config contact-demo/fuse.yaml --out contact-demo/fused
+pace fit-labels --config contact-demo/fit-labels.yaml --out contact-demo/weak_fit
+pace run --config contact-demo/calibrated.yaml --out contact-demo/calibrated
+```
+
+`prior` packages explicitly supplied parameters; `fit-hic` estimates them from Hi-C.
+The example keeps these outputs separate so both routes can be inspected. To use
+the fitted asset, change `contact.prior_path` and fit the weak model again.
+
+These components have software tests, not an established livestock accuracy gain.
+PIP mass is association evidence, not a CRISPR response or a calibrated link
+probability. The complete equations, input formats, assumptions and limitations
+are in [Advanced use](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
+
 ## Troubleshooting
 
 **`pace: command not found`**
@@ -659,7 +688,7 @@ Check that `sample_id` and `assay` in `observed_activity.tsv` match `samples.tsv
 The labels in `run.yaml` must match those used in Step 3. Changing a label does not convert data. If two Hi-C files really are on different scales, reprocess them the same way.
 
 **`eta_calibration.json` says eta is 0**
-That is normal. It stays 0 unless you supplied suitable functional labels.
+That is normal. It stays 0 without a calibrator, and fitted models can also select 0. Supply functional labels with `fit-eta`, or use `fit-labels` and `allocation.weak_model_path` for separately marked eQTL weak calibration.
 
 **Only one animal. Is that OK?**
 Yes. Use `target_level: individual`. You just can't say anything about variation between animals.

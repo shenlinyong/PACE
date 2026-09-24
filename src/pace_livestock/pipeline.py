@@ -20,7 +20,7 @@ from .reporting import evidence_catalog, evidence_summary, multiomics_features
 from .schemas import load_tables, universe_ids
 
 
-def compute(cfg: dict):
+def compute(cfg: dict, *, contact_prior_override=None):
     if set(cfg) & {"sequence", "fusion", "genome"} or "predictions" in cfg["inputs"]:
         raise PaceError("Unsupported configuration: PACE requires measured activity inputs")
     if cfg["regime"] != "measured":
@@ -51,7 +51,14 @@ def compute(cfg: dict):
                 "Human relative prior cannot be mixed with measured contact tables; omit contact inputs for this explicit baseline"
             )
         assets["contact_prior"] = builtin_contact_prior(cfg)
+    if contact_prior_override is not None:
+        assets["contact_prior"] = contact_prior_override
     resolved_a = resolve_activity(tables, cfg)
+    weak_allocation = None
+    if cfg["allocation"].get("weak_model_path"):
+        from .weak_labels import apply_weak_model
+
+        assets["contact_prior"], weak_allocation = apply_weak_model(cfg, tables, assets, resolved_a)
     resolved_c = resolve_contacts(tables, cfg, prior_asset=assets.get("contact_prior"))
     prior_metadata = assets.get("contact_prior", {})
     for row in resolved_c:
@@ -198,12 +205,15 @@ def compute(cfg: dict):
             else None,
         },
     }
-    allocation = resolve_eta(edges, cfg, calibration_scope(cfg, tables, assets, scale_contract))
+    allocation = weak_allocation or resolve_eta(
+        edges, cfg, calibration_scope(cfg, tables, assets, scale_contract)
+    )
     ml_contract["allocation_eta"] = allocation["eta"]
     ml_contract["evidence_policy"] = {
         "regime": cfg["regime"],
         "contact_reliability": cfg["contact"]["reliability"],
         "contact_reliability_source": cfg["contact"]["reliability_source"],
+        "contact_kappa": cfg["contact"]["kappa"],
         "minimum_callable_fraction": cfg["activity"]["minimum_callable_fraction"],
         "asset_hashes": {k: a["manifest_sha256"] for k, a in assets.items()},
     }
@@ -211,6 +221,8 @@ def compute(cfg: dict):
     scores, summary = score(
         edges, eta=allocation["eta"], partial_policy=cfg["scoring"]["partial_policy"]
     )
+    for row in scores:
+        row["allocation_evidence"] = "eqtl_weak" if weak_allocation else "functional_or_fixed"
     for row in summary:
         row.update(promoter_summary[row["gene_id"]])
     features, roles = multiomics_features(tables, scores, resolved_a, cfg)
@@ -307,6 +319,7 @@ def compute(cfg: dict):
             "contact_mode": cfg["contact"]["mode"],
             "contact_reliability": cfg["contact"]["reliability"],
             "contact_reliability_source": cfg["contact"]["reliability_source"],
+            "contact_kappa": cfg["contact"]["kappa"],
             "allow_prior_fallback": cfg["contact"]["allow_prior_fallback"],
             "pseudocount": cfg["contact"]["pseudocount"],
             "pseudocount_distance_bp": cfg["contact"]["pseudocount_distance_bp"],

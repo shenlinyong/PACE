@@ -1,0 +1,9 @@
+variant_id	chrom	pos0	gene_id	pip	signal_id
+c1G1	c1	5000	c1G1	0.9	signal
+c1G2	c1	30000	c1G2	0.9	signal
+c2G1	c2	5000	c2G1	0.9	signal
+c2G2	c2	30000	c2G2	0.9	signal
+c3G1	c3	5000	c3G1	0.9	signal
+c3G2	c3	30000	c3G2	0.9	signal
+c4G1	c4	5000	c4G1	0.9	signal
+c4G2	c4	30000	c4G2	0.9	signal

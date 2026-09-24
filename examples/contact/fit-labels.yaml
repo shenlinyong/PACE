@@ -1,0 +1,17 @@
+run_config: config.yaml
+labels: eqtl.tsv
+species: synthetic
+assembly: toy_assembly
+context_id: toy_tissue
+gamma_grid:
+- 1.0
+beta_grid:
+- 0.0
+- 0.5
+eta_grid:
+- 0.0
+- 0.5
+- 1.0
+aggregation: independent_signals
+test_chromosomes:
+- c4
