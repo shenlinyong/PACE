@@ -405,6 +405,14 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 "promoter_id": key[1],
                 "observed_value": obs,
                 "prior_value": prior,
+                "prior_coordinate_policy": "bin_centers"
+                if per_pair
+                else prior_asset.get(
+                    "fitting_coordinate_policy",
+                    prior_asset.get("prior_coordinate_policy", "genomic_anchors"),
+                )
+                if prior_asset
+                else None,
                 "resolved_value": value,
                 "evidence_id": digest([key, source, used]),
                 "evidence_type": "aggregate" if source == "observed" and len(used) > 1 else source,

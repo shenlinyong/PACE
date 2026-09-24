@@ -60,6 +60,14 @@ def load_boundaries(prior):
 
 
 def contact_prior(chrom, left, right, prior, boundaries=None):
+    policy = prior.get(
+        "fitting_coordinate_policy", prior.get("prior_coordinate_policy", "genomic_anchors")
+    )
+    if policy not in ("genomic_anchors", "bin_centers"):
+        raise PaceError("Unknown contact prior coordinate policy")
+    if policy == "bin_centers":
+        resolution = integer(prior.get("resolution"), "prior resolution", minimum=1)
+        left, right = (x // resolution * resolution + resolution // 2 for x in (left, right))
     beta = number(prior.get("beta", 0), "contact prior beta", minimum=0)
     base = distance_prior(abs(left - right), prior)
     if beta == 0:

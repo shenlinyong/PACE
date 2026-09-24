@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Enforce contact measurement and resolved activity scale consistency across chromosome chunks.
+- Honor fitted bin-center coordinates when applying contact priors in every contact mode, and record the coordinate policy.
+- Reject fractional binary evaluation labels before integer conversion.
+- Add six regression cases and a scoped source-review report in `docs/REVIEW_2026-09-24.md`.
+
 ## 0.8.0
 
 - Every command takes ordinary command-line options (bedtools/samtools style); no configuration file is needed. YAML input is still read through a hidden `--config` to reproduce older runs.

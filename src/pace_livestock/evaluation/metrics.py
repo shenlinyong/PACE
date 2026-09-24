@@ -8,9 +8,15 @@ from ..errors import PaceError
 
 
 def binary_metrics(labels, scores, *, threshold=None):
-    y, s = np.asarray(labels, dtype=int), np.asarray(scores, dtype=float)
+    # Validate before integer conversion: fractional labels must never become
+    # apparently valid negatives/positives through silent truncation.
+    try:
+        y, s = np.asarray(labels, dtype=float), np.asarray(scores, dtype=float)
+    except (TypeError, ValueError) as exc:
+        raise PaceError("Metrics require binary labels and numeric scores") from exc
     if y.shape != s.shape or y.ndim != 1 or not np.all(np.isin(y, [0, 1])):
         raise PaceError("Metrics require paired binary labels and one-dimensional scores")
+    y = y.astype(int)
     valid = np.isfinite(s)
     missed_positive = int(np.sum((y == 1) & ~valid))
     all_positive = int(y.sum())

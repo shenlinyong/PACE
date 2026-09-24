@@ -321,6 +321,7 @@ def run_by_chromosome(
         path = dest / f"inferred_{name}.tsv"
         write_table(path, rows)
         cfg["inputs"][name] = str(path)
+    global_contact_contract(cfg)
     configs = split_inputs(cfg, maps, chunks, work)
     jobs = [
         (group, chunk_cfg, work / f"chunk_{i:04d}" / "result")
@@ -352,6 +353,7 @@ def run_by_chromosome(
             results[i] = score_chunk(*job)
             report(i)
     parts = [work / f"chunk_{i:04d}" / "result" for i in range(len(chunks))]
+    validate_activity_scales(parts)
     for name in MERGED_TABLES:
         concatenate([p / name for p in parts], dest / name)
     for name, identifier in IDENTIFIED_TABLES.items():
@@ -372,6 +374,63 @@ def run_by_chromosome(
 
     write_config_and_report(dest, cfg, qc, qc["n_candidates"], relative_to=relative_to)
     return {"qc": qc, "manifest": manifest, "eta_calibration": results[0]["eta"]}
+
+
+def global_contact_contract(cfg):
+    """Check compact measurement definitions before chromosome splitting.
+
+    A table can be internally consistent in every chunk yet mix incompatible
+    resolutions or normalizations genome-wide. Keep only distinct definitions,
+    not millions of contact rows, and reuse the single-run validator.
+    """
+    from .evidence.assets import builtin_contact_prior, load_asset
+    from .evidence.resolve import contact_measurement_contract
+
+    fields = ("resolution", "scale", "normalization_id", "balancing", "window_id", "source_id")
+    tables = {"sources": read_table(cfg["inputs"]["sources"]) if cfg["inputs"]["sources"] else []}
+    for name in ("observed_contacts", "resolved_contacts"):
+        distinct = set()
+        path = cfg["inputs"][name]
+        if path:
+            handle, reader = _stream(path)
+            with handle:
+                header = next(reader, [])
+                positions = [header.index(f) if f in header else None for f in fields]
+                for row in reader:
+                    if len(row) != len(header):
+                        raise PaceError(f"inputs.{name}: inconsistent number of TSV fields")
+                    distinct.add(
+                        tuple(
+                            None if i is None or row[i] in ("", "NA") else row[i] for i in positions
+                        )
+                    )
+        tables[name] = [dict(zip(fields, values, strict=True)) for values in distinct]
+    prior = (
+        load_asset(cfg["contact"]["prior_path"], cfg, kind="contact_prior")
+        if cfg["contact"]["prior_path"]
+        else builtin_contact_prior(cfg)
+        if cfg["contact"].get("prior_preset")
+        else None
+    )
+    contact_measurement_contract(tables, cfg, prior_asset=prior)
+
+
+def validate_activity_scales(parts):
+    """Apply the whole-run resolved activity contract across all chunks."""
+    contracts = {}
+    for part in parts:
+        handle, reader = _stream(part / "resolved_activity.tsv")
+        with handle:
+            header = next(reader, [])
+            for values in reader:
+                row = dict(zip(header, values, strict=True))
+                if row["resolution_status"] != "resolved":
+                    continue
+                contract = tuple(row.get(k) for k in ("unit", "normalization_id", "window_id"))
+                if contracts.setdefault(row["assay"], contract) != contract:
+                    raise PaceError(
+                        f"Activity scale/normalization differs across chromosome chunks for {row['assay']}"
+                    )
 
 
 def score_chunk(chromosomes, chunk_cfg, result_dir):
