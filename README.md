@@ -46,21 +46,14 @@ pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \
 
 ## How it works
 
-For every candidate element–gene pair within 5 Mb, PACE computes one score. Read the equation from left to right: first in words, then in symbols, then with every part written out.
+For every candidate element–gene pair within 5 Mb, PACE computes one score. Read the equation from left to right: in words, in symbols, and with every part written out.
 
 ```math
 \boxed{
-\begin{aligned}
 \mathrm{PACE}(E,G)
-&=\frac{\text{Activity}\times\text{Contact}}{\sum\left(\text{Activity}\times\text{Contact}\right)}\\
-&=\frac{A_\star(E)\,\overline C(E,G)}
-{\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}\\
-&=\frac{\left[\displaystyle\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}
-\displaystyle\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)}
-{\displaystyle\sum_{e\in\mathcal E(G)}
-\left[\displaystyle\prod_{m\in\mathcal M}x_m(e)\right]^{1/|\mathcal M|}
-\displaystyle\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(e,t)}
-\end{aligned}
+=\frac{\text{Activity}\times\text{Contact}}{\sum\left(\text{Activity}\times\text{Contact}\right)}
+=\frac{A_\star(E)\,\overline C(E,G)}{\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}
+=\frac{\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)}{\displaystyle\sum_{e\in\mathcal E(G)}\left[\prod_{m\in\mathcal M}x_m(e)\right]^{1/|\mathcal M|}\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(e,t)}
 }
 ```
 
