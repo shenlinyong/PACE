@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Consolidate user documentation into README and `docs/ADVANCED.md`; preserve advanced methods, labels, examples and full defaults.
+- Remove obsolete installation wrappers and dependency snapshots; install with pip, Conda or Docker.
+- Check the README formula, advanced defaults and local documentation links in CI.
+
 ## 0.6.0
 
 - Add optional assay-specific activity pseudocounts without filling missing measurements.
@@ -101,5 +107,4 @@ run outputs without the new measurement contracts should be rerun before compari
   classifier, comparisons and functional benchmarks.
 - Add synthetic examples, wheel distribution, numerical tests and hosted CI.
 
-See [migration](docs/migration.md) for access to superseded source history. These
-release notes describe software behavior, not demonstrated biological superiority.
+Earlier implementations remain available in Git history. These release notes describe software behavior, not demonstrated biological superiority.

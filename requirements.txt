@@ -1,2 +1,0 @@
-# Install the current package and genomic file adapters from the repository root.
-.[io]

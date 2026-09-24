@@ -2,8 +2,6 @@
 
 **Enhancer–gene prediction for livestock and poultry.**
 
-[中文手册](docs/USER_GUIDE.zh-CN.md) · [中文公式](docs/FORMULA.zh-CN.md) · [Parameters](docs/parameters.md)
-
 PACE ranks candidate regulatory elements for each gene in a tissue using measured activity and contact evidence. It is built on the Activity-by-Contact (ABC) model and adapted to the data that livestock labs actually have: incomplete epigenomic panels, sparse or low-resolution Hi-C, rough transcript annotation, and only one or a few animals per tissue.
 
 The input formats are species-independent and require a matching reference, annotation and experimental activity data. Pig, cattle, sheep, goat and chicken are the main use cases.
@@ -114,6 +112,9 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work pace:local \
 ```
 
 Any path you pass to the container must be inside the mounted directory.
+
+Use `pace --help` to list commands and `pace <command> --help` for their full options.
+`pace-livestock` is an alias of `pace`.
 
 **No git?**
 
@@ -403,7 +404,7 @@ contact_prior(d) = a × ( max(d, d_min) / d_ref ) ^ (−γ)
 
 where `d` is the element–TSS distance. Point `contact.prior_path` at a prior fitted to your species. Use `pace fit-prior --cooler ... --species ... --assembly ... --tissue ... --out ...` to fit a prior including callable zero pixels. The lower distance defaults to the matrix resolution. A different tissue requires `contact.allow_cross_context_prior: true`; source and target contexts are retained and the transfer is labeled unvalidated. The species, assembly, target level and measurement definitions must match. Tissue transfer requires evaluation; it is not assumed equivalent to target-tissue Hi-C.
 
-Without any usable Hi-C, the explicit research baseline `prior_preset: abc_human` with `mode: prior_only` uses the human ABC reference gamma=1.024238616787792 on a relative scale. Omit contact tables for this baseline. It is not a fitted livestock parameter. See [the model](docs/FORMULA.md#fitting-and-transferring-a-prior).
+Without any usable Hi-C, the explicit research baseline `prior_preset: abc_human` with `mode: prior_only` uses the human ABC reference gamma=1.024238616787792 on a relative scale. Omit contact tables for this baseline. It is not a fitted livestock parameter. See [the model](docs/ADVANCED.md#fitting-and-transferring-a-prior).
 
 For `shrinkage`, set `contact.reliability` to the weight given to observed contacts (1 = observed only, 0 = prior only) and `contact.reliability_source` to a short note saying how you chose it.
 
@@ -607,12 +608,12 @@ filling NA. `promoters.minimum_weight` and `promoters.missing_policy: drop_missi
 select one shared TSS set per gene and renormalize its weights. At least
 `promoters.minimum_retained_weight` (default 0.9) of the original weight must remain;
 otherwise the gene stays unscoreable. Filtered scores describe only the selected
-TSS definition. Both options are off by default; see [worked settings](docs/PRACTICAL_WORKFLOW.md).
+TSS definition. Both options are off by default; see [worked settings](docs/ADVANCED.md#sparse-activity-and-alternative-tsss).
 
 The experimental allocation extension multiplies support by B(E,G)^eta, where B is
 the element's contact share across its candidate genes. `eta=auto` uses zero without
 eligible independent functional evidence. This extension is separate from the
-main formula; see [equations and calibration](docs/FORMULA.md#experimental-target-allocation).
+main formula; see [equations and calibration](docs/ADVANCED.md#experimental-target-allocation).
 
 ## How PACE differs from ABC
 
@@ -632,7 +633,7 @@ on candidate selection, contact processing and promoter definitions:
 With identical activity, contact, one TSS and a complete candidate set, the default
 normalization agrees with the ABC-style formula. That algebraic agreement does not
 imply identical rankings from different preprocessing pipelines. Software tests do
-not establish superiority over ABC. See [comparison methods](docs/ABC_COMPARISON.md).
+not establish superiority over ABC. See [comparison methods](docs/ADVANCED.md#comparisons-and-benchmarks).
 
 ## Troubleshooting
 
@@ -679,3 +680,5 @@ PACE is not yet published. If you use it, please cite this repository with the c
 ## License and contact
 
 MIT License. Written and maintained by Linyong Shen, Northwest A&F University. Questions and bug reports: [GitHub Issues](https://github.com/shenlinyong/PACE/issues).
+
+[Advanced use](docs/ADVANCED.md): multiomics processing, classifier training, eta calibration, worked calculations, validation and complete defaults.

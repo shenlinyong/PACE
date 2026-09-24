@@ -1,4 +1,4 @@
-"""Prevent recurrence of conflicting public formulas and executable entry points."""
+"""Check maintained documentation and the installed module entry point."""
 
 import importlib.util
 import json
@@ -24,6 +24,7 @@ def test_public_documentation_contract():
         "S/(sum(S)+U(G))",
         "The default eta=1.",
         "[gone](absent.md)",
+        "# Existing heading\n[wrong section](#missing-heading)",
         "```math\n" + r"\operatorname{PACE}(E,G)" + "\n```",
         "$$x$$",
     ],
@@ -34,11 +35,12 @@ def test_audit_rejects_known_documentation_failures(tmp_path, wrong):
     assert CHECKER.check_markdown(page, tmp_path)
 
 
-def test_compatibility_launcher_uses_current_model(tmp_path):
+def test_module_entry_point_uses_current_model(tmp_path):
     out = tmp_path / "run"
     command = [
         sys.executable,
-        str(ROOT / "scripts/pace.py"),
+        "-m",
+        "pace_livestock",
         "measured",
         "--config",
         str(ROOT / "examples/measured/config.yaml"),
@@ -54,17 +56,9 @@ def test_compatibility_launcher_uses_current_model(tmp_path):
     manifest = json.loads((out / "run_manifest.json").read_text())
     assert manifest["comparison_contract"]["eta"] == 0.5
     rejected = subprocess.run(
-        [sys.executable, str(ROOT / "scripts/pace.py"), "--competition-power", "1"],
+        [sys.executable, "-m", "pace_livestock", "--competition-power", "1"],
         capture_output=True,
         text=True,
         cwd=tmp_path,
     )
     assert rejected.returncode != 0
-
-
-def test_setup_uses_current_installer():
-    result = subprocess.run(
-        ["bash", str(ROOT / "setup.sh"), "--help"], capture_output=True, text=True
-    )
-    assert result.returncode == 0, result.stderr
-    assert "--python" in result.stdout and "--extras" in result.stdout
