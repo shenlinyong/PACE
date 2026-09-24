@@ -12,6 +12,7 @@
 - `pace fit-prior` labels its prior like `pace contacts` (`balanced_contact`/`cooler_weight`), so both combine without extra options.
 - `pace predict` warns when a bigWig omits zero-signal regions and suggests `--missing-as-zero`; its unusable `--target-level` option is removed.
 - README explains how to make runs of several animals comparable.
+- `pace fit-labels` ignores eQTL genes outside the candidate catalog and reports how many (`n_label_genes_outside_catalog`) instead of failing on genome-wide eQTL tables.
 
 ## 0.8.0
 

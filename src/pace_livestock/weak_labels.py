@@ -291,6 +291,11 @@ def calibrate(
         )
     tables = load_tables(cfg)
     scope = model_scope(cfg, tables, {"contact_prior": prior}, resolve_activity(tables, cfg))
+    # Genome-wide eQTL releases list genes outside this catalog (other biotypes,
+    # skipped contigs); they cannot be assessed here and are counted, not fatal.
+    catalog_genes = {r["gene_id"] for r in tables["candidates"]}
+    skipped_genes = sorted({r.get("gene_id") for r in variants} - catalog_genes - {None})
+    variants = [r for r in variants if r.get("gene_id") in catalog_genes]
     labels = map_weak_labels(
         variants, tables["units"], tables["candidates"], aggregation=aggregation
     )
@@ -351,6 +356,7 @@ def calibrate(
         "scope": scope,
         "status": "weak_fitted",
         "aggregation": aggregation,
+        "n_label_genes_outside_catalog": len(skipped_genes),
         "abc_gamma": abc_gamma,
         "is_synthetic": cfg["execution_profile"] == "demonstration",
         "label_assumption": "zero PIP mass is unlabelled background; variants/signals are treated as independent only under the selected approximation",

@@ -1051,7 +1051,8 @@ converted to a simple table. Downloading or harmonizing FarmGTEx releases is not
 part of this command. The table requires `variant_id`, `chrom`, `pos0`, `gene_id`,
 and `pip`; `independent_signals` also requires `signal_id`. Use one row per
 variant/gene with PIP in [0,1], already harmonized to the reference assembly and
-tissue. Restrict genes to the cis candidate catalog. Duplicate gene/variant rows
+tissue. Genes outside the cis candidate catalog are ignored and counted in
+`n_label_genes_outside_catalog`. Duplicate gene/variant rows
 are rejected rather than silently counted twice.
 
 ```bash
