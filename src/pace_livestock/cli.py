@@ -87,7 +87,7 @@ class Formatter(argparse.RawDescriptionHelpFormatter, argparse.ArgumentDefaultsH
             return action.help
         if action.help is None or action.help == argparse.SUPPRESS or action.nargs == 0:
             return action.help
-        if "%(default)" in action.help or action.option_strings == []:
+        if "default" in action.help.lower() or action.option_strings == []:
             return action.help
         return action.help + " (default: %(default)s)"
 
@@ -280,6 +280,13 @@ def predict_parser(command):
         default=1_500_000,
         help="Score whole chromosomes in chunks of at most this many candidate pairs to "
         "bound memory; results equal a single run. 0 scores everything at once",
+    )
+    score.add_argument(
+        "-t",
+        "--threads",
+        type=int,
+        default=1,
+        help="Score this many chromosome chunks in parallel (memory grows with each)",
     )
     score.add_argument(
         "--partial-policy",
@@ -922,7 +929,7 @@ def run_command(args):
     if getattr(args, "by_chromosome", False):
         from .chunked import run_by_chromosome
 
-        result = run_by_chromosome(cfg, args.out, max_pairs=args.chunk_pairs)
+        result = run_by_chromosome(cfg, args.out, max_pairs=args.chunk_pairs, threads=args.threads)
         return {
             "output": args.out,
             "n_candidates": result["qc"]["n_candidates"],

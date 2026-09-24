@@ -26,16 +26,17 @@ from .provenance import digest, file_hash, output_directory, write_json
 
 # Tables read once and passed unchanged to every chunk.
 GLOBAL_TABLES = ("samples", "sources", "evidence")
-# Output tables concatenated across chunks, and the key that must be unique.
-MERGED_TABLES = {
-    "scores.tsv.gz": ("element_id", "gene_id"),
-    "gene_summary.tsv": ("gene_id",),
-    "region_scores.tsv": None,
-    "resolved_activity.tsv": ("element_id", "assay"),
-    "resolved_contacts.tsv": ("element_id", "promoter_id"),
-    "promoter_weights.tsv": ("gene_id", "promoter_id"),
-    "multiomics_features.tsv.gz": None,
-}
+# Output tables concatenated across chunks. Chunks hold disjoint chromosomes, so their
+# elements, genes and promoters (and every key built from them) are disjoint too.
+MERGED_TABLES = (
+    "scores.tsv.gz",
+    "gene_summary.tsv",
+    "region_scores.tsv",
+    "resolved_activity.tsv",
+    "resolved_contacts.tsv",
+    "promoter_weights.tsv",
+    "multiomics_features.tsv.gz",
+)
 IDENTIFIED_TABLES = {"evidence.tsv": "evidence_id", "sources.tsv": "source_id"}
 DEFAULT_CHUNK_PAIRS = 1_500_000
 
@@ -181,7 +182,7 @@ def merge_qc(values: list):
     return first if len(distinct) == 1 else distinct
 
 
-def concatenate(sources: list[Path], target: Path, key=None) -> int:
+def concatenate(sources: list[Path], target: Path) -> int:
     """Concatenate TSV files with a union header; returns the number of rows."""
     fields = []
     for path in sources:
@@ -190,7 +191,15 @@ def concatenate(sources: list[Path], target: Path, key=None) -> int:
             for field in next(reader, []):
                 if field not in fields:
                     fields.append(field)
-    seen, n = set(), 0
+    headers = []
+    for path in sources:
+        handle, reader = _stream(path)
+        with handle:
+            headers.append(next(reader, []))
+    if all(h == fields for h in headers):
+        # Same columns everywhere: copy the data lines without parsing them.
+        return _copy_lines(sources, target)
+    n = 0
     opener = gzip.open if str(target).endswith(".gz") else open
     kwargs = {"compresslevel": 6} if str(target).endswith(".gz") else {}
     with opener(target, "wt", encoding="utf-8", newline="", **kwargs) as out:
@@ -201,39 +210,78 @@ def concatenate(sources: list[Path], target: Path, key=None) -> int:
             with handle:
                 header = next(reader, [])
                 position = [header.index(f) if f in header else None for f in fields]
-                key_index = [header.index(k) for k in key] if key else None
                 for row in reader:
-                    if key_index:
-                        identity = tuple(row[i] for i in key_index)
-                        if identity in seen:
-                            raise PaceError(f"{target.name}: {identity} appears in two chunks")
-                        seen.add(identity)
                     writer.writerow(["" if i is None else row[i] for i in position])
                     n += 1
     return n
 
 
+def _copy_lines(sources: list[Path], target: Path) -> int:
+    n = 0
+    zipped = str(target).endswith(".gz")
+    out = gzip.open(target, "wb", compresslevel=6) if zipped else open(target, "wb")
+    with out:
+        for k, path in enumerate(sources):
+            opener = gzip.open if str(path).endswith(".gz") else open
+            with opener(path, "rb") as handle:
+                header = handle.readline()
+                if k == 0:
+                    out.write(header)
+                for line in handle:
+                    out.write(line)
+                    n += 1
+    return n
+
+
 def merge_identified(sources: list[Path], target: Path, identifier: str) -> None:
-    """Union of evidence/source rows; repeated IDs must agree apart from their checksum."""
-    rows = {}
+    """Union of evidence/source rows; repeated IDs must agree apart from their checksum.
+
+    Rows are streamed in chunk order; only IDs occurring in several chunks (run-level
+    sources, models and the core-formula record) are held back and written last.
+    """
+    headers = []
     for path in sources:
-        for row in read_table(path):
-            key = row[identifier]
-            if key not in rows:
-                rows[key] = {**row, "_checksums": [row.get("checksum")]}
-                continue
-            kept = rows[key]
-            for field, value in row.items():
-                if field != "checksum" and kept.get(field) != value:
-                    raise PaceError(f"{target.name}: {key} differs between chunks ({field})")
-            kept["_checksums"].append(row.get("checksum"))
-    merged = []
-    for row in rows.values():
-        checksums = row.pop("_checksums")
-        if len(set(checksums)) > 1:
-            row["checksum"] = digest(checksums)
-        merged.append(row)
-    write_table(target, sorted(merged, key=lambda r: r[identifier]))
+        handle, reader = _stream(path)
+        with handle:
+            headers.append(next(reader, []))
+    fields = list(dict.fromkeys(f for h in headers for f in h))
+    counts = defaultdict(int)
+    for path, header in zip(sources, headers, strict=True):
+        handle, reader = _stream(path)
+        with handle:
+            next(reader, None)
+            column = header.index(identifier)
+            for row in reader:
+                counts[row[column]] += 1
+    shared = {}
+    with open(target, "w", encoding="utf-8", newline="") as out:
+        writer = csv.writer(out, delimiter="\t", lineterminator="\n")
+        writer.writerow(fields)
+        for path, header in zip(sources, headers, strict=True):
+            handle, reader = _stream(path)
+            with handle:
+                next(reader, None)
+                for values in reader:
+                    row = dict(zip(header, values, strict=True))
+                    key = row[identifier]
+                    if counts[key] == 1:
+                        writer.writerow([row.get(f, "") for f in fields])
+                    elif key not in shared:
+                        shared[key] = {**row, "_checksums": [row.get("checksum")]}
+                    else:
+                        kept = shared[key]
+                        for field, value in row.items():
+                            if field != "checksum" and kept.get(field) != value:
+                                raise PaceError(
+                                    f"{target.name}: {key} differs between chunks ({field})"
+                                )
+                        kept["_checksums"].append(row.get("checksum"))
+        for key in sorted(shared):
+            row = shared[key]
+            checksums = row.pop("_checksums")
+            if len(set(checksums)) > 1:
+                row["checksum"] = digest(checksums)
+            writer.writerow([row.get(f, "") for f in fields])
 
 
 def run_by_chromosome(
@@ -244,14 +292,20 @@ def run_by_chromosome(
     dest: Path | None = None,
     relative_to=None,
     log=None,
+    threads: int = 1,
 ):
-    """Score chunk by chunk and publish one merged PACE result folder."""
+    """Score chunk by chunk (in parallel with threads > 1) and publish one result folder."""
     if dest is None:
         with output_directory(out) as staging:
             return run_by_chromosome(
-                cfg, out, max_pairs=max_pairs, dest=staging, relative_to=staging, log=log
+                cfg,
+                out,
+                max_pairs=max_pairs,
+                dest=staging,
+                relative_to=staging,
+                log=log,
+                threads=threads,
             )
-    from .pipeline import compute, write_results
     from .schemas import infer_metadata
 
     check_chunkable(cfg)
@@ -268,28 +322,38 @@ def run_by_chromosome(
         write_table(path, rows)
         cfg["inputs"][name] = str(path)
     configs = split_inputs(cfg, maps, chunks, work)
-    results = []
-    for i, (group, chunk_cfg) in enumerate(zip(chunks, configs, strict=True)):
+    jobs = [
+        (group, chunk_cfg, work / f"chunk_{i:04d}" / "result")
+        for i, (group, chunk_cfg) in enumerate(zip(chunks, configs, strict=True))
+    ]
+    results = [None] * len(jobs)
+
+    def report(i):
         if log:
+            group = chunks[i]
             shown = ", ".join(group[:3]) + (f" +{len(group) - 3}" if len(group) > 3 else "")
-            log(f"    chunk {i + 1}/{len(chunks)}: {shown}")
-        result = compute(chunk_cfg, chunk=True)
-        chunk_dir = work / f"chunk_{i:04d}" / "result"
-        chunk_dir.mkdir()
-        write_results(chunk_dir, chunk_cfg, result)
-        results.append(
-            {
-                "chromosomes": group,
-                "qc": result["qc"],
-                "manifest": result["manifest"],
-                "eta": result["eta_calibration"],
-                "n_candidates": len(result["scores"]),
-            }
-        )
-        del result
+            log(f"    chunk {i + 1}/{len(chunks)} done: {shown}")
+
+    if threads > 1 and len(jobs) > 1:
+        import concurrent.futures
+        import multiprocessing
+
+        context = multiprocessing.get_context("spawn")
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=min(threads, len(jobs)), mp_context=context
+        ) as pool:
+            futures = {pool.submit(score_chunk, *job): i for i, job in enumerate(jobs)}
+            for future in concurrent.futures.as_completed(futures):
+                i = futures[future]
+                results[i] = future.result()
+                report(i)
+    else:
+        for i, job in enumerate(jobs):
+            results[i] = score_chunk(*job)
+            report(i)
     parts = [work / f"chunk_{i:04d}" / "result" for i in range(len(chunks))]
-    for name, key in MERGED_TABLES.items():
-        concatenate([p / name for p in parts], dest / name, key)
+    for name in MERGED_TABLES:
+        concatenate([p / name for p in parts], dest / name)
     for name, identifier in IDENTIFIED_TABLES.items():
         merge_identified([p / name for p in parts], dest / name, identifier)
     for name in ("eta_calibration.json", "ml_feature_contract.json"):
@@ -308,6 +372,22 @@ def run_by_chromosome(
 
     write_config_and_report(dest, cfg, qc, qc["n_candidates"], relative_to=relative_to)
     return {"qc": qc, "manifest": manifest, "eta_calibration": results[0]["eta"]}
+
+
+def score_chunk(chromosomes, chunk_cfg, result_dir):
+    """Score one chunk and write its result folder; runs in a worker process."""
+    from .pipeline import compute, write_results
+
+    result = compute(chunk_cfg, chunk=True)
+    result_dir.mkdir()
+    write_results(result_dir, chunk_cfg, result)
+    return {
+        "chromosomes": chromosomes,
+        "qc": result["qc"],
+        "manifest": result["manifest"],
+        "eta": result["eta_calibration"],
+        "n_candidates": len(result["scores"]),
+    }
 
 
 def global_metadata(cfg: dict, infer) -> dict:

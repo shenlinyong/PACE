@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.0
+
+- Every command takes ordinary command-line options (bedtools/samtools style); no configuration file is needed. YAML input is still read through a hidden `--config` to reproduce older runs.
+- New `pace predict`: peaks + GTF + bigWig (+ Hi-C, a fitted prior or the human ABC power law) to scores in one command. With Hi-C it fits the distance power law of the same map for the pseudocount and for masked bins, as ABC does (`--strict-contacts` disables the fallback).
+- New `catalog`, `activity`, `contacts`, `merge`, `features`, `methylation` and `expression` commands replace `prepare --config`.
+- Samples and sources tables are inferred for single-animal runs; the contact scale and activity panel are read from the input tables.
+- Chromosome sizes may be a chrom.sizes file, a FASTA index or a bigWig; `--gene-types` filters biotypes; several BED files are united; `--skip-unlisted-chroms` drops contigs absent from the sizes.
+- Chromosome-chunked scoring (`run --by-chromosome`, default in `predict`) with `-t/--threads` parallel chunks; results equal a single run.
+- About 2–5× faster scoring and Hi-C extraction; bounded memory per chunk. The core-formula evidence record no longer lists every parent ID in one cell.
+- `pace init` writes a `run.sh` with command-line options instead of `config.yaml`.
+
 ## 0.7.0
 
 - Add CTCF motif scanning, candidate-boundary priors and Poisson-profile Hi-C fitting.

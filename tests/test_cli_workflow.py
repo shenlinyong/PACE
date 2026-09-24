@@ -265,7 +265,14 @@ def test_step_by_step_commands_without_yaml(inputs, tmp_path, capsys):
     ]
     # No samples/sources tables and no scale label: both are taken from the inputs.
     assert call(*run, "-o", tmp_path / "single") == 0, capsys.readouterr().err
-    assert call(*run, "--by-chromosome", "--chunk-pairs", 1, "-o", tmp_path / "chunked") == 0
+    chunked_run = [*run, "--by-chromosome", "--chunk-pairs", 1]
+    assert call(*chunked_run, "-o", tmp_path / "chunked") == 0
+    assert call(*chunked_run, "--threads", 2, "-o", tmp_path / "parallel") == 0
+    assert (tmp_path / "parallel/scores.tsv.gz").read_bytes() == (
+        tmp_path / "chunked/scores.tsv.gz"
+    ).read_bytes() or read_table(tmp_path / "parallel/scores.tsv.gz") == read_table(
+        tmp_path / "chunked/scores.tsv.gz"
+    )
     single, chunked = scores(tmp_path / "single"), scores(tmp_path / "chunked")
     assert single.keys() == chunked.keys()
     assert all(
@@ -314,3 +321,52 @@ def test_help_lists_commands_and_hides_yaml(capsys):
     with pytest.raises(SystemExit):
         main(["run", "--help"])
     assert "--config" not in capsys.readouterr().out
+
+
+def script_commands(path):
+    """pace commands of an example script, with its shell variables expanded."""
+    import shlex
+
+    variables, commands, pending = {}, [], ""
+    for raw in path.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("set "):
+            continue
+        if line.endswith("\\"):
+            pending += line[:-1] + " "
+            continue
+        line, pending = pending + line, ""
+        name, sep, value = line.partition("=")
+        if sep and name.isidentifier() and name.isupper():
+            variables[name] = shlex.split(value)[0]
+            continue
+        for key, value in variables.items():
+            line = line.replace(f"${key}", value)
+        words = shlex.split(line)
+        assert words[0] == "pace", line
+        commands.append(words[1:])
+    return commands
+
+
+@pytest.mark.parametrize("example", ["contact", "measured"])
+def test_example_scripts_use_only_flags(tmp_path, example, capsys):
+    import os
+    import shutil
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "examples" / example
+    root = tmp_path / example
+    shutil.copytree(source, root)
+    commands = script_commands(root / "run.sh")
+    assert commands and not any("--config" in c for c in commands)
+    cwd = os.getcwd()
+    os.chdir(root)
+    try:
+        for argv in commands:
+            assert main(argv) == 0, (argv, capsys.readouterr().err)
+    finally:
+        os.chdir(cwd)
+    if example == "contact":
+        calibration = json.loads((root / "calibrated/eta_calibration.json").read_text())
+        assert calibration["status"] == "weak_fitted"
+        assert not calibration["functional_validation"]

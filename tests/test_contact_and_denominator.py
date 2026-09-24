@@ -314,7 +314,21 @@ def test_init_creates_short_config_without_inventing_activity(tmp_path):
         )
         == 0
     )
-    cfg = load_config(tmp_path / "project/config.yaml")
+    import os
+    import shlex
+
+    from pace_livestock.cli import build_parser
+    from pace_livestock.run_options import config_from_args
+
+    script = (tmp_path / "project/run.sh").read_text()
+    assert "--config" not in script and not (tmp_path / "project/config.yaml").exists()
+    command = shlex.split(script.split("pace run", 1)[1].replace("\\\n", " "))
+    cwd = os.getcwd()
+    os.chdir(tmp_path / "project")
+    try:
+        cfg = config_from_args(build_parser().parse_args(["run", *command]))
+    finally:
+        os.chdir(cwd)
     assert cfg["contact"]["mode"] == "prior_only"
     assert read_table(cfg["inputs"]["observed_activity"]) == []
     assert cfg["activity"]["panel"] == ["H3K27ac"]

@@ -165,7 +165,8 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
             cfg[key] = value
     for key in ("species", "assembly", "context_id"):
         if not isinstance(cfg["context"][key], str) or not cfg["context"][key]:
-            raise PaceError(f"context.{key} is required")
+            flag = {"context_id": "tissue"}.get(key, key)
+            raise PaceError(f"--{flag} is required (context.{key})")
     enums = {
         "schema_version": {"pace-1"},
         "regime": {"measured"},

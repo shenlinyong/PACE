@@ -236,7 +236,13 @@ def predict(args):
         log("4/4 scoring element-gene pairs")
         if args.chunk_pairs:
             result = run_by_chromosome(
-                cfg, args.out, max_pairs=args.chunk_pairs, dest=dest, relative_to=dest, log=log
+                cfg,
+                args.out,
+                max_pairs=args.chunk_pairs,
+                dest=dest,
+                relative_to=dest,
+                log=log,
+                threads=args.threads,
             )
             qc = result["qc"]
         else:

@@ -31,7 +31,7 @@ jobs:
           cd /tmp
           /tmp/pace-wheel/bin/pace --version
           /tmp/pace-wheel/bin/pace demo --regime measured --out wheel-measured
-          /tmp/pace-wheel/bin/pace measured --config wheel-measured/inputs/config.yaml --eta 0.5 --out wheel-fractional
+          /tmp/pace-wheel/bin/pace run -d wheel-measured/inputs --species synthetic --assembly toy_assembly --tissue toy_tissue --profile demonstration --no-include-promoters --eta 0.5 -o wheel-fractional
   minimum-core:
     runs-on: ubuntu-latest
     steps:
