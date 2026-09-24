@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pace-livestock"
-version = "0.8.0"
+version = "0.8.1"
 description = "Enhancer-gene regulatory support from measured livestock activity and contact data"
 readme = "README.md"
 requires-python = ">=3.11"

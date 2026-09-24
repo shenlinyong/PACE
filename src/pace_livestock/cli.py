@@ -188,17 +188,18 @@ def add_legacy_config(p):
     p.add_argument("--config", help=argparse.SUPPRESS)
 
 
-def add_context(p, *, required=True):
+def add_context(p, *, required=True, target_level=True):
     group = p.add_argument_group("biological context")
     group.add_argument("--species", required=required, help="Species, e.g. pig, cattle, chicken")
     group.add_argument("--assembly", required=required, help="Genome assembly, e.g. Sscrofa11.1")
     group.add_argument("--tissue", required=required, help="Tissue or cell type, e.g. liver")
-    group.add_argument(
-        "--target-level",
-        choices=["individual", "population_mean"],
-        default="individual",
-        help="One animal, or an equal-weight mean of several animals",
-    )
+    if target_level:
+        group.add_argument(
+            "--target-level",
+            choices=["individual", "population_mean"],
+            default="individual",
+            help="One animal, or an equal-weight mean of several animals",
+        )
     return group
 
 
@@ -298,7 +299,8 @@ def predict_parser(command):
         help="With --hic: leave pairs in masked Hi-C bins NA instead of using the "
         "distance prior fitted on the same map (genes with such pairs are then withheld)",
     )
-    add_context(p)
+    # One animal per run; several animals are combined with 'pace run --samples'.
+    add_context(p, target_level=False)
     cat = p.add_argument_group("candidate elements")
     add_catalog_options(cat, chrom_sizes_required=False)
     score = p.add_argument_group("scoring")
@@ -506,8 +508,15 @@ def prior_parsers(command):
     p.add_argument("--reference-distance", type=int, default=5000)
     p.add_argument("--minimum-distance", type=int, default=5000)
     p.add_argument("--test-chromosomes", nargs="*", default=[])
-    p.add_argument("--scale", default="cooler_native")
-    p.add_argument("--normalization-id", default="cooler_native")
+    p.add_argument(
+        "--scale",
+        help="Contact scale label; default matches 'pace contacts': balanced_contact, "
+        "or raw_contact with --no-balanced",
+    )
+    p.add_argument(
+        "--normalization-id",
+        help="Normalization label; default matches 'pace contacts': cooler_weight or none",
+    )
     p.add_argument("--model-id", default="fitted_contact_prior")
     p.add_argument(
         "--synthetic", action="store_true", help="Label a toy cooler asset for demonstration only"
@@ -871,6 +880,11 @@ def dispatch(args):
             raise PaceError("fit-prior needs --cooler, --species, --assembly and --tissue")
         from .io.prior_fit import fit_cooler_command
 
+        # Same labels as 'pace contacts', so a prior and contacts from one map match.
+        if args.scale is None:
+            args.scale = "balanced_contact" if args.balanced else "raw_contact"
+        if args.normalization_id is None:
+            args.normalization_id = "cooler_weight" if args.balanced else "none"
         return fit_cooler_command(args)
     if command == "fit-contact-prior":
         from .operations import fit_contact_command

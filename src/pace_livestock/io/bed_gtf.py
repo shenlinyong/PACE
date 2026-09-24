@@ -29,16 +29,24 @@ def read_bed(path, *, source_id: str, aliases=None):
             start, end = integer(fields[1], "BED start"), integer(fields[2], "BED end")
             if start >= end:
                 raise PaceError(f"BED line {n}: end must exceed start")
+            name = fields[3] if len(fields) > 3 else ""
+            # MACS and bedtools often write "." or repeat names; coordinates stay unique.
             rows.append(
                 {
                     "chrom": chrom,
                     "start": start,
                     "end": end,
-                    "region_id": fields[3] if len(fields) > 3 else f"{chrom}:{start}-{end}",
+                    "region_id": name if name not in ("", ".") else f"{chrom}:{start}-{end}",
                     "source_id": source_id,
                     **({"strand": fields[5]} if len(fields) > 5 else {}),
                 }
             )
+    counts = defaultdict(int)
+    for row in rows:
+        counts[row["region_id"]] += 1
+    for row in rows:
+        if counts[row["region_id"]] > 1:
+            row["region_id"] += f"@{row['chrom']}:{row['start']}-{row['end']}"
     return rows
 
 
@@ -80,7 +88,7 @@ def read_chrom_sizes(path, *, aliases=None) -> dict[str, int]:
 
 
 def read_gtf(path, *, aliases=None, gene_types=None):
-    """Distinct physical TSSs from GTF transcript lines.
+    """Distinct physical TSSs from GTF transcript lines (or exon lines if none).
 
     gene_types keeps only transcripts whose gene_biotype/gene_type/transcript_biotype/
     transcript_type attribute is listed (for example protein_coding or mRNA).
@@ -88,42 +96,23 @@ def read_gtf(path, *, aliases=None, gene_types=None):
     wanted = set(gene_types or ())
     annotated = False
     coords, transcripts = set(), []
-    with text_open(path) as handle:
-        for n, line in enumerate(handle, 1):
-            if not line.strip() or line.startswith("#"):
+    for n, fields, start, end, attr in _transcript_records(path):
+        if wanted:
+            types = {attr[k] for k in BIOTYPE_KEYS if k in attr}
+            annotated |= bool(types)
+            if not types & wanted:
                 continue
-            fields = line.rstrip().split("\t")
-            if len(fields) != 9:
-                raise PaceError(f"GTF line {n}: expected nine fields")
-            if fields[2] != "transcript":
-                continue
-            start, end = (
-                integer(fields[3], "GTF start", minimum=1),
-                integer(fields[4], "GTF end", minimum=1),
-            )
-            if end < start or fields[6] not in ("+", "-"):
-                raise PaceError(f"GTF line {n}: invalid interval/strand")
-            attr = dict(re.findall(r'(\S+)\s+"([^"]+)"', fields[8]))
-            if not attr.get("gene_id") or not attr.get("transcript_id"):
-                raise PaceError(
-                    "GTF transcript requires gene_id and transcript_id; versions are retained"
-                )
-            if wanted:
-                types = {attr[k] for k in BIOTYPE_KEYS if k in attr}
-                annotated |= bool(types)
-                if not types & wanted:
-                    continue
-            chrom = (aliases or {}).get(fields[0], fields[0])
-            tss = start - 1 if fields[6] == "+" else end - 1
-            coords.add((attr["gene_id"], chrom, tss, fields[6]))
-            transcripts.append(
-                {
-                    "transcript_id": attr["transcript_id"],
-                    "gene_id": attr["gene_id"],
-                    "promoter_id": f"{chrom}:{tss}:{fields[6]}",
-                }
-            )
-    counts = defaultdict(int)
+        chrom = (aliases or {}).get(fields[0], fields[0])
+        tss = start - 1 if fields[6] == "+" else end - 1
+        coords.add((attr["gene_id"], chrom, tss, fields[6]))
+        transcripts.append(
+            {
+                "transcript_id": attr["transcript_id"],
+                "gene_id": attr["gene_id"],
+                "promoter_id": f"{chrom}:{tss}:{fields[6]}",
+            }
+        )
+    counts: dict = defaultdict(int)
     for gene, *_ in coords:
         counts[gene] += 1
     promoters = [
@@ -148,3 +137,44 @@ def read_gtf(path, *, aliases=None, gene_types=None):
             "GTF has no transcript records; provide a transcript annotation or promoters.tsv"
         )
     return promoters, transcripts
+
+
+def _transcript_records(path):
+    """Transcript lines of a GTF, or transcripts assembled from exon lines when absent.
+
+    Some annotations (gffread, UCSC) only contain exon/CDS lines; the transcript span
+    is then the smallest exon start to the largest exon end of each transcript_id.
+    """
+    exons = {}
+    found = False
+    with text_open(path) as handle:
+        for n, line in enumerate(handle, 1):
+            if not line.strip() or line.startswith("#"):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) != 9:
+                raise PaceError(f"GTF line {n}: expected nine tab-separated fields")
+            if fields[2] not in ("transcript", "exon"):
+                continue
+            start = integer(fields[3], "GTF start", minimum=1)
+            end = integer(fields[4], "GTF end", minimum=1)
+            if end < start or fields[6] not in ("+", "-"):
+                raise PaceError(f"GTF line {n}: invalid interval/strand")
+            attr = dict(re.findall(r'(\S+)\s+"([^"]+)"', fields[8]))
+            if not attr.get("gene_id") or not attr.get("transcript_id"):
+                raise PaceError(
+                    "GTF transcript requires gene_id and transcript_id; versions are retained"
+                )
+            if fields[2] == "transcript":
+                found = True
+                yield n, fields, start, end, attr
+            elif not found:
+                key = fields[0], fields[6], attr["transcript_id"]
+                if key in exons:
+                    exons[key][2] = min(exons[key][2], start)
+                    exons[key][3] = max(exons[key][3], end)
+                else:
+                    exons[key] = [n, fields, start, end, attr]
+    if not found:
+        for n, fields, start, end, attr in exons.values():
+            yield n, fields, start, end, attr

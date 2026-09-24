@@ -19,10 +19,32 @@ def quantify_bigwig(path, units, *, missing_is_measured_zero=False, minimum_call
     rows = []
     with pyBigWig.open(str(path)) as bw:
         sizes = bw.chroms()
+        wanted = {unit["chrom"] for unit in units}
+        if wanted and not wanted & set(sizes):
+            raise PaceError(
+                f"No chromosome of the catalog is in the bigWig {path} (catalog: "
+                f"{', '.join(sorted(wanted)[:3])}; bigWig: {', '.join(list(sizes)[:3])}). "
+                "Use the same chromosome names everywhere (chr1 vs 1)"
+            )
         for unit in units:
             chrom, start, end = unit["chrom"], int(unit["start"]), int(unit["end"])
-            if chrom not in sizes or end > sizes[chrom] or start < 0 or end <= start:
-                raise PaceError(f"bigWig/reference mismatch for {chrom}:{start}-{end}")
+            if chrom not in sizes:
+                # e.g. chrM or unplaced contigs left out of the track: not measured.
+                rows.append(
+                    {
+                        "element_id": unit["element_id"],
+                        "signal": math.nan,
+                        "callable_fraction": 0.0,
+                        "stored_fraction": 0.0,
+                        "measurement_status": "unmeasured",
+                    }
+                )
+                continue
+            if end > sizes[chrom] or start < 0 or end <= start:
+                raise PaceError(
+                    f"bigWig/reference mismatch for {chrom}:{start}-{end} "
+                    f"(bigWig length {sizes[chrom]}); check the genome assembly"
+                )
             values = np.asarray(bw.values(chrom, start, end, numpy=True), dtype=float)
             valid = np.isfinite(values)
             if np.any(values[valid] < 0) or np.any(np.isinf(values)):

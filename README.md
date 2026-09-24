@@ -264,7 +264,6 @@ pace merge -t observed_activity \
 # 3. Hi-C contacts for every element-TSS pair, plus the distance prior of the same map
 pace contacts -i data/pig1.mcool -r 10000 -d prepared/catalog -o prepared/pig1_hic
 pace fit-prior --cooler data/pig1.mcool::/resolutions/10000 \
-  --scale balanced_contact --normalization-id cooler_weight \
   --species pig --assembly Sscrofa11.1 --tissue liver -o prepared/pig1_prior
 
 # 4. score
@@ -409,6 +408,18 @@ Do not subtract two score tables directly. Because scores are shares, a change i
 ```bash
 pace compare --left results/pig1_liver --right results/pig2_liver -o results/pig2_vs_pig1
 ```
+
+To make two animals comparable, score both on the **same candidate set**: give every run the same peak files (for example the union of both animals' peaks, `-b pig1_peaks.bed pig2_peaks.bed`), the same GTF, width and radius, and the same assays:
+
+```bash
+for pig in pig1 pig2; do
+  pace predict -b pig1_peaks.bed pig2_peaks.bed -g genes.gtf --atac ${pig}_ATAC.bw \
+    --prior priors/pig_liver --species pig --assembly Sscrofa11.1 --tissue liver -o results/$pig
+done
+pace compare --left results/pig1 --right results/pig2 -o results/pig2_vs_pig1
+```
+
+Using one shared contact prior (`--prior`, case B) keeps the contact model identical. If each animal has its own Hi-C (case A), each run fits its own power law; `compare` then reports that the evidence differs and needs `--allow-evidence-difference`, which gives conditional differences only.
 
 Differences are right minus left. Both runs must use the same context, candidate catalog, effective promoter definition, compatible measurements (including resolution and normalization) and the same execution mode (both chunked or both unchunked). Cross-tissue runs are not accepted as full comparable effects by this command. When interpreting a difference, look at activity, contact, `support` and the gene total together, not only at `pace_score`.
 

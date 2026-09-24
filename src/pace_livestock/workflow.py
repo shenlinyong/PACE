@@ -139,6 +139,7 @@ def predict(args):
                 out,
             )
             activity_tables.append(str(out / "observed_activity.tsv"))
+            warn_sparse_track(out / "observed_activity.tsv", args.missing_as_zero)
         merge_tables(
             SimpleNamespace(
                 inputs=activity_tables, table="observed_activity", out=prepared / "activity"
@@ -184,7 +185,7 @@ def predict(args):
                         species=args.species,
                         assembly=args.assembly,
                         tissue=args.tissue,
-                        target_level=args.target_level,
+                        target_level="individual",
                         out=prepared / "contact_prior",
                     )
                 )
@@ -203,7 +204,7 @@ def predict(args):
             None,
             overrides={
                 "run_id": args.run_id,
-                "target_level": args.target_level,
+                "target_level": "individual",
                 "context": {
                     "species": args.species,
                     "assembly": args.assembly,
@@ -263,3 +264,20 @@ def predict(args):
         "contact_mode": cfg["contact"]["mode"],
         "activity_panel": cfg["activity"]["panel"],
     }
+
+
+def warn_sparse_track(table, missing_as_zero):
+    """Point out bigWigs that leave out zero-signal regions (MACS bedGraph conversions)."""
+    from .io.tables import read_table
+
+    rows = read_table(table, required=["measurement_status", "callable_fraction"])
+    empty = sum(r["measurement_status"] != "observed" for r in rows)
+    partly = sum(float(r["callable_fraction"] or 0) < 1 for r in rows)
+    if rows and not missing_as_zero and partly / len(rows) > 0.05:
+        log(
+            f"    note: {partly} of {len(rows)} elements are not fully covered by the bigWig "
+            f"({empty} not at all). Uncovered bases are ignored (partly covered elements are "
+            "averaged over covered bases, empty ones stay NA and withhold their genes). If "
+            "this bigWig omits zero-signal regions (e.g. converted from a MACS bedGraph), "
+            "rerun with --missing-as-zero"
+        )

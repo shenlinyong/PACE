@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1
+
+- Chromosomes missing from a bigWig or Hi-C file (chrM, unplaced contigs) are marked unmeasured instead of aborting the run; a complete chromosome-name mismatch is reported with both naming styles.
+- GTF files without `transcript` lines (gffread, UCSC) are read from their exon lines.
+- BED peaks named `.` or with repeated names keep distinct region IDs; peaks extending past a chromosome end are clipped and counted.
+- `pace fit-prior` labels its prior like `pace contacts` (`balanced_contact`/`cooler_weight`), so both combine without extra options.
+- `pace predict` warns when a bigWig omits zero-signal regions and suggests `--missing-as-zero`; its unusable `--target-level` option is removed.
+- README explains how to make runs of several animals comparable.
+
 ## 0.8.0
 
 - Every command takes ordinary command-line options (bedtools/samtools style); no configuration file is needed. YAML input is still read through a hidden `--config` to reproduce older runs.

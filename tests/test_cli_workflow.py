@@ -241,10 +241,6 @@ def test_step_by_step_commands_without_yaml(inputs, tmp_path, capsys):
         "--cooler",
         inputs / "hic.cool",
         *context(),
-        "--scale",
-        "balanced_contact",
-        "--normalization-id",
-        "cooler_weight",
         "-o",
         tmp_path / "prior",
     )
@@ -370,3 +366,75 @@ def test_example_scripts_use_only_flags(tmp_path, example, capsys):
         calibration = json.loads((root / "calibrated/eta_calibration.json").read_text())
         assert calibration["status"] == "weak_fitted"
         assert not calibration["functional_validation"]
+
+
+def test_real_world_annotation_quirks(inputs, tmp_path, capsys):
+    """Exon-only GTF, '.' peak names, overhanging peaks and a contig absent from tracks."""
+    gtf = tmp_path / "exon_only.gtf"
+    gtf.write_text(
+        (inputs / "genes.gtf").read_text().replace("\ttranscript\t", "\texon\t")
+        + 'chrUn\tsrc\texon\t2001\t2500\t.\t+\t.\tgene_id "U1"; transcript_id "U1.1";\n'
+        + 'chrUn\tsrc\texon\t3001\t5000\t.\t+\t.\tgene_id "U1"; transcript_id "U1.1";\n'
+    )
+    peaks = tmp_path / "peaks.bed"
+    rows = [line.split("\t")[:3] for line in (inputs / "peaks.bed").read_text().splitlines()]
+    rows += [["chrX", "1499800", "1500200"], ["chrUn", "1000", "1400"]]
+    peaks.write_text("".join("\t".join([*r, "."]) + "\n" for r in rows))
+    sizes = tmp_path / "genome.fa.fai"
+    sizes.write_text((inputs / "genome.fa.fai").read_text() + "chrUn\t100000\t0\t60\t61\n")
+    out = tmp_path / "quirks"
+    code = call(
+        "predict",
+        "-b",
+        peaks,
+        "-g",
+        gtf,
+        "-c",
+        sizes,
+        "--atac",
+        inputs / "atac.bw",
+        "--hic",
+        inputs / "hic.cool",
+        "-r",
+        1_000_000,
+        *context(),
+        "-o",
+        out,
+    )
+    assert code == 0, capsys.readouterr().err
+    catalog = out / "prepared/catalog"
+    promoters = {r["gene_id"]: r for r in read_table(catalog / "promoters.tsv")}
+    assert promoters["U1"]["tss0"] == "2000"  # transcript span assembled from exons
+    regions = {r["region_id"] for r in read_table(catalog / "region_membership.tsv")}
+    assert "." not in regions and "chrX:1499800-1500200" in regions
+    report = json.loads((catalog / "preparation_report.json").read_text())
+    assert report["skipped_unlisted_chromosomes"]["clipped_at_chromosome_end"] == 1
+    activity = read_table(out / "prepared/activity/observed_activity.tsv")
+    assert {r["measurement_status"] for r in activity if r["element_id"].startswith("chrUn")} == {
+        "unmeasured"
+    }
+    contacts = read_table(out / "resolved_contacts.tsv")
+    assert any(r["element_id"].startswith("chrUn") for r in contacts)
+
+
+def test_fit_prior_labels_match_contacts_by_default(inputs, tmp_path, capsys):
+    assert call("fit-prior", "--cooler", inputs / "hic.cool", *context(), "-o", tmp_path / "p") == 0
+    manifest = json.loads((tmp_path / "p/manifest.json").read_text())
+    assert (manifest["scale"], manifest["normalization_id"]) == (
+        "balanced_contact",
+        "cooler_weight",
+    )
+
+
+def test_name_mismatch_is_reported_clearly(inputs, tmp_path, capsys):
+    cat = tmp_path / "cat"
+    bed = tmp_path / "renamed.bed"
+    bed.write_text((inputs / "peaks.bed").read_text().replace("chr", ""))
+    gtf = tmp_path / "renamed.gtf"
+    gtf.write_text((inputs / "genes.gtf").read_text().replace("chr", ""))
+    sizes = tmp_path / "sizes"
+    sizes.write_text((inputs / "genome.fa.fai").read_text().replace("chr", ""))
+    assert call("catalog", "-b", bed, "-g", gtf, "-c", sizes, "-o", cat) == 0
+    capsys.readouterr()
+    code = call("activity", "-i", inputs / "atac.bw", "-a", "ATAC", "-d", cat, "-o", tmp_path / "a")
+    assert code == 2 and "same chromosome names" in capsys.readouterr().err

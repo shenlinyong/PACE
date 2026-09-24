@@ -155,6 +155,15 @@ def prepare_command(path, out):
             genes = {p["gene_id"] for p in promoters if p["chrom"] in keep}
             promoters = [p for p in promoters if p["chrom"] in keep]
             transcripts = [t for t in transcripts if t["gene_id"] in genes]
+        # Peaks extended past a chromosome end (bedtools slop, MACS near telomeres)
+        # are clipped to the chromosome; peaks starting beyond it are dropped.
+        clipped = sum(r["end"] > sizes[r["chrom"]] for r in regions)
+        regions = [
+            {**r, "end": min(r["end"], sizes[r["chrom"]])}
+            for r in regions
+            if r["start"] < sizes[r["chrom"]]
+        ]
+        skipped["clipped_at_chromosome_end"] = clipped
         if not regions:
             raise PaceError("No candidate regions remain on the listed chromosomes")
         units, memberships, excluded = canonical_units(

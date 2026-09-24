@@ -32,15 +32,28 @@ def query_contacts(
     weights = bins["weight"].to_numpy(float) if balanced else np.ones(len(bins))
     valid = np.isfinite(weights) & (weights > 0) if balanced else np.ones(len(bins), dtype=bool)
     offsets = {chrom: c.offset(chrom) for chrom in c.chromnames}
-    requests, grouped = [], defaultdict(set)
+    wanted = {pair["chrom"] for pair in pairs}
+    if wanted and not wanted & set(offsets):
+        raise PaceError(
+            f"No chromosome of the catalog is in the Hi-C file {uri} (catalog: "
+            f"{', '.join(sorted(wanted)[:3])}; Hi-C: {', '.join(list(offsets)[:3])}). "
+            "Use the same chromosome names everywhere (chr1 vs 1)"
+        )
+    requests, grouped, absent = [], defaultdict(set), []
     for pair in pairs:
         chrom = pair["chrom"]
+        if chrom not in offsets:
+            # Chromosomes absent from the map (chrM, unplaced contigs) are unmeasured.
+            absent.append(pair)
+            continue
         if (
-            chrom not in offsets
-            or min(pair["anchor0"], pair["tss0"]) < 0
+            min(pair["anchor0"], pair["tss0"]) < 0
             or max(pair["anchor0"], pair["tss0"]) >= c.chromsizes[chrom]
         ):
-            raise PaceError("Contact pair coordinates do not match cooler reference")
+            raise PaceError(
+                f"Contact pair {chrom}:{pair['anchor0']}-{pair['tss0']} lies beyond the Hi-C "
+                f"chromosome length {c.chromsizes[chrom]}; check the genome assembly"
+            )
         i, j = sorted(
             (
                 offsets[chrom] + pair["anchor0"] // resolution,
@@ -85,7 +98,25 @@ def query_contacts(
             if np.isfinite(value) and value < 0:
                 raise PaceError("Negative contact value")
             lookup[i, j] = value
-    return [
+    unmeasured = [
+        {
+            **pair,
+            "contact_value": np.nan,
+            "raw_count": np.nan,
+            "balance_weight_1": np.nan,
+            "balance_weight_2": np.nan,
+            "count_to_contact": np.nan,
+            "bin_pair_id": f"absent:{pair['chrom']}:{pair['anchor0'] // resolution}:"
+            f"{pair['tss0'] // resolution}",
+            "resolution": resolution,
+            "measurement_status": "unmeasured",
+            "near_diagonal_value": np.nan,
+            "near_diagonal_method": None,
+            "near_diagonal_source_bins": None,
+        }
+        for pair in absent
+    ]
+    return unmeasured + [
         {
             **pair,
             "contact_value": lookup[i, j],
