@@ -72,9 +72,9 @@ VALUE_OPTIONS = {
 def add_run_options(
     parser: argparse.ArgumentParser, *, output: bool = True, help_mode: str | None = None
 ) -> None:
-    parser.add_argument(
-        "--config", help="Optional YAML; relative paths are relative to the YAML file"
-    )
+    # Legacy YAML input is still accepted for reproducing older runs, but hidden:
+    # every setting has a command-line option.
+    parser.add_argument("--config", help=argparse.SUPPRESS)
     parser.add_argument(
         "--mode",
         "--regime",
@@ -92,6 +92,20 @@ def add_run_options(
             required=True,
             help="New output directory; --force retains a backup of recognized PACE outputs",
         )
+    if output:
+        parser.add_argument(
+            "--by-chromosome",
+            action="store_true",
+            help="Score chromosome by chromosome to bound memory on whole genomes "
+            "(results equal a single run)",
+        )
+        parser.add_argument(
+            "--chunk-pairs",
+            type=int,
+            default=1_500_000,
+            help="With --by-chromosome: pack chromosomes into chunks of at most this many "
+            "candidate pairs (default: 1500000)",
+        )
     context = parser.add_argument_group("sample and biological context")
     for flag in ("species", "assembly", "tissue", "run-id"):
         context.add_argument("--" + flag)
@@ -104,6 +118,7 @@ def add_run_options(
     context.add_argument("--seed", type=int)
     files = parser.add_argument_group("canonical input tables and genomic assets")
     files.add_argument(
+        "-d",
         "--catalog-dir",
         help="Read available <table>.tsv[.gz] files from this directory; explicit file options take precedence",
     )
@@ -164,7 +179,11 @@ def add_run_options(
     model.add_argument("--contact-normalization")
     model.add_argument("--contact-balancing")
     model.add_argument("--contact-window")
-    model.add_argument("--contact-reliability", type=float)
+    model.add_argument(
+        "--contact-reliability",
+        type=reliability_value,
+        help="Weight of observed contact in shrinkage mode: a number in [0,1] or per_pair",
+    )
     model.add_argument("--reliability-source")
     model.add_argument(
         "--allow-prior-fallback", action=argparse.BooleanOptionalAction, default=None
@@ -191,6 +210,50 @@ def add_run_options(
         type=int,
         help="Downstream methylation window in transcription direction",
     )
+
+
+def reliability_value(text: str):
+    if text == "per_pair":
+        return text
+    try:
+        return float(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected a number in [0,1] or per_pair") from exc
+
+
+def _column_values(path: str, column: str, limit: int = 2) -> set:
+    """Distinct values of one column, stopping early once `limit` values are seen."""
+    import csv
+    import gzip
+
+    opener = gzip.open if str(path).endswith(".gz") else open
+    values = set()
+    with opener(path, "rt", encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle, delimiter="\t"):
+            if row.get(column) not in (None, "", "NA"):
+                values.add(row[column])
+                if len(values) >= limit:
+                    break
+    return values
+
+
+def infer_contact_scale(cfg: dict) -> None:
+    """Take the contact scale label from the contact table or prior when not declared."""
+    path = cfg["inputs"].get("observed_contacts")
+    if path and Path(path).is_file():
+        scales = _column_values(path, "scale")
+        if len(scales) == 1:
+            cfg["contact"]["scale"] = scales.pop()
+        return
+    prior = cfg["contact"].get("prior_path")
+    if prior and not cfg["contact"].get("prior_preset"):
+        manifest = Path(prior) / "manifest.json" if Path(prior).is_dir() else Path(prior)
+        if manifest.is_file():
+            import json
+
+            scale = json.loads(manifest.read_text(encoding="utf-8")).get("scale")
+            if isinstance(scale, str) and scale:
+                cfg["contact"]["scale"] = scale
 
 
 def config_from_args(args: argparse.Namespace) -> dict:
@@ -246,4 +309,10 @@ def config_from_args(args: argparse.Namespace) -> dict:
     if args.eta is not None and args.eta != "auto" and not (args.eta_labels or args.eta_model):
         put("allocation", "labels_path", None)
         put("allocation", "calibrator_path", None)
-    return load_config(args.config, overrides=overrides)
+    explicit_scale = args.contact_scale is not None or bool(
+        args.config and "scale" in (load_yaml(args.config).get("contact") or {})
+    )
+    cfg = load_config(args.config, overrides=overrides)
+    if not explicit_scale and not cfg["contact"].get("prior_preset"):
+        infer_contact_scale(cfg)
+    return cfg

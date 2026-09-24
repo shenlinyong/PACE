@@ -49,8 +49,106 @@ def load_tables(cfg: dict) -> dict[str, list[dict]]:
     for name in ("units", "promoters", "candidates"):
         if not tables[name]:
             raise PaceError(f"inputs.{name}: a nonempty table is required")
+    tables["inferred_metadata"] = infer_metadata(tables, cfg)
     validate_tables(tables, cfg)
     return tables
+
+
+def infer_metadata(tables: dict, cfg: dict) -> dict[str, list[dict]]:
+    """Fill omitted samples/sources tables for the common single-animal case.
+
+    Every sample becomes a separate biological replicate of one animal. Nothing is
+    inferred when the table is supplied, and population-level runs must declare
+    which animal each library came from.
+    """
+    inferred = {}
+    measured = [
+        (name, row)
+        for name in ("observed_activity", "observed_contacts", "expression", "methylation")
+        for row in tables[name]
+    ]
+    if not cfg["inputs"]["samples"] and measured:
+        if cfg["target_level"] != "individual":
+            raise PaceError(
+                "target_level=population_mean needs --samples: a table giving the donor_id "
+                "(animal) of every sample_id"
+            )
+        assays, sources = {}, {}
+        for name, row in measured:
+            assay = {
+                "observed_contacts": "HiC",
+                "expression": "RNA-seq",
+            }.get(name, row.get("assay"))
+            sample = row["sample_id"]
+            if sample in assays and assays[sample] != assay:
+                raise PaceError(f"sample_id {sample} is used for both {assays[sample]} and {assay}")
+            assays[sample] = assay
+            sources.setdefault(sample, row.get("source_id") or sample)
+        replicate = defaultdict(int)
+        rows = []
+        for sample in sorted(assays):
+            replicate[assays[sample]] += 1
+            rows.append(
+                {
+                    "sample_id": sample,
+                    "donor_id": "individual_1",
+                    "assay": assays[sample],
+                    "biological_replicate": str(replicate[assays[sample]]),
+                    "technical_replicate": "1",
+                    "species": cfg["context"]["species"],
+                    "assembly": cfg["context"]["assembly"],
+                    "context_id": cfg["context"]["context_id"],
+                    "source_id": sources[sample],
+                    "metadata_origin": "inferred_single_individual",
+                }
+            )
+        tables["samples"] = rows
+        inferred["samples"] = rows
+    if not cfg["inputs"]["sources"]:
+        referenced = {}
+        origin = {
+            "samples": None,
+            "observed_contacts": "observed_contacts",
+            "region_membership": "region_membership",
+            "evidence": "evidence",
+        }
+        for name, input_name in origin.items():
+            for row in tables[name]:
+                if row.get("source_id"):
+                    referenced.setdefault(row["source_id"], input_name)
+        normalizations = defaultdict(set)
+        by_sample = {r["sample_id"]: r["source_id"] for r in tables["samples"]}
+        for name in ("observed_activity", "observed_contacts"):
+            for row in tables[name]:
+                source = row.get("source_id") or by_sample.get(row["sample_id"])
+                if source:
+                    normalizations[source].add(row.get("normalization_id"))
+        rows = []
+        for source_id, input_name in sorted(referenced.items()):
+            norms = normalizations[source_id] - {None}
+            path = cfg["inputs"].get(input_name) if input_name else None
+            if input_name is None:
+                sample_tables = [
+                    n
+                    for n in ("observed_activity", "expression", "methylation")
+                    if any(r["sample_id"] == source_id for r in tables[n])
+                ]
+                path = cfg["inputs"].get(sample_tables[0]) if sample_tables else None
+            rows.append(
+                {
+                    "source_id": source_id,
+                    "path_or_accession": path or "not_declared",
+                    "source_type": "not_declared",
+                    "assembly": cfg["context"]["assembly"],
+                    "processing_method": "not_declared",
+                    "normalization_id": next(iter(norms)) if len(norms) == 1 else None,
+                    "checksum": None,
+                }
+            )
+        tables["sources"] = rows
+        if rows:
+            inferred["sources"] = rows
+    return inferred
 
 
 def validate_tables(t: dict, cfg: dict) -> None:

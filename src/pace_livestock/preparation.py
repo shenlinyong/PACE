@@ -41,7 +41,15 @@ def merge_tables(args):
 
 
 def prepare_pairs(args):
-    root = Path(args.catalog_dir)
+    rows = build_pairs(args.catalog_dir)
+    with output_directory(args.out) as dest:
+        write_table(dest / "pairs.tsv", rows)
+    return {"output": args.out, "pairs": len(rows)}
+
+
+def build_pairs(catalog_dir) -> list[dict]:
+    """Unique element-TSS pairs that need a contact value, sorted by key."""
+    root = Path(catalog_dir)
     units = read_table(root / "units.tsv", required=SCHEMAS["units"].split())
     promoters = read_table(root / "promoters.tsv", required=SCHEMAS["promoters"].split())
     candidates = read_table(root / "candidates.tsv", required=SCHEMAS["candidates"].split())
@@ -72,9 +80,7 @@ def prepare_pairs(args):
             if key in rows and rows[key] != row:
                 raise PaceError("One physical promoter has inconsistent coordinates")
             rows[key] = row
-    with output_directory(args.out) as dest:
-        write_table(dest / "pairs.tsv", [rows[k] for k in sorted(rows)])
-    return {"output": args.out, "pairs": len(rows)}
+    return [rows[k] for k in sorted(rows)]
 
 
 def normalize_activity(args):

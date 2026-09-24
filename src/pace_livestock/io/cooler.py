@@ -28,11 +28,9 @@ def query_contacts(
     if balanced and "weight" not in c.bins().columns:
         raise PaceError("Balanced contact requested but cooler has no weight column")
     bins = c.bins()[:]
-    valid = (
-        np.isfinite(bins["weight"].to_numpy()) & (bins["weight"].to_numpy() > 0)
-        if balanced
-        else np.ones(len(bins), dtype=bool)
-    )
+    # Plain arrays: per-pair pandas row access dominates run time on real genomes.
+    weights = bins["weight"].to_numpy(float) if balanced else np.ones(len(bins))
+    valid = np.isfinite(weights) & (weights > 0) if balanced else np.ones(len(bins), dtype=bool)
     offsets = {chrom: c.offset(chrom) for chrom in c.chromnames}
     requests, grouped = [], defaultdict(set)
     for pair in pairs:
@@ -92,9 +90,9 @@ def query_contacts(
             **pair,
             "contact_value": lookup[i, j],
             "raw_count": raw_lookup[i, j],
-            "balance_weight_1": float(bins.iloc[i]["weight"]) if balanced else 1.0,
-            "balance_weight_2": float(bins.iloc[j]["weight"]) if balanced else 1.0,
-            "count_to_contact": float(bins.iloc[i]["weight"] * bins.iloc[j]["weight"])
+            "balance_weight_1": float(weights[i]),
+            "balance_weight_2": float(weights[j]),
+            "count_to_contact": float(weights[i] * weights[j])
             if balanced and valid[i] and valid[j]
             else 1.0
             if not balanced

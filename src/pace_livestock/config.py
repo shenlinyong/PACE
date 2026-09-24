@@ -143,6 +143,11 @@ def strict_keys(data: dict, allowed, name: str) -> None:
 
 
 def load_config(path: str | Path | None = None, *, overrides: dict | None = None) -> dict:
+    if path is not None and Path(path).is_dir():
+        # A previous result folder stores its complete settings.
+        path = Path(path) / "resolved_config.yaml"
+        if not path.is_file():
+            raise PaceError(f"{path.parent} is not a PACE result folder (no resolved_config.yaml)")
     base = Path(path).resolve().parent if path is not None else Path.cwd()
     user = load_yaml(path) if path is not None else {}
     for key, value in (overrides or {}).items():
@@ -349,13 +354,42 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
     return cfg
 
 
-def operation_config(path: str | Path, *, allowed, required=(), paths=()) -> dict:
-    cfg = load_yaml(path)
-    strict_keys(cfg, allowed, "config")
-    for key in required:
+# Command-line spelling of operation keys whose option name differs from the key.
+OPTION_NAMES = {
+    "context_id": "tissue",
+    "run_config": "run",
+    "data": "contacts",
+    "bed": "peaks",
+    "track": "bigwig",
+    "contact": "hic",
+    "region_membership": "membership",
+    "is_synthetic": "synthetic",
+}
+
+
+def operation_base(source) -> Path:
+    """Directory that relative paths of an operation resolve against."""
+    return Path.cwd() if isinstance(source, dict) else Path(source).resolve().parent
+
+
+def operation_config(source, *, allowed, required=(), paths=()) -> dict:
+    """Validate operation settings given as command-line options or a legacy YAML file.
+
+    A mapping (built from command-line options) resolves relative paths against the
+    working directory; a YAML path resolves them against the YAML file's folder.
+    Unset (None) command-line options are dropped so defaults apply.
+    """
+    if isinstance(source, dict):
+        cfg = {k: v for k, v in source.items() if v is not None}
+    else:
+        cfg = load_yaml(source)
+    strict_keys(cfg, allowed, "options")
+    for key in sorted(required):
         if cfg.get(key) is None:
-            raise PaceError(f"Required configuration key: {key}")
+            flag = OPTION_NAMES.get(key, key.replace("_", "-"))
+            raise PaceError(f"Required option missing: --{flag}")
+    base = operation_base(source)
     for key in paths:
         if cfg.get(key):
-            cfg[key] = str((Path(path).resolve().parent / cfg[key]).resolve())
+            cfg[key] = str((base / cfg[key]).resolve())
     return cfg

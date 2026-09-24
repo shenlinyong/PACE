@@ -31,8 +31,23 @@ def output_policy(*, force=False):
 
 
 def clean(value):
+    kind = type(value)
+    # Fast path for the scalar types that make up almost every table row.
+    if value is None or kind is str or kind is int or kind is bool:
+        return value
+    if kind is float:
+        return value if math.isfinite(value) else None
     if isinstance(value, dict):
-        return {str(k): clean(v) for k, v in value.items()}
+        out = {}
+        for k, v in value.items():
+            vt = type(v)
+            if v is None or vt is str or vt is int or vt is bool:
+                out[k if type(k) is str else str(k)] = v
+            elif vt is float:
+                out[k if type(k) is str else str(k)] = v if math.isfinite(v) else None
+            else:
+                out[k if type(k) is str else str(k)] = clean(v)
+        return out
     if isinstance(value, (list, tuple)):
         return [clean(v) for v in value]
     if isinstance(value, float) and not math.isfinite(value):
@@ -48,6 +63,19 @@ def digest(value) -> str:
     return hashlib.sha256(
         json.dumps(clean(value), sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     ).hexdigest()
+
+
+def digest_rows(rows) -> str:
+    """Order-sensitive SHA-256 of many records without building one large JSON string."""
+    h = hashlib.sha256()
+    for row in rows:
+        h.update(
+            json.dumps(
+                clean(row), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode()
+        )
+        h.update(b"\n")
+    return h.hexdigest()
 
 
 def file_hash(path: str | Path) -> str:

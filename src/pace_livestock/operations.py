@@ -87,9 +87,9 @@ def fit_contact_command(path, out):
 
 def prepare_command(path, out):
     # A separate operation schema prevents silently ignoring options for another adapter.
-    from .config import load_yaml
+    from .config import load_yaml, operation_base
 
-    kind = load_yaml(path).get("kind")
+    kind = path.get("kind") if isinstance(path, dict) else load_yaml(path).get("kind")
     if kind == "catalog":
         cfg = operation_config(
             path,
@@ -104,11 +104,22 @@ def prepare_command(path, out):
                 "radius",
                 "include_promoters",
                 "aliases",
+                "gene_types",
+                "skip_unlisted_chroms",
             },
-            required=["bed", "gtf", "chrom_sizes", "source_id"],
-            paths=["bed", "gtf", "chrom_sizes", "aliases"],
+            required=["bed", "gtf", "chrom_sizes"],
+            paths=["gtf", "chrom_sizes", "aliases"],
         )
-        from .io.bed_gtf import read_bed, read_gtf
+        from .io.bed_gtf import read_bed, read_chrom_sizes, read_gtf
+
+        beds = cfg["bed"] if isinstance(cfg["bed"], list) else [cfg["bed"]]
+        beds = [str((operation_base(path) / bed).resolve()) for bed in beds]
+        source_ids = cfg.get("source_id") or [Path(bed).name.split(".")[0] for bed in beds]
+        if isinstance(source_ids, str):
+            source_ids = [source_ids]
+        if len(source_ids) != len(beds) or len(set(source_ids)) != len(source_ids):
+            raise PaceError("Give one distinct source_id per BED file")
+        cfg["bed"], cfg["source_id"] = beds, source_ids
 
         aliases = (
             {
@@ -118,12 +129,34 @@ def prepare_command(path, out):
             if cfg.get("aliases")
             else {}
         )
-        sizes = {
-            aliases.get(r["chrom"], r["chrom"]): integer(r["length"], "chrom length", minimum=1)
-            for r in read_table(cfg["chrom_sizes"], required=["chrom", "length"])
-        }
-        promoters, transcripts = read_gtf(cfg["gtf"], aliases=aliases)
-        regions = read_bed(cfg["bed"], source_id=cfg["source_id"], aliases=aliases)
+        sizes = read_chrom_sizes(cfg["chrom_sizes"], aliases=aliases)
+        promoters, transcripts = read_gtf(
+            cfg["gtf"], aliases=aliases, gene_types=cfg.get("gene_types")
+        )
+        regions = [
+            region
+            for bed, source in zip(beds, source_ids, strict=True)
+            for region in read_bed(bed, source_id=source, aliases=aliases)
+        ]
+        unlisted = sorted({r["chrom"] for r in regions + promoters} - set(sizes))
+        skipped = {"regions": 0, "promoters": 0, "chromosomes": unlisted}
+        if unlisted and not cfg.get("skip_unlisted_chroms", False):
+            shown = ", ".join(unlisted[:5]) + (" ..." if len(unlisted) > 5 else "")
+            raise PaceError(
+                f"{len(unlisted)} chromosome(s) in the BED/GTF are not in the chromosome sizes "
+                f"({shown}). Check that all files use the same assembly and chromosome names "
+                "(chr1 vs 1), or add --skip-unlisted-chroms to ignore them"
+            )
+        if unlisted:
+            keep = set(sizes)
+            skipped["regions"] = sum(r["chrom"] not in keep for r in regions)
+            skipped["promoters"] = sum(p["chrom"] not in keep for p in promoters)
+            regions = [r for r in regions if r["chrom"] in keep]
+            genes = {p["gene_id"] for p in promoters if p["chrom"] in keep}
+            promoters = [p for p in promoters if p["chrom"] in keep]
+            transcripts = [t for t in transcripts if t["gene_id"] in genes]
+        if not regions:
+            raise PaceError("No candidate regions remain on the listed chromosomes")
         units, memberships, excluded = canonical_units(
             regions,
             sizes,
@@ -170,10 +203,15 @@ def prepare_command(path, out):
                 dest / "preparation_report.json",
                 {
                     "excluded_units": excluded,
+                    "skipped_unlisted_chromosomes": skipped,
+                    "gene_types": cfg.get("gene_types"),
+                    "bed_sources": dict(zip(source_ids, beds, strict=True)),
                     "assembly_inferred": False,
                     "reference_sizes_sha256": file_hash(cfg["chrom_sizes"]),
                     "gtf_sha256": file_hash(cfg["gtf"]),
-                    "bed_sha256": file_hash(cfg["bed"]),
+                    "bed_sha256": {
+                        source: file_hash(bed) for source, bed in zip(source_ids, beds, strict=True)
+                    },
                 },
             )
         return {"units": len(units), "candidates": len(candidates)}
@@ -237,10 +275,10 @@ def prepare_command(path, out):
                 "source_id",
                 "scale",
                 "normalization_id",
+                "catalog_dir",
             },
             required=[
                 "contact",
-                "pairs",
                 "resolution",
                 "balanced",
                 "missing_pixels_are_zero",
@@ -248,17 +286,23 @@ def prepare_command(path, out):
                 "source_id",
                 "scale",
             ],
-            paths=["pairs"],
+            paths=["pairs", "catalog_dir"],
         )
         from .io.cooler import query_contacts
 
+        if bool(cfg.get("pairs")) == bool(cfg.get("catalog_dir")):
+            raise PaceError("Give the query pairs OR the catalog directory they are built from")
+
         file, *group = cfg["contact"].split("::", 1)
-        uri = str((Path(path).resolve().parent / file).resolve()) + (
-            "::" + group[0] if group else ""
-        )
-        pairs = read_table(
-            cfg["pairs"], required=["element_id", "promoter_id", "chrom", "anchor0", "tss0"]
-        )
+        uri = str((operation_base(path) / file).resolve()) + ("::" + group[0] if group else "")
+        if cfg.get("catalog_dir"):
+            from .preparation import build_pairs
+
+            pairs = build_pairs(cfg["catalog_dir"])
+        else:
+            pairs = read_table(
+                cfg["pairs"], required=["element_id", "promoter_id", "chrom", "anchor0", "tss0"]
+            )
         for r in pairs:
             r["anchor0"], r["tss0"] = integer(r["anchor0"], "anchor0"), integer(r["tss0"], "tss0")
         rows = query_contacts(
