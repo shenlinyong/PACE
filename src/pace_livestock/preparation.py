@@ -4,8 +4,6 @@ import math
 from collections import defaultdict
 from pathlib import Path
 
-import yaml
-
 from .config import DEFAULTS, load_yaml
 from .errors import PaceError
 from .io.tables import integer, number, read_table, unique, write_table
@@ -41,7 +39,15 @@ def merge_tables(args):
 
 
 def prepare_pairs(args):
-    root = Path(args.catalog_dir)
+    rows = build_pairs(args.catalog_dir)
+    with output_directory(args.out) as dest:
+        write_table(dest / "pairs.tsv", rows)
+    return {"output": args.out, "pairs": len(rows)}
+
+
+def build_pairs(catalog_dir) -> list[dict]:
+    """Unique element-TSS pairs that need a contact value, sorted by key."""
+    root = Path(catalog_dir)
     units = read_table(root / "units.tsv", required=SCHEMAS["units"].split())
     promoters = read_table(root / "promoters.tsv", required=SCHEMAS["promoters"].split())
     candidates = read_table(root / "candidates.tsv", required=SCHEMAS["candidates"].split())
@@ -72,9 +78,7 @@ def prepare_pairs(args):
             if key in rows and rows[key] != row:
                 raise PaceError("One physical promoter has inconsistent coordinates")
             rows[key] = row
-    with output_directory(args.out) as dest:
-        write_table(dest / "pairs.tsv", [rows[k] for k in sorted(rows)])
-    return {"output": args.out, "pairs": len(rows)}
+    return [rows[k] for k in sorted(rows)]
 
 
 def normalize_activity(args):
@@ -215,7 +219,10 @@ def init_project(args):
     if catalog:
         cfg["catalog"] = catalog
     with output_directory(args.out) as dest:
-        required = ["units", "promoters", "candidates", "samples", "sources", "observed_activity"]
+        required = ["units", "promoters", "candidates", "observed_activity"]
+        if args.target_level == "population_mean":
+            # Several animals: the donor of every library must be declared.
+            required += ["samples", "sources"]
         if (
             contact["mode"] == "observed"
             and "observed_contacts" not in inputs
@@ -229,20 +236,97 @@ def init_project(args):
                 inputs[name] = f"data/{name}.tsv"
                 write_table(dest / inputs[name], [], fields=SCHEMAS[name].split())
                 missing.append(name)
-        (dest / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+        script = run_script(cfg)
+        (dest / "run.sh").write_text(script, encoding="utf-8")
         (dest / "README.md").write_text(
             "# PACE project\n\n"
             "This template contains no invented experimental values. Fill the listed input tables first.\n\n"
             + "Tables to prepare: "
             + (", ".join(missing) or "none; verify the existing tables")
             + ".\n\n"
-            "Use `pace prepare-pairs`, `pace merge-tables`, `pace normalize-activity` and `pace fit-prior` as needed.\n\n"
-            "From this directory:\n\n```bash\npace validate --config config.yaml\npace run --config config.yaml --out results\n```\n\n"
+            "Use `pace catalog`, `pace activity`, `pace contacts`, `pace merge` and `pace fit-prior` as needed.\n\n"
+            "Then, from this directory, check and score with `bash run.sh`, which runs:\n\n```bash\n"
+            + script.split("\n", 2)[2]
+            + "```\n\n"
             "Library-size normalization applies to raw counts only. A human contact prior is an explicitly transferred, unvalidated baseline.\n",
             encoding="utf-8",
         )
     return {
         "output": args.out,
-        "config": str(Path(args.out) / "config.yaml"),
+        "script": str(Path(args.out) / "run.sh"),
         "tables_to_prepare": missing,
     }
+
+
+INPUT_FLAGS = {
+    "observed_activity": "--activity",
+    "observed_contacts": "--contacts",
+    "resolved_activity": "--resolved-activity",
+    "resolved_contacts": "--resolved-contacts",
+    "support_bounds": "--support-bounds",
+}
+
+
+def run_options(cfg: dict) -> list[str]:
+    """Command-line options equivalent to a project's settings."""
+    import shlex
+
+    context = cfg["context"]
+    words = [
+        "--species",
+        context["species"],
+        "--assembly",
+        context["assembly"],
+        "--tissue",
+        context["context_id"],
+        "--target-level",
+        cfg["target_level"],
+        "--panel",
+        *cfg["activity"]["panel"],
+    ]
+    for name, path in cfg["inputs"].items():
+        if name == "region_membership":
+            continue
+        words += [INPUT_FLAGS.get(name, "--" + name.replace("_", "-")), path]
+    catalog = cfg.get("catalog", {})
+    for key, flag in (
+        ("width_bp", "--unit-width"),
+        ("offset_bp", "--grid-offset"),
+        ("candidate_radius_bp", "--candidate-radius"),
+        ("chrom_sizes_path", "--chrom-sizes"),
+    ):
+        if catalog.get(key) is not None:
+            words += [flag, str(catalog[key])]
+    if catalog.get("include_promoter_units") is False:
+        words.append("--no-include-promoters")
+    contact = cfg["contact"]
+    words += ["--contact-mode", contact["mode"]]
+    if contact.get("prior_path"):
+        words += ["--contact-prior", contact["prior_path"]]
+    if contact.get("allow_prior_fallback"):
+        words.append("--allow-prior-fallback")
+    if contact.get("prior_preset"):
+        words += ["--prior-preset", contact["prior_preset"]]
+    return [shlex.quote(str(w)) for w in words]
+
+
+def run_script(cfg: dict) -> str:
+    options = " \\\n  ".join(" ".join(pair) for pair in _pairs(run_options(cfg)))
+    return (
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        f"pace validate \\\n  {options}\n"
+        f"pace run \\\n  {options} \\\n  -o results\n"
+    )
+
+
+def _pairs(words):
+    """Group an option with its values for readable line breaks."""
+    group = []
+    for word in words:
+        if word.startswith("--") and group:
+            yield group
+            group = []
+        group.append(word)
+    if group:
+        yield group

@@ -7,7 +7,7 @@ import math
 from collections import defaultdict
 
 from ..catalog import map_labels
-from ..config import load_config, operation_config, strict_keys
+from ..config import load_config, operation_base, operation_config, strict_keys
 from ..core.scoring import log_normalize, safe_exp, score
 from ..errors import PaceError
 from ..io.tables import number, read_table, write_table
@@ -196,7 +196,6 @@ def benchmark_command(path, out):
     scores_by_method["negative_distance"] = {
         (r["element_id"], r["gene_id"]): -r["distance_bp"] for r in reference_rows
     }
-    from pathlib import Path
 
     external_status = []
     for external in cfg.get("external_methods", []):
@@ -207,7 +206,7 @@ def benchmark_command(path, out):
             )
         if external["name"] in scores_by_method:
             raise PaceError("External method name collides with a built-in baseline")
-        ep = (Path(path).resolve().parent / external["path"]).resolve()
+        ep = (operation_base(path) / external["path"]).resolve()
         if not ep.is_file():
             external_status.append(
                 {"method": external["name"], "status": "not_available", "reason": "scores_missing"}

@@ -29,6 +29,7 @@ PATH_OPTIONS = {
     "ml_model": ("multiomics", "model_path"),
     "eta_labels": ("allocation", "labels_path"),
     "eta_model": ("allocation", "calibrator_path"),
+    "weak_model": ("allocation", "weak_model_path"),
     "chrom_sizes": ("catalog", "chrom_sizes_path"),
     "reference_cpg": ("methylation", "reference_cpg_path"),
     "support_bounds": ("inputs", "support_bounds"),
@@ -53,6 +54,8 @@ VALUE_OPTIONS = {
     "allow_prior_fallback": ("contact", "allow_prior_fallback"),
     "allow_cross_context_prior": ("contact", "allow_cross_context_prior"),
     "minimum_tss_weight": ("promoters", "minimum_weight"),
+    "tss_weights": ("promoters", "weights"),
+    "min_callable_fraction": ("activity", "minimum_callable_fraction"),
     "missing_tss_policy": ("promoters", "missing_policy"),
     "minimum_retained_tss_weight": ("promoters", "minimum_retained_weight"),
     "prior_preset": ("contact", "prior_preset"),
@@ -72,29 +75,54 @@ VALUE_OPTIONS = {
 def add_run_options(
     parser: argparse.ArgumentParser, *, output: bool = True, help_mode: str | None = None
 ) -> None:
-    parser.add_argument(
-        "--config", help="Optional YAML; relative paths are relative to the YAML file"
-    )
+    # Legacy YAML input is still accepted for reproducing older runs, but hidden:
+    # every setting has a command-line option.
+    parser.add_argument("--config", help=argparse.SUPPRESS)
     parser.add_argument(
         "--mode",
         "--regime",
         choices=list(MODES),
-        help=(
-            argparse.SUPPRESS
-            if help_mode
-            else "Measured activity (the default and only supported mode)"
-        ),
+        help=argparse.SUPPRESS,
     )
     if output:
         parser.add_argument(
             "-o",
             "--out",
             required=True,
+            metavar="DIR",
             help="New output directory; --force retains a backup of recognized PACE outputs",
         )
+    if output:
+        parser.add_argument(
+            "--by-chromosome",
+            action="store_true",
+            help="Score chromosome by chromosome to bound memory on whole genomes "
+            "(results equal a single run)",
+        )
+        parser.add_argument(
+            "--chunk-pairs",
+            type=int,
+            metavar="N",
+            default=1_500_000,
+            help="With --by-chromosome: pack chromosomes into chunks of at most this many "
+            "candidate pairs (default: 1500000)",
+        )
+        parser.add_argument(
+            "-t",
+            "--threads",
+            type=int,
+            metavar="N",
+            default=1,
+            help="With --by-chromosome: score this many chunks in parallel (default: 1)",
+        )
     context = parser.add_argument_group("sample and biological context")
-    for flag in ("species", "assembly", "tissue", "run-id"):
-        context.add_argument("--" + flag)
+    for flag, text in (
+        ("species", "Species, e.g. pig, cattle, chicken (required)"),
+        ("assembly", "Genome assembly, e.g. Sscrofa11.1 (required)"),
+        ("tissue", "Tissue or cell type, e.g. liver (required)"),
+        ("run-id", "Name recorded in the outputs"),
+    ):
+        context.add_argument("--" + flag, help=text)
     context.add_argument("--target-level", choices=["individual", "population_mean"])
     context.add_argument(
         "--profile",
@@ -104,7 +132,9 @@ def add_run_options(
     context.add_argument("--seed", type=int)
     files = parser.add_argument_group("canonical input tables and genomic assets")
     files.add_argument(
+        "-d",
         "--catalog-dir",
+        metavar="DIR",
         help="Read available <table>.tsv[.gz] files from this directory; explicit file options take precedence",
     )
     for flag, (section, key) in PATH_OPTIONS.items():
@@ -114,19 +144,32 @@ def add_run_options(
         if flag == "contacts":
             aliases.append("--observed-contacts")
         descriptions = {
-            "activity": "Measured activity table (ATAC-seq, DNase-seq and/or H3K27ac; one row per element/sample/assay)",
-            "contacts": "Measured promoter contact table (Hi-C/Prom-Hi-C; one row per element/promoter/sample)",
-            "samples": "Sample metadata table; list every biological/technical replicate with its sample_id",
-            "expression": "Optional RNA-seq gene-expression table used as an annotation",
-            "methylation": "Optional WGBS/RRBS methylation table used as an annotation",
+            "units": "units.tsv (candidate elements); default: from --catalog-dir",
+            "promoters": "promoters.tsv (gene TSSs); default: from --catalog-dir",
+            "candidates": "candidates.tsv (element-gene pairs); default: from --catalog-dir",
+            "samples": "Sample table (sample_id donor_id assay ...); optional for one animal",
+            "sources": "Data source table; optional, inferred when omitted",
+            "evidence": "Imported evidence catalog (advanced)",
+            "activity": "Activity table from 'pace activity'/'pace merge' (ATAC, DNase, H3K27ac)",
+            "contacts": "Contact table from 'pace contacts' (Hi-C, Micro-C, HiChIP ...)",
+            "resolved_activity": "Previously resolved activity table (advanced)",
+            "resolved_contacts": "Previously resolved contact table (advanced)",
+            "features": "Extra annotation table from 'pace features'",
+            "expression": "RNA-seq table from 'pace expression' (annotation only)",
+            "methylation": "CpG methylation counts (annotation only)",
+            "contact_prior": "Contact prior folder from 'pace fit-prior', 'fit-hic' or 'prior'",
+            "ml_model": "Classifier folder from 'pace train'",
+            "eta_labels": "Functional labels (CRISPRi etc.) for fitting eta",
+            "eta_model": "Frozen eta calibrator from 'pace fit-eta'",
+            "weak_model": "weak_model.json from 'pace fit-labels' (eQTL-tuned gamma/beta/eta)",
+            "chrom_sizes": "Chromosome sizes; default: from --catalog-dir",
+            "reference_cpg": "CpG counts per element for methylation coverage",
+            "support_bounds": "Optional support bounds per pair (advanced)",
         }
         files.add_argument(
             *aliases,
-            help=(
-                descriptions.get(
-                    flag, f"{section}.{key}; paths are relative to the working directory"
-                )
-            ),
+            metavar="DIR" if flag in ("contact_prior", "ml_model") else "FILE",
+            help=(descriptions[flag]),
         )
     model = parser.add_argument_group("scoring and calibration")
     model.add_argument("--eta", help="auto (default; falls back to 0) or a fixed number in [0,1]")
@@ -146,6 +189,24 @@ def add_run_options(
     )
     model.add_argument("--pseudocount", choices=["auto", "none", "powerlaw"])
     model.add_argument("--partial-policy", choices=["withhold", "conditional"])
+    model.add_argument(
+        "--tss-weights",
+        choices=["provided", "equal"],
+        help="TSS weights: the pi column of promoters.tsv, or equal per distinct TSS",
+    )
+    model.add_argument(
+        "--min-callable-fraction",
+        type=float,
+        metavar="F",
+        help="Activity rows with a smaller bigWig-covered fraction are treated as missing",
+    )
+    model.add_argument(
+        "--activity-pseudocount",
+        nargs=2,
+        action="append",
+        metavar=("ASSAY", "VALUE"),
+        help="Offset added to one assay after replicate averaging; repeatable",
+    )
     model.add_argument("--minimum-tss-weight", type=float)
     model.add_argument("--missing-tss-policy", choices=["strict", "drop_missing"])
     model.add_argument("--minimum-retained-tss-weight", type=float)
@@ -164,7 +225,11 @@ def add_run_options(
     model.add_argument("--contact-normalization")
     model.add_argument("--contact-balancing")
     model.add_argument("--contact-window")
-    model.add_argument("--contact-reliability", type=float)
+    model.add_argument(
+        "--contact-reliability",
+        type=reliability_value,
+        help="Weight of observed contact in shrinkage mode: a number in [0,1] or per_pair",
+    )
     model.add_argument("--reliability-source")
     model.add_argument(
         "--allow-prior-fallback", action=argparse.BooleanOptionalAction, default=None
@@ -191,6 +256,60 @@ def add_run_options(
         type=int,
         help="Downstream methylation window in transcription direction",
     )
+
+
+def reliability_value(text: str):
+    if text == "per_pair":
+        return text
+    try:
+        return float(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected a number in [0,1] or per_pair") from exc
+
+
+def _column_values(path: str, column: str, limit: int = 2) -> set:
+    """Distinct values of one column, stopping early once `limit` values are seen."""
+    import csv
+    import gzip
+
+    opener = gzip.open if str(path).endswith(".gz") else open
+    values = set()
+    with opener(path, "rt", encoding="utf-8", newline="") as handle:
+        for row in csv.DictReader(handle, delimiter="\t"):
+            if row.get(column) not in (None, "", "NA"):
+                values.add(row[column])
+                if len(values) >= limit:
+                    break
+    return values
+
+
+def infer_contact_scale(cfg: dict) -> None:
+    """Take the contact scale label from the contact table or prior when not declared."""
+    path = cfg["inputs"].get("observed_contacts")
+    if path and Path(path).is_file():
+        scales = _column_values(path, "scale")
+        if len(scales) == 1:
+            cfg["contact"]["scale"] = scales.pop()
+        return
+    prior = cfg["contact"].get("prior_path")
+    if prior and not cfg["contact"].get("prior_preset"):
+        manifest = Path(prior) / "manifest.json" if Path(prior).is_dir() else Path(prior)
+        if manifest.is_file():
+            import json
+
+            scale = json.loads(manifest.read_text(encoding="utf-8")).get("scale")
+            if isinstance(scale, str) and scale:
+                cfg["contact"]["scale"] = scale
+
+
+def infer_panel(path) -> list[str] | None:
+    """Activity panel from the core assays present in an activity table."""
+    if not path or not Path(path).is_file():
+        return None
+    assays = _column_values(path, "assay", limit=10**6) & {"ATAC", "DNase", "H3K27ac"}
+    if {"ATAC", "DNase"} <= assays:
+        raise PaceError("The activity table has both ATAC and DNase; choose one with --panel")
+    return sorted(assays) or None
 
 
 def config_from_args(args: argparse.Namespace) -> dict:
@@ -231,6 +350,8 @@ def config_from_args(args: argparse.Namespace) -> dict:
     ]:
         if getattr(args, option) is not None:
             overrides[key] = getattr(args, option)
+    if args.activity_pseudocount:
+        put("activity", "pseudocounts", {a: float(v) for a, v in args.activity_pseudocount})
     if args.mode:
         overrides["regime"] = MODES[args.mode]
     if args.ml_model:
@@ -246,4 +367,17 @@ def config_from_args(args: argparse.Namespace) -> dict:
     if args.eta is not None and args.eta != "auto" and not (args.eta_labels or args.eta_model):
         put("allocation", "labels_path", None)
         put("allocation", "calibrator_path", None)
-    return load_config(args.config, overrides=overrides)
+    explicit_scale = args.contact_scale is not None or bool(
+        args.config and "scale" in (load_yaml(args.config).get("contact") or {})
+    )
+    explicit_panel = args.panel is not None or bool(
+        args.config and "panel" in (load_yaml(args.config).get("activity") or {})
+    )
+    if not explicit_panel:
+        panel = infer_panel(overrides.get("inputs", {}).get("observed_activity"))
+        if panel:
+            put("activity", "panel", panel)
+    cfg = load_config(args.config, overrides=overrides)
+    if not explicit_scale and not cfg["contact"].get("prior_preset"):
+        infer_contact_scale(cfg)
+    return cfg

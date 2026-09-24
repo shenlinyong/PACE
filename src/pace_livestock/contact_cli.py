@@ -248,9 +248,6 @@ def labels_command(path, out):
     required = {
         "run_config",
         "labels",
-        "species",
-        "assembly",
-        "context_id",
         "gamma_grid",
         "beta_grid",
         "eta_grid",
@@ -258,10 +255,17 @@ def labels_command(path, out):
         "aggregation",
     }
     cfg = operation_config(
-        path, allowed=required | {"abc_gamma"}, required=required, paths=["run_config", "labels"]
+        path,
+        allowed=required | {"abc_gamma", "species", "assembly", "context_id"},
+        required=required,
+        paths=["run_config", "labels"],
     )
     run_cfg = load_config(cfg["run_config"])
-    if any(cfg[k] != run_cfg["context"][k] for k in ("species", "assembly", "context_id")):
+    # The run fixes the context; an explicitly stated context must agree with it.
+    if any(
+        cfg.get(k) is not None and cfg[k] != run_cfg["context"][k]
+        for k in ("species", "assembly", "context_id")
+    ):
         raise PaceError("eQTL species/assembly/context differs from the run")
     variants = read_table(cfg["labels"], required=["variant_id", "chrom", "pos0", "gene_id", "pip"])
     model, labels = calibrate(

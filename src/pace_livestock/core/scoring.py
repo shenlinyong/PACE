@@ -19,7 +19,37 @@ def nonnegative(values) -> np.ndarray:
     return x
 
 
+def _plain_floats(values):
+    """Return a list of Python floats when every value is a float/int, else None."""
+    out = []
+    for v in values:
+        kind = type(v)
+        if kind is float or kind is int:
+            out.append(float(v))
+        else:
+            return None
+    return out
+
+
 def activity(values, pseudocounts=None) -> float:
+    plain = _plain_floats(values)
+    plain_p = [0.0] * len(plain) if plain is not None and pseudocounts is None else None
+    if plain is not None and pseudocounts is not None:
+        plain_p = _plain_floats(pseudocounts)
+    if plain is not None and plain_p is not None and len(plain_p) == len(plain):
+        # Scalar fast path with the same semantics as the array implementation below.
+        if any(v < 0 or math.isinf(v) for v in plain + plain_p) or any(
+            math.isnan(p) for p in plain_p
+        ):
+            raise PaceError("Signals must be finite nonnegative values or NA")
+        x = [v + p for v, p in zip(plain, plain_p, strict=True)]
+        if any(math.isinf(v) for v in x):
+            raise PaceError("Activity signal plus pseudocount exceeds the numeric range")
+        if not x or any(math.isnan(v) for v in x):
+            return math.nan
+        if any(v == 0 for v in x):
+            return 0.0
+        return math.exp(math.fsum(math.log(v) for v in x) / len(x))
     x = nonnegative(values)
     if pseudocounts is not None:
         p = nonnegative(pseudocounts)
@@ -38,6 +68,12 @@ def activity(values, pseudocounts=None) -> float:
 
 def bulk_mean(values, weights=None) -> np.ndarray:
     """Average declared assay measurements before constructing activity."""
+    plain = _plain_floats(values) if weights is None and isinstance(values, list) else None
+    if plain:
+        if any(v < 0 or math.isinf(v) for v in plain):
+            raise PaceError("Signals must be finite nonnegative values or NA")
+        w = 1 / len(plain)
+        return np.float64(math.fsum(v * w for v in plain))
     x = nonnegative(values)
     if x.ndim < 1 or len(x) == 0:
         raise PaceError("bulk_mean requires at least one measurement")
@@ -77,6 +113,19 @@ def log_normalize(log_support) -> tuple[np.ndarray, float]:
 
 
 def tss_contact(contacts, weights) -> float:
+    c_plain, w_plain = _plain_floats(contacts), _plain_floats(weights)
+    if c_plain is not None and w_plain is not None and len(c_plain) == len(w_plain):
+        values = c_plain + w_plain
+        if any(v < 0 or math.isinf(v) for v in values):
+            raise PaceError("Signals must be finite nonnegative values or NA")
+        if any(math.isnan(w) for w in w_plain) or not math.isclose(
+            math.fsum(w_plain), 1, abs_tol=1e-10
+        ):
+            raise PaceError("TSS weights must be finite and sum to one for the complete gene")
+        used = [(c, w) for c, w in zip(c_plain, w_plain, strict=True) if w > 0]
+        if any(math.isnan(c) for c, _ in used):
+            return math.nan
+        return math.fsum(c * w for c, w in used)
     c, w = nonnegative(contacts), nonnegative(weights)
     if (
         c.shape != w.shape

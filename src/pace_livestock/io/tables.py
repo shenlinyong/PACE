@@ -31,17 +31,28 @@ def read_table(path: str | Path, *, required=()) -> list[dict]:
 
 def write_table(path: str | Path, rows: list[dict], *, fields=None) -> None:
     fields = fields or list(dict.fromkeys(k for row in rows for k in row))
-    opener = gzip.open if str(path).endswith(".gz") else open
-    with opener(path, "wt", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t", lineterminator="\n")
-        writer.writeheader()
+    if str(path).endswith(".gz"):
+        # Level 6 matches command-line gzip; decompressed content is identical.
+        handle = gzip.open(path, "wt", encoding="utf-8", newline="", compresslevel=6)
+    else:
+        handle = open(path, "w", encoding="utf-8", newline="")
+    known = set(fields)
+    with handle:
+        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+        writer.writerow(fields)
         for row in rows:
-            writer.writerow(
-                {
-                    k: "NA" if v is None or (isinstance(v, float) and not math.isfinite(v)) else v
-                    for k, v in row.items()
-                }
-            )
+            if not known.issuperset(row):
+                extra = sorted(set(row) - known)
+                raise ValueError(f"dict contains fields not in fieldnames: {extra}")
+            writer.writerow([_cell(row.get(k, "")) for k in fields])
+
+
+def _cell(value):
+    if value is None:
+        return "NA"
+    if type(value) is float and not math.isfinite(value):
+        return "NA"
+    return value
 
 
 def number(value, name: str, *, missing=False, minimum=None, maximum=None) -> float:

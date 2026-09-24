@@ -2,7 +2,8 @@
 
 The [README](../README.md) covers installation, input preparation and ordinary
 scoring. This guide covers optional evidence, calibration, independent validation
-and the full configuration. Examples with biological filenames are templates:
+and every setting with its default. Every command takes command-line options
+(`pace COMMAND --help`); no configuration file is needed. Examples with biological filenames are templates:
 replace their paths and context before running them. Bundled training data are
 synthetic.
 
@@ -25,9 +26,9 @@ synthetic.
 Keep one sample identifier per experimental replicate and register its donor,
 biological replicate, technical replicate and source in `samples.tsv`. Assays from
 different animals do not become individual-level measurements merely because their
-tissue names match. Use `target_level: population_mean` when pooling donors.
+tissue names match. Use `--target-level population_mean` when pooling donors.
 
-Create a short configuration and empty input tables with:
+Create empty input-table templates with:
 
 ```bash
 pace init --species chicken --assembly GRCg7w --tissue liver \
@@ -35,7 +36,7 @@ pace init --species chicken --assembly GRCg7w --tissue liver \
 ```
 
 Fill the tables before validation. `--catalog-dir prepared/catalog` imports the
-catalog tables and settings exported by `pace prepare`.
+catalog tables and settings exported by `pace catalog`.
 
 Catalog preparation maps supplied peaks and required promoters onto unique grid
 cells; it does not tile the whole genome. GTF input needs transcript records, with
@@ -50,7 +51,7 @@ every overlapping cell inflates support.
 
 bigWig input must contain nonnegative quantitative signals. Unstored bases remain
 missing unless the source explicitly represents them as measured zero and
-`missing_is_measured_zero` is enabled. The callable fraction measures coverage, not
+`--missing-as-zero` is given. The callable fraction measures coverage, not
 activity. Normalization identifiers describe the actual processing; changing a
 name does not make different protocols comparable.
 
@@ -135,19 +136,16 @@ primary score and stay NA when inference is unavailable.
 
 ## Sparse activity and alternative TSSs
 
-These options are off by default. Add only the settings needed for the analysis:
+These options are off by default. Add only the options needed for the analysis:
 
-```yaml
-activity:
-  panel: [ATAC, H3K27ac]
-  pseudocounts:
-    H3K27ac: 0.1  # example only; use the units of your normalized signal
-promoters:
-  weights: provided
-  minimum_weight: 0.01
-  missing_policy: drop_missing
-  minimum_retained_weight: 0.9
+```bash
+pace run ... --panel ATAC H3K27ac \
+  --activity-pseudocount H3K27ac 0.1 \
+  --tss-weights provided --minimum-tss-weight 0.01 \
+  --missing-tss-policy drop_missing --minimum-retained-tss-weight 0.9
 ```
+
+The 0.1 offset is an example only; use the units of your normalized signal.
 
 The pseudocount is added after replicate aggregation; NA remains NA. Compare
 results with zero offsets because positive offsets can increase background support.
@@ -250,38 +248,29 @@ The output includes `manifest.json`, `distance_bins.tsv`, and `fit_report.json`.
 
 Use the same scale/normalization/balancing/resolution when preparing contact observations. For observations extracted from this map:
 
-```yaml
-contact:
-  mode: observed
-  scale: balanced_contact_protocol_1
-  prior_path: models/animal1_contact
-  near_diagonal_policy: prior_or_neighbor
-  allow_prior_fallback: true
-  pseudocount: auto
+```bash
+pace contacts -i data/animal1.mcool -r 5000 -d prepared/catalog \
+  --scale balanced_contact_protocol_1 --normalization-id hic_norm_protocol_1 \
+  -o prepared/animal1_hic
+pace run ... --contacts prepared/animal1_hic/observed_contacts.tsv \
+  --contact-prior models/animal1_contact --allow-prior-fallback
 ```
+
+`pace predict --hic` performs both steps automatically.
 
 The matching prior supports near-diagonal replacement, sparse-count regularization and explicitly requested missing-contact fallback. Rows retain their individual evidence sources. Multiple samples require comparable scales before pooling; fitting one sample's raw-count scale does not calibrate another sample.
 
-`pace fit-contact-prior --config fit.yaml --out models/prior` remains available for explicitly prepared distance/contact tables. `pace fit-prior --config fit.yaml ...` is its short alias.
+`pace fit-contact-prior` remains available for explicitly prepared distance/contact tables.
 
 ### Fit from a prepared contact table
 
-```yaml
-data: contact_fit.tsv
-model_id: contact_prior_research
-species: chicken
-assembly: assembly_identifier
-context_id: liver
-target_level: individual
-is_synthetic: false
-scale: balanced_contact_protocol_1
-resolution: 5000
-normalization_id: hic_norm_protocol_1
-balancing: balanced
-window_id: bin_pair
-bin_edges: [5000, 10000, 20000, 50000, 100000, 500000, 5000000]
-d_ref: 10000
-d_min: 5000
+```bash
+pace fit-contact-prior --contacts contact_fit.tsv --model-id contact_prior_research \
+  --species chicken --assembly assembly_identifier --tissue liver \
+  --scale balanced_contact_protocol_1 --resolution 5000 \
+  --normalization-id hic_norm_protocol_1 --balancing balanced \
+  --bin-edges 5000 10000 20000 50000 100000 500000 5000000 \
+  --d-ref 10000 --d-min 5000 -o models/prior
 ```
 
 The TSV has `bin_pair_id,distance_bp,contact_value,split,region_id`. Each measured pair appears
@@ -290,10 +279,6 @@ values; positive mean bins enter a log-linear fit weighted by pair count. Empty 
 bins are reported separately. A nondecreasing fitted curve is rejected. The d_min distance floor is
 an explicit near-distance rule. Parameters, bins, training regions and held-out residuals are
 saved. This is a simple empirical prior, not an optimal count-noise model.
-
-```bash
-pace fit-contact-prior --config fit.yaml --out models/prior
-```
 
 ### Transfer between tissues
 
@@ -306,21 +291,17 @@ pace fit-prior --cooler reference_liver.mcool::/resolutions/25000 \
   --out priors/liver
 ```
 
-In the target muscle configuration, add:
+Score the target tissue (muscle) with it:
 
-```yaml
-context:
-  species: chicken
-  assembly: GRCg7w
-  context_id: muscle
-contact:
-  mode: prior_only
-  prior_path: priors/liver
-  scale: cooler_native
-  allow_cross_context_prior: true
+```bash
+pace run -d prepared/catalog --activity prepared/muscle_activity.tsv \
+  --species chicken --assembly GRCg7w --tissue muscle \
+  --contact-mode prior_only --contact-prior priors/liver \
+  --allow-cross-context-prior -o results/muscle
 ```
 
-This block supplements the existing activity, sample and catalog inputs. Keep the
+or `pace predict ... --tissue muscle --prior priors/liver` after adding the same
+cross-context permission through `pace run`. Keep the
 prior's source tissue name intact. The output records source and target contexts
 and marks the transfer unvalidated; it cannot use the `validated` profile. Measured
 muscle activity remains necessary. If combining a prior with measured target
@@ -369,25 +350,14 @@ penalty for methylation or multiplier for CTCF binding.
 
 The bigWig adapter can quantify additional marks using the same cells:
 
-```yaml
-kind: bigwig
-track: data/H3K4me1.bw
-units: prepared/catalog/units.tsv
-sample_id: animal1_H3K4me1
-assay: H3K4me1
-unit: normalized_signal
-normalization_id: H3K4me1_protocol_1
-window_id: grid:500:mean
-missing_is_measured_zero: false
-minimum_callable_fraction: 0.8
-```
-
 ```bash
-pace prepare --config prepare_H3K4me1.yaml --out prepared/H3K4me1
+pace features -b data/H3K4me1_peaks.bed -d prepared/catalog \
+  --feature-prefix H3K4me1 -o prepared/H3K4me1
 ```
 
-Merge the resulting observation rows with the activity table and register their
-sample metadata. Keep `activity.panel` unchanged: additional assays remain named
+Signal (rather than peak overlap) from other marks can be written in the activity
+table format and merged with `pace merge -t observed_activity`; register their
+sample metadata with `--samples`. Keep `--panel` unchanged: additional assays remain named
 annotations. For promoter H3K4me3, quantify the actual promoter window with a
 distinct identifier and import it as a promoter feature. A ±2 kb promoter window
 must not be labeled `grid:500:mean`. Gene-level summaries of promoter features use
@@ -395,35 +365,28 @@ the run's promoter weights; optional TSS filtering changes that promoter definit
 
 For interval overlap and motif orientation:
 
-```yaml
-kind: bed_features
-bed: data/CTCF_motifs.bed
-units: prepared/catalog/units.tsv
-source_id: CTCF_motif_source
-evidence_id: CTCF_motif_overlap
-feature_prefix: CTCF
-entity_type: element
-motif_strands: true
+```bash
+pace features -b data/CTCF_motifs.bed -d prepared/catalog \
+  --source-id CTCF_motif_source --evidence-id CTCF_motif_overlap \
+  --feature-prefix CTCF --motif-strands -o prepared/CTCF
 ```
 
-Register the corresponding source/evidence identifiers. `motif_strands: true`
+Add the resulting table to `pace run` with `--features`. `--motif-strands`
 requires strand-bearing motif intervals. ChIP-seq peaks alone provide occupancy,
-not motif orientation; use `false` for those peaks. Neither overlap nor orientation
+not motif orientation; leave the option out for those peaks. Neither overlap nor orientation
 is a measured loop probability. Keep element, promoter, gene and edge features
 separate.
 
 ### RNA
 
-Supply `inputs.expression` with `gene_id`, `sample_id`, `tpm`, `status`. Genes must
+Supply `pace run --expression` with `gene_id`, `sample_id`, `tpm`, `status`. Genes must
 exist in the catalog and samples must be registered as RNA. A non-observed status
 remains unavailable even if a numeric value appears in the row.
 
 Transcript TPM can be prepared using the catalog's mapping:
 
-```yaml
-kind: rna
-expression: data/transcript_tpm.tsv
-transcript_mapping: prepared/catalog/transcript_mapping.tsv
+```bash
+pace expression --tpm data/transcript_tpm.tsv -d prepared/catalog -o prepared/rna
 ```
 
 TPM is summed only through the supplied mapping. Gene TPM does not determine
@@ -432,7 +395,7 @@ explicit population-level interpretation.
 
 ### CpG methylation
 
-`inputs.methylation` takes raw dyad counts, not percentages or summary tables:
+`pace run --methylation` takes raw dyad counts, not percentages or summary tables:
 
 ```text
 chrom	dyad_start0	methylated_count	total_count	sample_id	assay
@@ -444,16 +407,12 @@ complementary strands before importing; they are not independent CpGs. The Pytho
 `merge_stranded_cpg` adapter checks explicit-strand cytosine calls against a
 reference FASTA and rejects duplicate strands or non-CG bases.
 
-Add this block to a run configuration:
+Add these options to `pace run`:
 
-```yaml
-inputs:
-  methylation: data/cpg_dyad_counts.tsv
-methylation:
-  minimum_coverage: 5
-  promoter_upstream_bp: 2000
-  promoter_downstream_bp: 500
-  reference_cpg_path: data/reference_cpg_counts.tsv
+```bash
+pace run ... --methylation data/cpg_dyad_counts.tsv \
+  --methylation-min-coverage 5 --promoter-upstream 2000 --promoter-downstream 500 \
+  --reference-cpg data/reference_cpg_counts.tsv
 ```
 
 Coverage 5 is an example; the default is 1. Choose the threshold before evaluating
@@ -483,26 +442,20 @@ Ordinary bisulfite assays do not independently distinguish 5mC from 5hmC.
 
 For a standalone element summary:
 
-```yaml
-kind: methylation
-counts: data/cpg_dyad_counts.tsv
-units: prepared/catalog/units.tsv
-minimum_coverage: 5
-reference_cpg: data/element_reference_cpg_counts.tsv
-```
-
 ```bash
-pace prepare --config prepare_methylation.yaml --out prepared/methylation_qc
+pace methylation --counts data/cpg_dyad_counts.tsv -d prepared/catalog \
+  --min-coverage 5 --reference-cpg data/element_reference_cpg_counts.tsv \
+  -o prepared/methylation_qc
 ```
 
 Here `reference_cpg` has `element_id`, `n_cpg` columns. The output
 `methylation_summary.tsv` is for inspection; it cannot replace raw counts in
-`inputs.methylation`. To import a summary as custom features, convert it explicitly
+`--methylation`. To import a summary as custom features, convert it explicitly
 and register the evidence.
 
 ### Other feature tables
 
-`inputs.features` accepts:
+`pace run --features` accepts:
 
 ```text
 entity_type	entity_id	feature_name	value	evidence_id	status
@@ -519,10 +472,8 @@ Feature names and entity levels must match the trained model. Accepting a featur
 format does not show that it improves prediction accuracy. With independent
 functional labels, a separate model can be trained as described below and used via:
 
-```yaml
-multiomics:
-  mode: ml
-  model_path: models/liver_classifier
+```bash
+pace run ... --ml-model models/liver_classifier
 ```
 
 Compare the base-only classifier with the added features on independent data.
@@ -539,12 +490,14 @@ B(E,G)=\frac{\overline C(E,G)}{\sum_{H\in\mathcal G(E)}\overline C(E,H)},\qquad
 {\sum_{e\in\mathcal E(G)}A_\star(e)\overline C(e,G)B(e,G)^\eta}.
 ```
 
-At eta=0 the allocation term and its data requirements are omitted, giving the main formula. `allocation.eta: auto` uses zero without functional calibration or an explicitly supplied eQTL weak model. A fixed nonzero value is an explicit experimental choice. At nonzero eta, missing contact to any candidate target prevents resolving B for that element; candidate genes are not silently removed.
+At eta=0 the allocation term and its data requirements are omitted, giving the main formula. `--eta auto` (the default) uses zero without functional calibration or an explicitly supplied eQTL weak model. A fixed nonzero value is an explicit experimental choice. At nonzero eta, missing contact to any candidate target prevents resolving B for that element; candidate genes are not silently removed.
 
 Cbar × B^eta equals Cbar^(1+eta) / (sum_H Cbar)^eta. This strengthens contact contrasts and depends on gene annotation density. It is not an established biological competition law. Compare it against eta=0 and the separate `contact_power_2` control using held-out functional data. The calibration procedure below uses independent functional labels.
 
 ```bash
-pace fit-eta --config run.yaml --eta-labels functional_labels.tsv --out results/eta
+pace fit-eta -d prepared/catalog --activity ... --contacts ... \
+  --species pig --assembly Sscrofa11.1 --tissue liver \
+  --eta-labels functional_labels.tsv -o results/eta
 ```
 
 The same fitting is available during a run with `--eta-labels`. Reuse
@@ -642,25 +595,18 @@ Artifacts distinguish `candidate_eta` from the actual `eta`, and record
 without deployment evidence must be recalibrated rather than relabelled. Explicit
 manual exponents remain research ablations and are not automatically validated.
 
-### Configuration and reuse
+### Options and reuse
 
-```yaml
-allocation:
-  eta: auto
-  labels_path: functional_labels.tsv
-  calibrator_path: null
-  minimum_genes: 3
-  minimum_groups: 3
-  validation_folds: 5
-  minimum_positive_fraction: 0.8
-  missing_policy: fixed_gene_set
+```bash
+pace run ... --eta-labels functional_labels.tsv \
+  --eta-min-genes 3 --eta-min-groups 3 --eta-validation-folds 5
 ```
 
-Alternatively set `calibrator_path` to a saved `eta_calibration.json` and remove
-`labels_path`. The two sources are mutually exclusive. For prespecified ablation,
-set `eta: 0`, `eta: 1` or another finite value in the interval and remove both paths.
-CLI `--eta-labels`/`--eta-model` select automatic mode even when an older YAML
-explicitly specified eta=0. Explicit `--eta NUMBER` selects manual mode.
+Alternatively reuse a saved calibration with `--eta-model results/eta/eta_calibration.json`.
+The two sources are mutually exclusive. For a prespecified ablation give
+`--eta 0`, `--eta 1` or another finite value in the interval without either source.
+`--eta-labels`/`--eta-model` select automatic mode; an explicit `--eta NUMBER`
+selects manual mode.
 
 Every run exports `eta_calibration.json`; the run manifest repeats its metadata and
 stores the numeric exponent in `comparison_contract.eta`. Fitted artifacts record
@@ -683,38 +629,21 @@ outputs; reporting them as independent performance is invalid.
 
 Saved-model inference never refits weights, scales, medians, quantiles or thresholds.
 
-```yaml
-data: labelled_edge_features.tsv
-model_id: regulatory_link_classifier
-is_synthetic: false
-context: {species: chicken, assembly: assembly_identifier, context_id: liver}
-extra_features: [H3K4me1, promoter_H3K4me3, methylation_M_site]
-penalties: [[0.01, 0.01], [0.1, 0.01]]
-folds: 3
-seed: 17
-calibrate: true
-# feature_contract: insert the full mapping exported by the representative run
-```
-
-The YAML block is a template, not runnable until its paths and `feature_contract`
-are supplied. For a non-synthetic model the full feature definition is required.
-Copy the mapping from a compatible scoring run's `ml_feature_contract.json` into
-training YAML; do not write a path string where a mapping is expected. For example:
-
 ```bash
-python - <<'PYTHON'
-import json, yaml
-from pathlib import Path
-config = yaml.safe_load(Path('classifier.yaml').read_text())
-config['feature_contract'] = json.loads(Path('results/measured/ml_feature_contract.json').read_text())
-Path('classifier_with_contract.yaml').write_text(yaml.safe_dump(config, sort_keys=False))
-PYTHON
-pace train --config classifier_with_contract.yaml --out models/classifier
+pace train --data labelled_edge_features.tsv --model-id regulatory_link_classifier \
+  --species chicken --assembly assembly_identifier --tissue liver \
+  --extra-features H3K4me1 promoter_H3K4me3 methylation_M_site \
+  --penalty 0.01 0.01 --penalty 0.1 0.01 --folds 3 --seed 17 --calibrate \
+  --feature-contract results/measured/ml_feature_contract.json \
+  -o models/classifier
 ```
+
+For a non-synthetic model the full feature definition is required: pass the
+`ml_feature_contract.json` of a compatible scoring run with `--feature-contract`.
 
 The definition includes activity panels/scales, contact resolution and normalization,
 candidate definitions, target/estimand and auxiliary feature preprocessing.
-[The bundled training config](../examples/training/learning.yaml) demonstrates a
+[The bundled training fixture](../examples/training/learning.yaml) demonstrates a
 complete synthetic definition.
 
 Prepare one-to-one label mappings before assembling this table. Required columns:
@@ -740,14 +669,10 @@ slope penalty for numerical stability. Without it, probability is NA and `pace_m
 uncalibrated classifier score. Neither is averaged with PACE. Real calibration probabilities
 remain specific to the recorded perturbation and candidate sampling design.
 
-```yaml
-# predict_ml.yaml
-run: results/measured
-model: models/classifier
-features: results/measured/multiomics_features.tsv.gz
+```bash
+pace predict-ml --run results/measured --model models/classifier \
+  --features results/measured/multiomics_features.tsv.gz -o results/ml
 ```
-
-Run `pace predict-ml --config predict_ml.yaml --out results/ml`.
 
 Inference checks the complete feature definition, regime, evidence-source and context scope.
 Mismatches return out_of_scope with unavailable scores/probabilities. Old unbound models
@@ -768,16 +693,9 @@ their denominators differ.
 
 ### Compare two runs
 
-```yaml
-left: results/animal_a
-right: results/animal_b
-minimum_common_units: 2
-allow_eta_difference: false
-allow_evidence_difference: false
-```
-
 ```bash
-pace compare --config comparison.yaml --out results/comparison
+pace compare --left results/animal_a --right results/animal_b \
+  --min-common-units 2 -o results/comparison
 ```
 
 The comparison checks catalog, candidate and promoter hashes, target level, context, panel,
@@ -786,7 +704,7 @@ denominators are required. Complete Delta also requires complete planned backgro
 compatible structural status. Technical absence leaves complete Delta as NA, even when a
 conditional Delta can be reported. Eta comparisons can be explicitly enabled, but then no
 complete-background score difference is claimed. B retains its original candidate-gene set in each run.
-Contact-policy and measurement-quality comparisons can similarly enable `allow_evidence_difference`; these
+Eta differences are enabled with `--allow-eta-difference`. Contact-policy and measurement-quality comparisons can similarly enable `--allow-evidence-difference`; these
 produce conditional comparisons, with full Delta withheld because the inference policy differs.
 
 The table contains original/common scores, full/conditional Delta, delta A, delta support,
@@ -795,13 +713,12 @@ Do not infer enhancer activity or expression direction from the sign of a suppor
 
 ### Replicate stability
 
-```yaml
-replicates: replicate_runs.tsv
-minimum_common_units: 2
+```bash
+pace stability --replicates replicate_runs.tsv -o results/stability
 ```
 
 The TSV contains `run_path,donor_id,replicate_type`, where paths resolve relative to the TSV and
-replicate type is biological or technical. Run `pace stability --config stability.yaml --out results/stability`. Every pair is compared on recomputed common
+replicate type is biological or technical. Every pair is compared on recomputed common
 denominators. Pearson correlation is NA for constant or insufficient vectors. Distinct-donor
 counts are reported; technical replicates are never counted as independent animals. No
 confidence interval is manufactured from a small number of animals.
@@ -814,24 +731,16 @@ labels sharing fitting genes, elements or groups. A fixed continuous exponent ad
 `PACE_fixed_eta`. Freeze eta before between-animal comparisons; separate refits can
 confound evidence changes with parameter changes. See [eta calibration](#experimental-target-allocation).
 
-```yaml
-run_config: examples/measured/config.yaml
-labels: functional_labels.tsv
-region_membership: region_membership.tsv
-stratify: [gene_id]
-thresholds: {}
-# external_methods:
-#   - name: gABC
-#     path: gabc_scores.tsv
-#     version: recorded_external_version
-#     configuration: recorded_external_configuration
+```bash
+pace benchmark --run results/measured --labels functional_labels.tsv \
+  --membership prepared/catalog/region_membership.tsv --stratify gene_id \
+  --external gABC gabc_scores.tsv recorded_external_version recorded_external_configuration \
+  -o results/benchmark
 ```
 
-Run `pace benchmark --config benchmark.yaml --out results/benchmark`.
-
-Decision thresholds are omitted by default. If a threshold has been independently fixed
-from appropriate training/calibration data, map its method name to `value`, `source_split`
-and `source_id`; omit it when no such evidence exists. The benchmark never selects
+`--external` is optional and repeatable. Decision thresholds are omitted by default. If a
+threshold has been independently fixed from appropriate training/calibration data, give
+`--threshold METHOD VALUE SOURCE_SPLIT SOURCE_ID`; omit it when no such evidence exists. The benchmark never selects
 a deployment threshold using the test set. Labels use the [standard dictionary](../README.md#input-table-reference)
 and preserve every tested positive in the evaluation universe, including absent predictions.
 The current implementation trains/evaluates only unambiguous one-to-one region mappings; ambiguous
@@ -1005,21 +914,16 @@ shape, without asserting that all ABC preprocessing is identical. The standard
 reference distance is 5,000 bp; fitted assets record their actual reference and
 minimum distances.
 
-`pace boundaries --config boundaries.yaml --out boundary_asset` accepts either:
+`pace boundaries` accepts either motif hits (`--chip` is optional; omit it without occupancy data):
 
-```yaml
-motifs: ctcf_motifs.tsv
-chip: ctcf_peaks.tsv       # optional; omit if no occupancy data
-max_gap_bp: 1000000
+```bash
+pace boundaries --motifs ctcf_motifs.tsv --chip ctcf_peaks.tsv --max-gap 1000000 -o boundary_asset
 ```
 
-or a FASTA scan:
+or a FASTA scan (12.0 is an example log2-odds threshold; choose it for your PWM):
 
-```yaml
-fasta: reference.fa
-pwm: ctcf_pwm.tsv
-threshold: 12.0           # example log2-odds threshold; choose for your supplied PWM
-max_gap_bp: 1000000
+```bash
+pace boundaries --fasta reference.fa --pwm ctcf_pwm.tsv --threshold 12.0 --max-gap 1000000 -o boundary_asset
 ```
 
 Motif tables require `chrom`, `start`, `end`, `strand` (+ or -), and `strength`
@@ -1037,28 +941,16 @@ strength. This is a sequence/occupancy heuristic, not a demonstrated boundary.
 Outputs retain `candidate_unvalidated` status. Supply a calibrated threshold and
 check chromosome naming before interpreting a whole-genome scan.
 
-`pace prior --config prior.yaml --out prior_asset` packages supplied parameters:
+`pace prior` packages supplied parameters (`a` is illustrative and must match the
+intended contact scale; `gamma` is an explicit assumption until fitted; `--kappa`
+and `--pairs` are optional):
 
-```yaml
-model_id: pig_liver_boundary_prior
-species: Sus scrofa
-assembly: Sscrofa11.1
-context_id: liver
-target_level: population_mean
-is_synthetic: false
-scale: cooler_native
-resolution: 10000
-normalization_id: liver_cooler_v1
-balancing: balanced
-window_id: bin_pair
-boundaries: boundary_asset/boundaries.tsv
-a: 1.0                  # illustrative: must match the intended contact scale
-gamma: 1.0              # explicit assumption until fitted
-beta: 0.0
-d_ref: 5000
-d_min: 10000
-# kappa: 2.0            # optional fixed dispersion shape
-# pairs: pairs.tsv     # optional chrom/anchor0/tss0 queries
+```bash
+pace prior --model-id pig_liver_boundary_prior \
+  --species "Sus scrofa" --assembly Sscrofa11.1 --tissue liver --target-level population_mean \
+  --scale cooler_native --resolution 10000 --normalization-id liver_cooler_v1 --balancing balanced \
+  --boundaries boundary_asset/boundaries.tsv \
+  --a 1.0 --gamma 1.0 --beta 0.0 --d-ref 5000 --d-min 10000 -o prior_asset
 ```
 
 For prior-only ranking an arbitrary positive amplitude cancels within a gene.
@@ -1069,14 +961,16 @@ represent an intentional absence of candidate boundaries.
 
 ### Fitting raw Hi-C and estimating reliability
 
-`pace fit-hic --config fit-hic.yaml --out fitted_prior` uses the same metadata,
-`boundaries`, `d_ref` and `d_min`, replacing `a`, `gamma`, `beta` and `kappa` with:
+`pace fit-hic` uses the same metadata, `--boundaries`, `--d-ref` and `--d-min`,
+replacing `--a`, `--gamma`, `--beta` and `--kappa` with grids. Measurement labels
+(scale, resolution, normalization, balancing, window) are read from the contact
+table when not given. `--test-chromosomes` is optional here (mandatory for fit-labels):
 
-```yaml
-data: prepared_contacts/observed_contacts.tsv
-gamma_grid: [0.6, 0.8, 1.0, 1.2]
-beta_grid: [0.0, 0.5, 1.0, 2.0]
-test_chromosomes: [chr18]   # optional here; mandatory for fit-labels
+```bash
+pace fit-hic --contacts prepared/pig1_hic/observed_contacts.tsv \
+  --gamma-grid 0.6 0.8 1.0 1.2 --beta-grid 0 0.5 1 2 --test-chromosomes 18 \
+  --boundaries boundary_asset/boundaries.tsv --d-ref 5000 --d-min 10000 \
+  --species "Sus scrofa" --assembly Sscrofa11.1 --tissue liver -o fitted_prior
 ```
 
 Input columns include `chrom`, `anchor0`, `tss0`, `sample_id`, `bin_pair_id`,
@@ -1092,8 +986,8 @@ Poisson counts. This model treats balancing factors as fixed exposures; it does
 not model uncertainty introduced by balancing itself.
 
 Fit input must retain measured zero pixels. With sparse coolers, use the
-explicit preparation option `missing_pixels_are_zero: true` only when absent
-stored pixels really mean measured zero. Missing or masked rows are excluded
+default of `pace contacts` (absent pixels are measured zeros) only when that is
+true; otherwise use `--missing-as-missing`. Missing or masked rows are excluded
 from fitting. Shared sample/bin pairs count once. Diagonal pairs are excluded;
 other pairs use bin centers, matching the resolution of the measurement. At
 least three distinct callable pairs with some positive counts are required.
@@ -1116,21 +1010,14 @@ Select/query fitting pairs independently of their positive contact counts.
 A candidate-enriched fitting set estimates its own background, not necessarily
 the genome-wide background.
 
-Enable the posterior in an ordinary run configuration:
+Enable the posterior with `pace fuse`, which takes the same options as `pace run`
+and sets `--contact-mode shrinkage --contact-reliability per_pair`:
 
-```yaml
-contact:
-  mode: shrinkage
-  prior_path: fitted_prior
-  scale: cooler_native
-  reliability: per_pair
-  kappa: auto
-```
-
-Keep the standard `inputs.observed_contacts` path. No separate
-`contact.observed_path` setting is needed. `pace fuse --config run.yaml --out
-fused` runs the same complete scoring pipeline as `pace run`, requiring the above
-mode. With conversion factor f and prior contact C0:
+```bash
+pace fuse -d prepared/catalog --activity prepared/activity/observed_activity.tsv \
+  --contacts prepared/pig1_hic/observed_contacts.tsv --contact-prior fitted_prior \
+  --species "Sus scrofa" --assembly Sscrofa11.1 --tissue liver -o fused
+``` With conversion factor f and prior contact C0:
 
 ```math
 C\sim\mathrm{Gamma}(\kappa,\mathrm{rate}=\kappa/C_0),\qquad
@@ -1147,7 +1034,7 @@ near-diagonal policy. Each valid sample is shrunk separately, then aggregated
 using the existing technical/biological/donor hierarchy. Missing samples do not
 become extra prior-only replicates.
 
-`kappa: auto` first uses the fitted asset's kappa; without it, the run estimates
+The default (`kappa: auto`) first uses the fitted asset's kappa; without it, the run estimates
 kappa from unique callable bin pairs. A positive numeric kappa overrides this.
 The resolved table records the actual kappa, its source, the bin-center prior
 policy, and `posterior_samples` containing per-sample means, variances, raw
@@ -1159,7 +1046,7 @@ or count conversion.
 
 ### Learning gamma, beta and eta from eQTLs
 
-`pace fit-labels --config weak.yaml --out weak_fit` accepts fine-mapping results
+`pace fit-labels` accepts fine-mapping results
 converted to a simple table. Downloading or harmonizing FarmGTEx releases is not
 part of this command. The table requires `variant_id`, `chrom`, `pos0`, `gene_id`,
 and `pip`; `independent_signals` also requires `signal_id`. Use one row per
@@ -1167,19 +1054,15 @@ variant/gene with PIP in [0,1], already harmonized to the reference assembly and
 tissue. Restrict genes to the cis candidate catalog. Duplicate gene/variant rows
 are rejected rather than silently counted twice.
 
-```yaml
-run_config: run.yaml
-labels: eqtl_finemapping.tsv
-species: Sus scrofa
-assembly: Sscrofa11.1
-context_id: liver
-aggregation: independent_signals
-gamma_grid: [0.8, 1.0, 1.2]
-beta_grid: [0.0, 0.5, 1.0]
-eta_grid: [0.0, 0.5, 1.0]
-test_chromosomes: [chr18]
-abc_gamma: 1.0242386
+```bash
+pace fit-labels --run results/pig_liver_baseline --eqtl eqtl_finemapping.tsv \
+  --aggregation independent_signals \
+  --gamma-grid 0.8 1.0 1.2 --beta-grid 0 0.5 1 --eta-grid 0 0.5 1 \
+  --test-chromosomes 18 -o weak_fit
 ```
+
+`--run` is a finished `pace run` result folder; species, assembly and tissue are
+taken from it.
 
 Two aggregation choices are explicit:
 
@@ -1198,7 +1081,7 @@ credible-set mass, eQTL power, LD, expression and variant frequency all affect
 this weak target. The model does not infer LD or perform fine-mapping itself.
 
 The run must use `prior_only` or `shrinkage` contact with a frozen source prior,
-`allocation.eta: auto`, and no existing functional or weak calibrator. For
+`--eta auto` (the default), and no existing functional or weak calibrator. For
 per-pair fusion, freeze kappa in the prior or configuration before fitting.
 Boundary checksums, candidate coordinates, promoter weights, activity scales and
 processing policies bind the model to its source setup.
@@ -1222,20 +1105,18 @@ the held-out claim concerns eQTL labels, not every earlier Hi-C training input.
 
 Apply the saved parameters in the same compatible run:
 
-```yaml
-allocation:
-  eta: auto
-  weak_model_path: weak_fit/weak_model.json
+```bash
+pace run <same options as the baseline run> --weak-model weak_fit/weak_model.json -o calibrated
 ```
 
 `pace run` loads gamma/beta before resolving contacts and eta before final
 scoring. Output marks `allocation_evidence: eqtl_weak` and retains chromosome
 membership, source hashes and weak validation status in `eta_calibration.json`.
-Functional-label calibrators continue to use `calibrator_path`; the two cannot
+Functional-label calibrators continue to use `--eta-model`; the two cannot
 be combined. Weak calibration is unavailable in the `validated` execution
 profile. `benchmark` keeps `PACE_eqtl_weak` separate from fixed-eta ablations.
 
-The four-chromosome [offline example](../examples/contact/config.yaml) exercises
+The four-chromosome [offline example](../examples/contact/run.sh) exercises
 all five commands. It verifies the implementation only. Evaluate real livestock
 data with distance/LD-aware controls and independent functional evidence before
 claiming an improvement. Cross-tissue prior transfer remains explicit;
@@ -1244,10 +1125,9 @@ automatic tissue-hierarchical contact learning is not implemented.
 ## Complete configuration defaults
 
 These defaults match `pace_livestock.config.DEFAULTS`; the documentation check
-compares the complete mapping during tests. Supply real biological context and
-file paths. YAML paths resolve relative to the configuration file; `null` means
-not provided. Ordinary runs need only the settings shown in the
-[README configuration reference](../README.md#configuration-reference).
+compares the complete mapping during tests. The same structure is written to
+`resolved_config.yaml` in every result folder; `null` means not provided. Ordinary runs need only the settings shown in the
+[README command reference](../README.md#command-reference).
 
 <!-- configuration-defaults:start -->
 ```yaml

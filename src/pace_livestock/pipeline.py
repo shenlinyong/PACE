@@ -20,19 +20,24 @@ from .reporting import evidence_catalog, evidence_summary, multiomics_features
 from .schemas import load_tables, universe_ids
 
 
-def compute(cfg: dict, *, contact_prior_override=None):
+def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
+    """Score one configuration.
+
+    chunk=True marks one chromosome chunk of a larger run; genome-wide input checks
+    were then made before splitting, so a chunk may legitimately lack contacts.
+    """
     if set(cfg) & {"sequence", "fusion", "genome"} or "predictions" in cfg["inputs"]:
         raise PaceError("Unsupported configuration: PACE requires measured activity inputs")
     if cfg["regime"] != "measured":
         raise PaceError("PACE requires measured activity; unsupported evidence regime")
     tables = load_tables(cfg)
-    if cfg["regime"] == "measured":
+    if cfg["regime"] == "measured" and not chunk:
         available = {r["assay"] for r in tables["observed_activity"] + tables["resolved_activity"]}
         if not set(cfg["activity"]["panel"]) <= available:
             raise PaceError(
                 "Measured mode requires tables for every declared activity assay; choose an explicit single-layer panel when appropriate"
             )
-    if cfg["contact"]["mode"] == "observed" and not (
+    if (not chunk and cfg["contact"]["mode"] == "observed") and not (
         tables["observed_contacts"]
         or tables["resolved_contacts"]
         or (cfg["contact"]["allow_prior_fallback"] and cfg["contact"]["prior_path"])
@@ -293,6 +298,7 @@ def compute(cfg: dict, *, contact_prior_override=None):
             ),
         },
         "activity_pseudocounts": cfg["activity"]["pseudocounts"],
+        "inferred_metadata": sorted(tables["inferred_metadata"]),
         "biological_validation": "not_assessed",
         "capabilities": capabilities(cfg),
         "interpretation": "PACE is a composition of regulatory support, not a causal probability or expression effect.",
@@ -355,6 +361,7 @@ def compute(cfg: dict, *, contact_prior_override=None):
     from .reporting import regional_scores
 
     return {
+        "inferred_metadata": tables["inferred_metadata"],
         "scores": scores,
         "gene_summary": summary,
         "region_scores": regional_scores(scores, tables["region_membership"]),
@@ -375,32 +382,59 @@ def run(config_path, out):
     # Validation/computation occurs before publication; failed runs leave no success directory.
     result = compute(cfg)
     with output_directory(out) as dest:
-        write_table(dest / "scores.tsv.gz", result["scores"])
-        for name in (
-            "gene_summary",
-            "region_scores",
-            "resolved_activity",
-            "resolved_contacts",
-            "promoter_weights",
-            "evidence",
-            "sources",
-        ):
-            write_table(dest / f"{name}.tsv", result[name])
-        write_table(dest / "multiomics_features.tsv.gz", result["features"], fields=None)
-        write_json(dest / "qc_report.json", result["qc"])
-        write_json(dest / "run_manifest.json", result["manifest"])
-        write_json(dest / "eta_calibration.json", result["eta_calibration"])
-        write_json(dest / "ml_feature_contract.json", result["manifest"]["ml_feature_contract"])
-        (dest / "resolved_config.yaml").write_text(
-            yaml.safe_dump(cfg, sort_keys=True), encoding="utf-8"
-        )
-        (dest / "report.md").write_text(
-            f"# PACE run: {cfg['run_id']}\n\n"
-            f"Measured activity; profile: {cfg['execution_profile']}; target: {cfg['target_level']}.\n\n"
-            f"Scorable candidates: {result['qc']['n_scoreable']} / {len(result['scores'])}. "
-            "Partial normalization is conditional on the measurable subset.\n\n"
-            "Scores are relative support shares. Changes in shares alone do not establish changes "
-            "in enhancer activity or gene expression. Biological validation is not supplied by these software checks.\n",
-            encoding="utf-8",
-        )
+        write_results(dest, cfg, result)
     return result
+
+
+def _relative_paths(value, root: str):
+    """Rewrite absolute paths below root as root-relative paths."""
+    if isinstance(value, dict):
+        return {k: _relative_paths(v, root) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_relative_paths(v, root) for v in value]
+    if isinstance(value, str) and value.startswith(root + "/"):
+        return value[len(root) + 1 :]
+    return value
+
+
+def write_results(dest, cfg, result, *, relative_to=None):
+    """Write every result file of a computed run into an existing directory.
+
+    relative_to: inputs stored below this directory are written as relative paths in
+    resolved_config.yaml, so a self-contained result folder can be moved and re-run.
+    """
+    write_table(dest / "scores.tsv.gz", result["scores"])
+    for name in (
+        "gene_summary",
+        "region_scores",
+        "resolved_activity",
+        "resolved_contacts",
+        "promoter_weights",
+        "evidence",
+        "sources",
+    ):
+        write_table(dest / f"{name}.tsv", result[name])
+    write_table(dest / "multiomics_features.tsv.gz", result["features"], fields=None)
+    write_json(dest / "qc_report.json", result["qc"])
+    write_json(dest / "run_manifest.json", result["manifest"])
+    write_json(dest / "eta_calibration.json", result["eta_calibration"])
+    write_json(dest / "ml_feature_contract.json", result["manifest"]["ml_feature_contract"])
+    for name, rows in result.get("inferred_metadata", {}).items():
+        write_table(dest / f"inferred_{name}.tsv", rows)
+    write_config_and_report(dest, cfg, result["qc"], len(result["scores"]), relative_to=relative_to)
+
+
+def write_config_and_report(dest, cfg, qc, n_candidates, *, relative_to=None):
+    stored_cfg = _relative_paths(cfg, str(relative_to)) if relative_to else cfg
+    (dest / "resolved_config.yaml").write_text(
+        yaml.safe_dump(stored_cfg, sort_keys=True), encoding="utf-8"
+    )
+    (dest / "report.md").write_text(
+        f"# PACE run: {cfg['run_id']}\n\n"
+        f"Measured activity; profile: {cfg['execution_profile']}; target: {cfg['target_level']}.\n\n"
+        f"Scorable candidates: {qc['n_scoreable']} / {n_candidates}. "
+        "Partial normalization is conditional on the measurable subset.\n\n"
+        "Scores are relative support shares. Changes in shares alone do not establish changes "
+        "in enhancer activity or gene expression. Biological validation is not supplied by these software checks.\n",
+        encoding="utf-8",
+    )

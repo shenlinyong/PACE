@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from .errors import PaceError
 from .evidence.resolve import aggregate_observations
 from .io.methylation import load_reference_cpg, promoter_methylation_regions, summarize_methylation
-from .provenance import digest
+from .provenance import digest, digest_rows
 
 LAYERS = (
     "RNA",
@@ -457,8 +457,12 @@ def evidence_catalog(tables, resolved_activity, resolved_contacts, assets, cfg, 
                 if parent
             }
         )
+        method = rows[0].get("aggregation_method", "core_formula")
         if key == "core_formula":
-            parents = sorted({r["evidence_id"] for r in resolved_activity + resolved_contacts})
+            # The parents are every row of resolved_activity/resolved_contacts in the same
+            # result folder; listing millions of IDs in one cell adds nothing.
+            parents = []
+            method = "core_formula:parents=resolved_activity,resolved_contacts"
         evidence[key] = {
             "evidence_id": key,
             "evidence_type": "aggregate",
@@ -466,8 +470,8 @@ def evidence_catalog(tables, resolved_activity, resolved_contacts, assets, cfg, 
             "parent_evidence_ids": ";".join(parents) or None,
             "model_id": None,
             "unit": "derived_feature",
-            "processing_method": rows[0].get("aggregation_method", "core_formula"),
-            "checksum": digest(rows),
+            "processing_method": method,
+            "checksum": digest_rows(rows),
         }
     for row in evidence.values():
         if row["source_id"] not in sources:
