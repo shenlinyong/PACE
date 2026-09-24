@@ -21,9 +21,9 @@ identical to an external ABC implementation.
 | Component | Current PACE behavior | Requirement for a fair comparison |
 |---|---|---|
 | Activity | Fixed-panel equal geometric mean | Match assays, units, windows and missingness |
-| Contact | Declared observations/prior policy and weighted distinct TSSs | Match contact scale and evidence context |
+| Contact | Specified observations/prior policy and weighted distinct TSSs | Match contact scale and evidence context |
 | Allocation | B raised to a fixed or training/calibration-estimated eta in [0,1] | Freeze the exponent before final evaluation |
-| Candidates | Explicit canonical catalog and frozen candidate edges | Align the candidate universe and disclose exclusions |
+| Candidates | Explicit canonical catalog and fixed candidate edges | Align the candidate universe and disclose exclusions |
 | Normalization | Primary score requires complete planned support; conditional score and bounds are separate | Recompute a common denominator rather than joining normalized outputs |
 | Other omics | Annotation or a separate supervised classifier | Evaluate classifier and formula outputs separately |
 

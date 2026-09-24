@@ -1,6 +1,6 @@
 # Development and verification
 
-The Python package contains pure scoring kernels, evidence resolution, file adapters, preparation commands and reporting. Genomic measurements remain distinct from priors and independently trained classifier outputs. Keep changes to evidence policies reflected in frozen calibration, classifier and comparison contracts.
+The Python package contains pure scoring kernels, evidence resolution, file adapters, preparation commands and reporting. Genomic measurements remain distinct from priors and independently trained classifier outputs. Keep changes to evidence policies reflected in fixed calibration, classifier and comparison compatibility checks.
 
 ```bash
 python -m pip install -e '.[dev,io,ml]'

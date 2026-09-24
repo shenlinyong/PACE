@@ -462,8 +462,13 @@ def test_quoted_false_cannot_silently_turn_missing_pixels_into_zero():
             query_contacts("unused", [], resolution=1000, **options)
 
 
-def test_only_one_case_safe_console_entry():
+def test_console_entries_do_not_collide_on_case_insensitive_filesystems():
     import tomllib
 
     metadata = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
-    assert metadata["project"]["scripts"] == {"pace": "pace_livestock.cli:main"}
+    scripts = metadata["project"]["scripts"]
+    assert scripts == {
+        "pace": "pace_livestock.cli:main",
+        "pace-livestock": "pace_livestock.cli:main",
+    }
+    assert len({name.casefold() for name in scripts}) == len(scripts)

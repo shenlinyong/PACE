@@ -1,142 +1,147 @@
-# PACE 总公式与详细解读
+# PACE 模型与公式
 
-[英文公式](FORMULA.md) · [实际操作](PRACTICAL_WORKFLOW.md) · [完整中文手册](USER_GUIDE.zh-CN.md)
+[英文公式](FORMULA.md) · [数据准备](PRACTICAL_WORKFLOW.md) · [中文手册](USER_GUIDE.zh-CN.md)
 
-PACE 以**实测活性**为基础，计算一个候选调控元件对目标基因的相对支持。结果不是因果概率，也不是基因表达量中由该元件贡献的比例。
+PACE 根据实测调控活性和启动子接触证据，对目标基因的候选调控元件进行排序。分数表示候选背景内的相对支持，不是因果概率，也不是增强子贡献的基因表达比例。
 
-## 一、总公式
+## 一、主公式
 
 ```math
 \boxed{
 \mathrm{PACE}(E,G)=
-\frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E(G)}
- A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
+\frac{A_\star(E)\,\overline C(E,G)}
+{\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}
 }
 ```
 
-分子是当前元件的“活性 × 综合接触 × 可选分配项”；分母是该基因**完整计划候选集**的同类支持总和。默认只有候选支持全部可计算、且总支持大于零时，才输出主分数 `pace_score`。
+分子为当前元件的活性与综合接触之积，分母为该基因**完整计划候选集**的支持总和，默认包含启动子单元。只有全部支持可计算且分母大于零，才输出 `pace_score`。存在缺失时主分数为 NA，已知子集的份额另列为 `pace_score_conditional`。这里的完整仅指输入候选集，不代表已发现全部真实增强子。
 
-如果分母有候选缺失，主分数为 NA；另外输出 `pace_score_conditional` 和 `pace_score_lo/hi`。这样不会把“只看到了部分候选”的高分当成完整背景下的高分。完整候选集仍由研究者预先定义，不等于全部真实增强子。
+| 符号 | 含义 | 对应字段 |
+|---|---|---|
+| E、G | 当前调控元件、目标基因 | element_id、gene_id |
+| e、E(G) | 分母中的一个候选、完整计划候选集 | candidates.tsv |
+| M、m | 固定检测组合、其中一种检测 | activity.panel |
+| x_m(E) | 重复汇总后的实测信号 | resolved_activity.tsv |
+| A_star(E) | 活性几何平均 | A_used |
+| T(G)、t | 去重后的物理 TSS 集合、其中一个 TSS | promoters.tsv |
+| pi(t given G) | 基因内总和为 1 的 TSS 权重 | promoter_weights.tsv |
+| Ctilde(E,t) | 处理后的元件—TSS 接触 | resolved_contacts.tsv |
+| Cbar(E,G) | 按所选 TSS 权重汇总的接触 | Cbar |
 
-| 符号 | 含义 |
-|---|---|
-| E、G | 当前评分单元和目标基因 |
-| e、E(G) | 逐个遍历的候选单元、该基因完整计划候选集 |
-| A_star(E) | 固定检测组合的实测活性几何平均 |
-| Cbar(E,G) | 对不同物理 TSS 的接触按固定权重汇总 |
-| B(E,G) | 当前元件对该基因的接触占其全部候选基因接触的份额 |
-| eta_used | 实际使用的可选分配指数；无合格独立功能证据时为零 |
-| pi(t given G) | 预先固定的启动子权重，每个基因内加总为 1 |
-| Ctilde(E,t) | 按明确策略校正或补充后的元件—TSS 接触 |
-
-## 二、完全展开的总公式
-
-```math
-\mathrm{PACE}(E,G)=
-\frac{
-\left[\prod_{m\in\mathcal M}x_{\mathrm{obs},m}(E)\right]^{1/|\mathcal M|}
-\left[\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t)\right]
-\left[
-\frac{\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t)}
-{\sum_{H\in\mathcal G(E)}\sum_{u\in\mathcal T(H)}\pi(u\mid H)\widetilde C(E,u)}
-\right]^{\eta_{\mathrm{used}}}
-}{
-\displaystyle\sum_{e\in\mathcal E(G)}
-\left[\prod_{m\in\mathcal M}x_{\mathrm{obs},m}(e)\right]^{1/|\mathcal M|}
-\left[\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(e,t)\right]
-\left[
-\frac{\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(e,t)}
-{\sum_{H\in\mathcal G(e)}\sum_{u\in\mathcal T(H)}\pi(u\mid H)\widetilde C(e,u)}
-\right]^{\eta_{\mathrm{used}}}
-}.
-```
-
-每一个 Ctilde 都按下面相同的接触规则计算；每一个 x_obs 都来自真实实验。eta=0 时整个分配因子直接省略，不需要先计算 B。
-
-## 三、活性如何计算
+## 二、活性
 
 ```math
-A_\star(E)=\left[\prod_{m\in\mathcal M}x_{\mathrm{obs},m}(E)\right]^{1/|\mathcal M|}.
+A_\star(E)=\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}.
 ```
 
-支持 ATAC、DNase、H3K27ac 单层，或 ATAC+H3K27ac、DNase+H3K27ac 双层。双层信号 4 和 9 的活性为 6。所选层缺失则为 NA；不能逐个元件临时删掉缺失层。
+支持 ATAC、DNase、H3K27ac 单层，以及 ATAC+H3K27ac、DNase+H3K27ac 双层。所有元件使用同一组合；缺一层为 NA，实测零默认使活性为零。先在生物学重复内平均技术重复，再在供体内平均生物学重复，最后对供体等权平均。汇总前必须保证信号归一化可比；单个体使用 `individual`，多个体汇总使用 `population_mean`。
 
-先汇总同一生物重复的技术重复，再汇总供体内生物重复，最后按明确的群体目标对供体等权。几何平均在这些测量汇总之后进行。多个个体要明确使用 population_mean。
+若某一检测在全部元件上的信号都乘以相同正数，全部活性会乘以一个共同系数，在同一基因的分子、分母中抵消。该性质不能消除信噪比、窗口、缺失模式或重复间尺度差异。
 
-原始窗口计数可用 `pace normalize-activity` 转为每百万合格片段、每碱基的信号。分母必须是完整合格文库的片段数，不能用候选峰内计数总和代替。已归一化 bigWig 不再重复做 CPM；文库量校正不能消除批次效应。
+浅测序时可以显式添加分检测类型的伪计数：
 
-## 四、接触如何计算
+```math
+A_{\star,\epsilon}(E)=
+\left[\prod_{m\in\mathcal M}(x_m(E)+\epsilon_m)\right]^{1/|\mathcal M|}.
+```
+
+`activity.pseudocounts` 默认为空，即全部 epsilon 为零。伪计数与对应归一化信号同单位，在重复汇总后加入；原始实测值保留，添加量写入 `activity_pseudocount`。缺失值始终为 NA。改变检测尺度时必须同时缩放伪计数，才能保持上述抵消性质。正伪计数可能增加背景支持，需比较关闭和启用时的结果，不宜套用统一数值。
+
+`pace normalize-activity` 实现“窗口计数 × 10^6 / 过滤后文库片段数 / 窗口长度”。已经归一化的 bigWig 不应重复归一化；文库大小校正不等于批次校正。
+
+## 三、接触
 
 ```math
 P(d)=a\left[\frac{\max(d,d_{\min})}{d_{\mathrm{ref}}}\right]^{-\gamma},\qquad
 p(d)=\kappa\min\{P(d),P(d_0)\}.
 ```
 
-P(d) 是距离背景，p(d) 是用于稀疏实测接触的伪计数。普通非对角实测位置采用：
-
-```math
-\widetilde C(E,t)=C_{\mathrm{obs}}(E,t)+p(d(E,t)),\qquad
-\overline C(E,G)=\sum_t\pi(t\mid G)\widetilde C(E,t).
-```
-
-默认 `pseudocount: auto`：有匹配先验且使用 observed 接触模式时加伪计数，否则保留实测值并报告先验不可用。`none` 可关闭，`powerlaw` 强制要求匹配先验。默认 kappa=1、d0=5000 bp 是算法设置，尚不能称为畜禽最优参数。接触计数为零可能来自浅测序，不能据此判定没有生物学互作；原始零值仍保留在输出中。
-
-| 数据情况 | 处理 |
+| 情形 | 使用的接触 |
 |---|---|
-| 同 bin 或指定近距离范围，且有匹配先验 | 使用 P(d)，记录 near_diagonal_prior，不再重复加伪计数 |
-| 同 bin、无先验，但 cooler 提取时获得有效邻近接触 | 默认用有记录的邻近接触最大值，记录 near_diagonal_neighbor_max |
-| 近对角没有可用校正依据 | NA；该基因主分数不再按不完整分母输出 |
-| 普通位置有实测接触 | 按设定使用实测值加伪计数，或保留原值 |
-| 普通位置缺接触且显式允许先验回退 | 使用匹配 P(d)，标明先验来源 |
-| 普通位置缺接触且未允许回退 | NA |
-| 显式 prior_only | 使用 P(d)，仍必须有实测活性 |
-| 显式 shrinkage | 使用 r C_obs+(1-r)P(d)，不再叠加伪计数 |
+| 同 bin 或指定近距离范围，有兼容先验 | P(d) |
+| 同 bin、无先验，使用默认 prior_or_neighbor | cooler 接口记录的有效相邻接触最大值 |
+| 近对角没有可用替代值 | NA |
+| 非对角有限实测值，包括零 | 实测值加配置允许的伪计数 |
+| 接触缺失，允许回退且有兼容先验 | P(d)，明确标注先验来源 |
+| 接触缺失，不允许回退 | NA |
+| prior_only | P(d) |
+| shrinkage | r C_obs + (1-r) P(d) |
 
-近对角策略先于其他接触选择。它与 `allow_prior_fallback` 控制的普通位置回退不同。有匹配先验时，关闭普通回退并不会阻止近对角使用先验。同 bin 取决于实际分辨率和边界，不等于所有距离小于 5 kb 的联系。
+先执行近对角处理。同 bin 取决于分辨率和 bin 边界，不等于所有 ±5 kb 内的元件。`unresolved` 保留近对角缺失；`prior_or_unresolved` 只允许匹配先验；默认 `prior_or_neighbor` 还允许带来源记录的邻近最大值。邻近最大值是接触替代量，不是已验证的增强子—启动子环。
 
-加伪计数的证据类型为 regularized，区别于原始测量和凸组合收缩。`observed_value`、`prior_value`、`pseudocount_value`、模型身份、校正原因全部保留。这里 regularized 的 reliability=1 表示原观测的系数仍为 1，不表示后验可信度为 100%。
+`contact.pseudocount: auto` 仅在 observed 模式且有兼容先验时，为非对角有限实测值添加 p(d)。`powerlaw` 强制要求先验，`none` 关闭添加。默认 kappa=1、d0=5000 bp，尚非经畜禽数据优化的参数。近对角替代值、prior_only 和 shrinkage 不再重复加伪计数。无效平衡 bin 不当作零，除非显式允许先验替代，否则保持不可用。
 
-`pace fit-prior` 可以直接从 cool/mcool 拟合先验，将可测 bin 的未存储零计数计入距离分箱均值；无效平衡 bin 不参与。全零距离分箱不能进入对数回归，会在报告中列出。留出染色体只能评价接触背景拟合，不能替代增强子功能验证。先验必须与接触的尺度、分辨率、归一化、平衡方式和窗口一致。
+结果保留 `observed_value`、`prior_value`、`pseudocount_value`、来源、先验编号和处理原因。添加伪计数的接触标为 `regularized`，保留的观测系数不代表置信概率。
 
-没有 Hi-C 时，可**主动选择** `prior_preset: abc_human` 和 `mode: prior_only`。它使用人类 ABC 公布的 gamma=1.024238616787792，a=1、d_ref=d_min=5000，并明确标为 `abc_human_default` 和未验证迁移。其绝对尺度是相对量，不能混入实测 Hi-C；只能用于 research，不能当作已验证的家养动物参数。所有情况都保留实测活性要求，不恢复仅基因组预测。
+### 先验拟合和跨组织使用
 
-## 五、多个启动子和可选分配项
+`pace fit-prior --cooler ...` 从距离分箱均值拟合衰减，所有可测 bin 对的零计数也进入均值。默认拟合下限为矩阵分辨率，因此 10–25 kb 数据无需沿用 5 kb 下限。全零分箱不进入对数回归，但保留在报告中。保留染色体可用于检查接触衰减拟合，不能替代调控联系的功能验证。
 
-```math
-B(E,G)=\frac{\overline C(E,G)}{\sum_{H\in\mathcal G(E)}\overline C(E,H)}.
-```
+先验与实测接触混用时，尺度、归一化、分辨率、平衡方式及窗口必须一致。其他组织先验默认拒绝；设置 `contact.allow_cross_context_prior: true` 后，可使用同物种、同组装、同目标层级的其他组织先验。保留来源组织、记录目标组织，并标注未经目标背景验证的迁移；`validated` 模式不接受这种迁移。仅修改组织名或尺度名不能完成校准。
 
-相同物理 TSS 先去重；不同 TSS 如果落在同一个实测 bin，可以复用同一元件、同一样本的可用接触查询，不增加重复数。保留各 TSS 的生物学身份和固定权重，另报告 `n_contact_bins`。距离先验使用真实距离，同 bin 内的不同 TSS 不一定有相同先验。
+完全没有 Hi-C 时，可显式选择 `mode: prior_only` 和 `prior_preset: abc_human`，仍须有实测活性。该选项采用 [ABC 官方配置](https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/main/config/config.yaml)的 gamma=1.024238616787792，并令 a=1、d_ref=d_min=5000，使用相对尺度。它不是通用畜禽参数，仅供 research 模式下的明确对照，不能与实测接触表混合。幅度 a 在仅先验评分中抵消。
 
-可通过 `pace prepare-promoter-weights` 用 ATAC、DNase、H3K4me3 或 CAGE 启动子信号生成比例权重。这是实验信号支持的代理权重，不自动等同于真实启动子使用率。所有计划 TSS 均需有测量；全零基因默认报错，只有明确选择时才退回等权。基因总 TPM 不能推断 TSS 使用比例。
-
-B 的数学作用确实包含接触指数变化和候选基因背景校正：Cbar×B^eta=Cbar^(1+eta)/(sum_H Cbar)^eta。它会受注释版本与候选基因集合影响，因此默认无验证数据时关闭。基准新增 contact_power_2，对照单纯把接触平方的效果；B 的独立增益需要在冻结注释、训练/测试分离后证明，不能凭公式宣称。
-
-## 六、缺失候选时的详细公式
+## 四、多 TSS
 
 ```math
-S_i=A_\star(i)\overline C(i,G)B(i,G)^{\eta_{\mathrm{used}}},\qquad
-\mathrm{PACE}_{i,\mathrm{conditional}}=\frac{S_i}{\sum_{j\in\mathcal E^{\mathrm{score}}(G)}S_j}.
+\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t).
 ```
 
-条件分数只在可用背景内归一化。默认主列为 NA，条件值在独立列中保留；显式设置 `scoring.partial_policy: conditional` 可以兼容旧的探索性用法，`score_scope` 仍会标记条件背景。
+相同物理 TSS 去重。同一实测 bin 内的不同 TSS 可复用相同元件、样本的接触查询，不增加重复数；按精确坐标计算的距离先验仍可能不同。默认要求全部正权重 TSS 的接触可用，缺一个则 Cbar 为 NA；零权重 TSS 不要求接触。
 
-如果各候选支持满足 L_i≤S_i≤U_i，则：
+`pace prepare-promoter-weights` 可按 ATAC、DNase、H3K4me3 或 CAGE 启动子实测信号生成比例权重。这些权重是启动子使用的代理量；基因 TPM 本身不能确定 TSS 使用比例。
+
+可选筛选始终使**同一基因的所有候选共用一套 TSS**：
+
+- `minimum_weight`：删除原始权重低于阈值的 TSS，默认 0。
+- `missing_policy: drop_missing`：某 TSS 对任一计划候选缺少可解析接触，就从该基因全部候选的接触汇总中删除。默认 `strict` 不删除。
+- 剩余原始权重总和须达到 `minimum_retained_weight`，默认 0.9；不足时该基因不评分。
+
+```math
+\pi_{\mathrm{used}}(t\mid G)=
+\frac{\pi(t\mid G)}{\sum_{u\in\mathcal T_{\mathrm{keep}}(G)}\pi(u\mid G)},
+\qquad t\in\mathcal T_{\mathrm{keep}}(G).
+```
+
+候选元件和启动子单元仍保留在原分母目录。`promoter_weights.tsv` 记录原始及实际权重、删除原因、缺失候选数和剩余权重。`tss_contact_scope=selected_tss_set` 表示分数针对筛选后的启动子定义，不能解释为恢复了被删除启动子的调控；敏感性区间也仅针对该定义。不同筛选结果不能直接作为完整生物学差异进行 `pace compare`。对于很稀疏的接触图，统一删除可能无法保留足够权重，此时应使用有依据的先验或保留默认 NA 结果。
+
+## 五、实验性跨基因分配
+
+```math
+B(E,G)=\frac{\overline C(E,G)}{\sum_{H\in\mathcal G(E)}\overline C(E,H)},\qquad
+\mathrm{PACE}_{\eta}(E,G)=
+\frac{A_\star(E)\overline C(E,G)B(E,G)^\eta}
+{\sum_{e\in\mathcal E(G)}A_\star(e)\overline C(e,G)B(e,G)^\eta}.
+```
+
+eta=0 时省略分配项及其数据要求，得到主公式。`allocation.eta: auto` 在没有合格独立功能标签时取零；显式非零 eta 属于实验性选择。eta 非零时，某元件任一候选目标基因的接触缺失都会使其 B 无法确定，不能静默删除该目标基因。
+
+Cbar×B^eta 等于 Cbar^(1+eta)/(sum_H Cbar)^eta，既增强接触差异，也受到候选基因密度和注释影响。目前不能视为已证实的生物学竞争规律。应在独立功能数据上与 eta=0 及 `contact_power_2` 对照比较，见[校准说明](eta_calibration.md)。
+
+## 六、分母缺失
+
+令 S=A_star×Cbar，或用户显式选择的实验性扩展支持，则：
+
+```math
+\mathrm{PACE}_{\mathrm{conditional}}(E,G)=
+\frac{S(E,G)}{\sum_{e\in\mathcal E^{\mathrm{score}}(G)}S(e,G)}.
+```
+
+`scoring.partial_policy: conditional` 可将条件分数也写入主列以兼容旧分析，但 `score_scope` 仍明确标注条件结果。默认 `withhold` 不这样做。例如已知支持为 2 和 1，条件分数为 2/3；若未测候选的实际支持是 97，完整分数仅为 0.02。
+
+给定非负支持范围 L_i <= S_i <= U_i：
 
 ```math
 \mathrm{PACE}_{i,\mathrm{lo}}=\frac{L_i}{L_i+\sum_{j\ne i}U_j},\qquad
 \mathrm{PACE}_{i,\mathrm{hi}}=\frac{U_i}{U_i+\sum_{j\ne i}L_j}.
 ```
 
-已解析支持的上下界相等。未知支持默认 [0,无穷)，不会被假定成零。可以通过 support_bounds.tsv 提供有独立依据的**最终支持值**上下界及 bound_source；这不会填补实测活性或使主分数变为完整。上界 NA 表示无界。
+已解析支持固定，未知支持默认 [0,infinity)。可用 `inputs.support_bounds` 提供有依据的上下界及来源，不会据此填补主分数。支持为 (2,1,未知) 时，第一个元件的完整份额范围为 [0,2/3]；未知支持约束为 [2,4] 后为 [2/7,2/5]。这是总支持为正条件下的敏感性范围，**不是置信区间**。全零总支持输出 NA；未知项间的相关性可能使区间偏保守。
 
-例如已知支持 2、1，另一个未知：第一个条件分数是 2/3，但完整背景下只能给 [0,2/3]。若外部依据将未知支持约束在 [2,4]，区间变为 [2/7,2/5]。没有依据时不能自动制造窄区间。
+## 七、候选集与其他组学
 
-这些是以支持范围假设为条件的**敏感性范围，不是统计置信区间**。候选间有依赖时可以偏保守。区间以总支持大于零为条件；全部可能支持均为零时返回 NA，唯一可能有支持的候选区间为 [1,1]，也不代表获得了生物学验证。
+网格只覆盖输入区域和必要启动子，不进行全基因组平铺。重复、重叠峰不会复制单元。过宽或噪声较多的输入区域仍会扩大分母，因此上游峰质量必须控制。`region_scores.tsv` 对区域包含的唯一单元求和，不重建分母；重叠区域不能再作为独立单元相加。该目录与 ABC 的峰顶窗口目录不同，不宜直接套用 ABC 的经验阈值。
 
-## 七、峰区域与其他组学
+RNA、其他组蛋白、CTCF 和甲基化默认作为注释，或用于独立分类器。相同基因表达权重同时乘入分子、分母会抵消；只在归一化后相乘则改变分数含义。
 
-一个峰可能跨多个唯一网格单元。`region_scores.tsv` 对同一来源、区域和基因的单元只加总一次，不创建第二套分母；重叠区域之间不能再作为独立元件求和。区域区间由单元区间保守加总，上界最多为 1。这种网格方法不等同于 ABC 以峰顶为中心的候选窗口。
-
-RNA、其他组蛋白、CTCF、WGBS/RRBS 仍有接口，默认作注释或独立验证的分类器特征；不任意乘入抑制系数或表达权重。软件改进能改善可追溯性和计算边界，是否提高生物学准确率仍需按[验证方案](ROBUSTNESS_VALIDATION.md)检验。
+参考：[Fulco 等，2019](https://doi.org/10.1038/s41588-019-0538-0)、[Nasser 等，2021](https://doi.org/10.1038/s41586-021-03446-x)、[ABC 官方方法](https://abc-enhancer-gene-prediction.readthedocs.io/en/stable/usage/methods.html)。人类基准结果不能代替畜禽独立验证。

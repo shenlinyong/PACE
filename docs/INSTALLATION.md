@@ -76,6 +76,6 @@ pace validate --config examples/measured/config.yaml
 pace run --config examples/measured/config.yaml --out results/measured_check
 ```
 
-After an authorized repository update, reinstall with `python -m pip install '.[io,ml]'` in the chosen environment, or rebuild the Docker image. Do not mix results from different versions without checking their measurement and comparison contracts.
+After an authorized repository update, reinstall with `python -m pip install '.[io,ml]'` in the chosen environment, or rebuild the Docker image. Do not mix results from different versions without checking their measurement and comparison compatibility checks.
 
 [Tutorial](TUTORIAL.md) · [Chinese manual](USER_GUIDE.zh-CN.md) · [Troubleshooting](TROUBLESHOOTING.md)

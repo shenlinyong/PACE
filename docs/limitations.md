@@ -1,15 +1,15 @@
 # Scope and limitations
 
-PACE is research software for relative regulatory support from measured activity and declared contact evidence. Software tests check calculations and input handling; they do not establish predictive accuracy for a livestock species, tissue, breed or experimental condition.
+PACE is research software for relative regulatory support from measured activity and specified contact evidence. Software tests check calculations and input handling; they do not establish predictive accuracy for a livestock species, tissue, breed or experimental condition.
 
 | Capability | Boundary |
 |---|---|
 | Activity | Requires measured ATAC, DNase or H3K27ac; no replacement of unavailable activity |
 | Candidate catalog | Supplied/experimental regions and trusted promoter annotations; completeness refers to this planned catalog |
 | Contact | Measured contacts or an explicitly supplied applicable distance prior; prior evidence is not an observed regulatory loop |
-| Contact shrinkage | Declared observed/prior point estimate and reliability source; no automatically fitted edge-wise posterior |
+| Contact shrinkage | Specified observed/prior point estimate and reliability source; no automatically fitted edge-wise posterior |
 | Multiple TSSs | Fixed distinct physical promoters and weights; incorrect annotations remain a limitation |
-| Replicates | Declared technical/biological/donor aggregation; no automatic batch correction or increase in independent sample size |
+| Replicates | Specified technical/biological/donor aggregation; no automatic batch correction or increase in independent sample size |
 | Additional omics | Named experimental annotations; optional separate classifier with its own validation |
 | Allocation | Grouped functional-label selection with zero fallback; final independent evaluation remains necessary |
 | Calibrated probability | Specific to supplied functional labels and sampling design; not universal causality |

@@ -72,15 +72,16 @@ animal_001_rep3  animal_001 H3K27ac     3                      1
 
 ### 2.2 其它组学放在哪里
 
-ATAC/DNase/H3K27ac 是主活性组合的候选层；Hi-C/Prom-Hi-C 是主接触证据。RNA-seq 进入 `expression.tsv`，甲基化进入 `methylation.tsv`，其它组蛋白和 CTCF 进入 `features.tsv` 或相应的准备接口。它们默认用于注释和可追溯性，只有在独立功能标签、明确特征契约和验证通过时才进入 ML 分析，不会被自动乘进 PACE 主公式。字段和示例见[多组学说明](MULTIOMICS.md)。
+ATAC/DNase/H3K27ac 是主活性组合的候选层；Hi-C/Prom-Hi-C 是主接触证据。RNA-seq 进入 `expression.tsv`，甲基化进入 `methylation.tsv`，其它组蛋白和 CTCF 进入 `features.tsv` 或相应的准备接口。它们默认用于注释和可追溯性，只有在独立功能标签、明确的特征定义和验证通过时才进入 ML 分析，不会被自动乘进 PACE 主公式。字段和示例见[多组学说明](MULTIOMICS.md)。
 
 ## 3. 总公式与阅读顺序
 
 ```math
-\mathrm{PACE}(E,G)=\frac{
-A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E(G)}
-A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}.
+\boxed{
+\mathrm{PACE}(E,G)=
+\frac{A_\star(E)\,\overline C(E,G)}
+{\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}
+}
 ```
 
 按三个步骤理解：先确定每个元件的活性，再确定它对该基因的综合接触，最后把它的支持除以该基因完整计划候选的支持总和；若存在缺失，主分数默认 NA，条件分数另列。
@@ -91,8 +92,6 @@ A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}.
 | e | 分母中逐个遍历的候选元件 |
 | A_star | 固定检测组合的合格实测活性 |
 | Cbar | 把同一个基因不同物理 TSS 的接触按固定权重汇总 |
-| B | 该元件对该基因的接触占其所有候选目标基因接触的份额 |
-| eta_used | 实际使用的可选分配参数；默认数值为 0，有合格功能证据才自动学习并验证 |
 | E(G) | 预先确定的完整候选背景；可用子集另用于条件分数 |
 
 以 ATAC+H3K27ac 为例，活性是两种合格信号的几何平均：
@@ -108,7 +107,7 @@ A_\star(E)=\sqrt{x_{\star,\mathrm{ATAC}}(E)\,x_{\star,\mathrm{H3K27ac}}(E)}.
 \widetilde C(E,t).
 ```
 
-这里 pi 是固定的 TSS 权重，Ctilde 是采用明确策略解析的接触。实测接触可用同尺度先验加伪计数；近对角可用匹配先验或有来源记录的邻近最大值。具体分支见完整数学说明。
+这里 pi 是同一基因所有候选共用的 TSS 权重，Ctilde 是采用明确策略解析的接触。实测接触可用同尺度先验加伪计数；近对角可用匹配先验或有来源记录的邻近最大值。具体分支见完整数学说明。活性伪计数、低权重 TSS 筛选和缺失 TSS 删除默认关闭；需要时按[稀疏数据设置](PRACTICAL_WORKFLOW.md)显式启用。原始及实际 TSS 权重写入 `promoter_weights.tsv`。B^eta 仅作为实验性扩展。
 
 [完整数学说明](FORMULA.zh-CN.md)给出总公式、完全展开式、接触策略、符号及零值/缺失规则。
 
@@ -256,11 +255,8 @@ pace init --catalog-dir prepared/catalog \
 以下是**真实项目配置模板**，需先准备所列文件；它不是仓库中开箱即用的示例。以一个鸡个体肝脏为例，保存为 `measured.yaml`：
 
 ```yaml
-schema_version: pace-1
 run_id: chicken_liver_animal1
-regime: measured
 execution_profile: research
-estimand: bulk_proxy
 target_level: individual
 context:
   species: chicken

@@ -1,8 +1,8 @@
 # Training and calibration
 
-Frozen-model inference never refits weights, scales, medians, quantiles or thresholds.
+Fixed-model inference never refits weights, scales, medians, quantiles or thresholds.
 Eta is the explicit exception: providing `--eta-labels` requests its fitting during a run;
-`--eta-model` instead reuses a frozen estimate. Example trained weights are synthetic. The optional human contact-shape preset is a separately labeled transferred reference, not a fitted livestock asset.
+`--eta-model` instead reuses a fixed estimate. Example trained weights are synthetic. The optional human contact-shape preset is a separately labeled transferred reference, not a fitted livestock asset.
 
 ## Continuous allocation eta
 
@@ -59,7 +59,7 @@ calibrate: true
 ```
 
 The YAML block is a template, not runnable until its paths and `feature_contract`
-are supplied. For a non-synthetic model the full feature contract is required.
+are supplied. For a non-synthetic model the full feature definition is required.
 Copy the mapping from a compatible scoring run's `ml_feature_contract.json` into
 training YAML; do not write a path string where a mapping is expected. For example:
 
@@ -74,10 +74,10 @@ PYTHON
 pace train --config classifier_with_contract.yaml --out models/classifier
 ```
 
-The contract includes activity panels/scales, contact resolution and normalization,
+The definition includes activity panels/scales, contact resolution and normalization,
 candidate definitions, target/estimand and auxiliary feature preprocessing.
 [The bundled training config](../examples/training/learning.yaml) demonstrates a
-complete synthetic contract.
+complete synthetic definition.
 
 Prepare one-to-one label mappings before assembling this table. Required columns:
 `element_id,gene_id,assayed_region_id,mapping_count,group_id,split,label_status,effect_direction,
@@ -91,13 +91,13 @@ significance and power rules; PACE does not invent those rules from a p value.
 Group, edge and perturbation-region identities cannot cross splits. Within training,
 connected repeated entities also stay together across tuning folds. Grouped tuning refits
 preprocessing inside each training fold; infeasible groups/classes cause an error. A single
-predeclared penalty pair permits research fitting without pretending cross-validation occurred.
+prespecified penalty pair permits research fitting without pretending cross-validation occurred.
 Core-missing edges are excluded; only extra features can be imputed. Training medians/IQR,
-missing indicators and removed all-missing columns are frozen in JSON. The objective is mean
+missing indicators and removed all-missing columns are fixed in JSON. The objective is mean
 sample-weighted logistic loss + lambda1·L1 + lambda2·L2²/2, with unpenalized intercept, implemented
 by proximal gradient. Convergence is reported. A base-only classifier is saved and evaluated.
 
-Optional sigmoid calibration uses the independent calibration split, with a declared 1e-6
+Optional sigmoid calibration uses the independent calibration split, with a specified 1e-6
 slope penalty for numerical stability. Without it, probability is NA and `pace_ml_score` is an
 uncalibrated classifier score. Neither is averaged with PACE. Real calibration probabilities
 remain specific to the recorded perturbation and candidate sampling design.
@@ -109,11 +109,11 @@ model: models/classifier
 features: results/measured/multiomics_features.tsv.gz
 ```
 
-Inference checks the complete feature contract, regime, evidence-source and context scope.
+Inference checks the complete feature definition, regime, evidence-source and context scope.
 Mismatches return out_of_scope with unavailable scores/probabilities. Old unbound models
 are research-ineligible; a demonstration-only legacy score is explicitly unverified.
 Synthetic probabilities, where present, are labelled synthetic_demonstration_only. Extra features must have unambiguous
-entity-qualified names, and repeated annotation measurements need declared aggregation before
+entity-qualified names, and repeated annotation measurements need specified aggregation before
 pivoting into a learning feature. Gene TPM is off by default; use it only as an explicit ablation.
 
 ## Held-out reports

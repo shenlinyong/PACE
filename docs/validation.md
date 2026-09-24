@@ -32,4 +32,4 @@ Inspect skipped optional IO tests and the [CI run for the exact commit](https://
 
 ## Biological acceptance
 
-Use independent functional perturbation labels suitable for the claim. Record candidate selection, sampling design, tissue and experiment. Do not treat input contact data or associations as independent functional truth. Separate fitting, selection and final evaluation; report coverage and unavailable tested positives. Comparisons across families, breeds or tissues require a split appropriate to that claim. See [manuscript scope](MANUSCRIPT_SCOPE.zh-CN.md).
+Use independent functional perturbation labels suitable for the claim. Record candidate selection, sampling design, tissue and experiment. Do not treat input contact data or associations as independent functional truth. Separate fitting, selection and final evaluation; report coverage and unavailable tested positives. Comparisons across families, breeds or tissues require a split appropriate to that claim. See [limitations](limitations.md).

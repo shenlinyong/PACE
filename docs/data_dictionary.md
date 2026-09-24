@@ -1,6 +1,6 @@
 # Input and output data dictionary
 
-Tables are UTF-8 TSV (optionally gzip) with headers. BED/internal intervals are 0-based half-open; tss0 is a 0-based position. Use NA for unavailable values and 0 for true measurements of zero. All coordinates and experimental metadata must use the declared assembly and context.
+Tables are UTF-8 TSV (optionally gzip) with headers. BED/internal intervals are 0-based half-open; tss0 is a 0-based position. Use NA for unavailable values and 0 for true measurements of zero. All coordinates and experimental metadata must use the specified assembly and context.
 
 ## Inputs
 
@@ -109,8 +109,8 @@ Optional bounds on final unnormalized support of unresolved edges. NA upper boun
 - measurement_status: observed, unmeasured, low_coverage, unmappable, invalid, not_applicable.
 - resolution_status: resolved, unresolved, invalid.
 - Activity evidence: observed or aggregate only. Imported measurements must identify the correct assay/sample and include unit, normalization_id and window_id.
-- Contact evidence: observed, aggregate, contact_prior, regularized or fused. Here fused refers solely to declared contact shrinkage between observed contacts and a distance prior.
-- Imported contacts require a resolution supplied by the table, matching raw contacts/prior or run configuration; scale alone is insufficient. Optional normalization_id, balancing and window_id must agree when declared.
+- Contact evidence: observed, aggregate, contact_prior, regularized or fused. Here fused refers solely to specified contact shrinkage between observed contacts and a distance prior.
+- Imported contacts require a resolution supplied by the table, matching raw contacts/prior or run configuration; scale alone is insufficient. Optional normalization_id, balancing and window_id must agree when specified.
 - Normalization status: complete, partial, zero_support, empty. Complete concerns the planned candidate set.
 - samples records identify donor, biological and technical repeats separately. Metadata checks do not replace batch correction.
 - Generic features should declare assay, unit, normalization_id and window_id; keep the same definitions during training and prediction.
@@ -132,3 +132,20 @@ Optional bounds on final unnormalized support of unresolved edges. NA upper boun
 | resolved_config.yaml / report.md | Reproducible configuration and concise interpretation |
 
 The classifier fields pace_ml_score and pace_ml_probability remain separate from pace_score. NA is preserved when inference is unavailable or out of scope. See [multiomics](MULTIOMICS.md), [parameters](parameters.md) and [formula](FORMULA.md).
+
+## Optional sparse-data settings and output fields
+
+`resolved_activity.tsv` preserves the measured `resolved_value`; `activity_pseudocount`
+records an optional offset used in `A_used`. Loading this table again does not apply
+the offset twice.
+
+`promoter_weights.tsv` retains all input TSS rows, `pi_original`, effective `pi`,
+`tss_selection_reason`, and `n_missing_candidate_contacts`. Score and gene-summary
+rows include `tss_retained_weight`, `tss_dropped_ids`, `tss_policy_status`, and
+`tss_contact_scope`. `selected_tss_set` refers to a user-selected promoter definition,
+not full recovery of the original annotation. `n_tss_used` counts positive effective
+weights; `n_tss` counts all original TSSs.
+
+Contacts using a prior also record `prior_source_context` and
+`prior_transfer_status`. The run manifest retains the source prior, target context,
+and original validation reports separately from validation applicable to the target.

@@ -74,8 +74,15 @@ def load_asset(path, cfg: dict, *, kind: str) -> dict:
         )
     if cfg["execution_profile"] == "demonstration" and not m["is_synthetic"]:
         raise PaceError("demonstration requires explicitly synthetic assets")
+    transferred = m["context_id"] != cfg["context"]["context_id"]
     for field, expected in {**cfg["context"], "target_level": cfg["target_level"]}.items():
         if m[field] != expected:
+            if (
+                field == "context_id"
+                and cfg["contact"].get("allow_cross_context_prior", False)
+                and cfg["execution_profile"] != "validated"
+            ):
+                continue
             raise PaceError(f"{kind} {field} mismatch: {m[field]!r} versus {expected!r}")
     if not isinstance(m["validation"], dict):
         raise PaceError("Asset validation must be a task/report mapping")
@@ -88,7 +95,7 @@ def load_asset(path, cfg: dict, *, kind: str) -> dict:
                 raise PaceError(
                     f"{task}: validated claim requires an existing report and matching sha256"
                 )
-            if report.get("context_id") != cfg["context"]["context_id"]:
+            if report.get("context_id") != m["context_id"]:
                 raise PaceError(f"{task}: validation report context mismatch")
     if cfg["execution_profile"] == "validated":
         required_task = "link_prediction"
@@ -96,6 +103,12 @@ def load_asset(path, cfg: dict, *, kind: str) -> dict:
             raise PaceError(f"validated profile requires {required_task} evidence for {kind}")
     m["asset_directory"] = str(manifest_path.parent.resolve())
     m["manifest_sha256"] = file_hash(manifest_path)
+    if transferred:
+        m["source_context_id"] = m["context_id"]
+        m["target_context_id"] = cfg["context"]["context_id"]
+        m["transfer_status"] = "cross_context_unvalidated"
+        m["source_validation"] = m["validation"]
+        m["validation"] = {}
     return m
 
 
@@ -118,7 +131,11 @@ def capabilities(cfg: dict) -> dict:
         try:
             m = load_asset(path, cfg, kind=kind)
             assets[kind] = {
-                "weights_status": "synthetic" if m["is_synthetic"] else "real",
+                "weights_status": "transferred_unvalidated"
+                if m.get("transfer_status")
+                else "synthetic"
+                if m["is_synthetic"]
+                else "real",
                 "model_id": m["model_id"],
                 "task_validation_status": m["validation"],
             }

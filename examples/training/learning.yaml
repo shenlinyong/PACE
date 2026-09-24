@@ -21,6 +21,7 @@ feature_contract:
   activity_panel:
   - ATAC
   - H3K27ac
+  activity_pseudocounts: {}
   activity_scales:
   - - ATAC
     - toy_signal
@@ -52,6 +53,11 @@ feature_contract:
     radius_bp: 5000000
     include_promoter_units: false
     promoter_weights: provided
+    promoter_selection:
+      weights: provided
+      minimum_weight: 0.0
+      missing_policy: strict
+      minimum_retained_weight: 0.9
   auxiliary_feature_policy:
     replicate_aggregation: equal_donor_mean
     assay_definitions:

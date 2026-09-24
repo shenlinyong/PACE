@@ -82,3 +82,17 @@ pace benchmark --config examples/analysis/benchmark.yaml --out results/benchmark
 ```
 
 这些示例中的数据是合成数据。所有 YAML 默认值见[参数手册](parameters.md)，完整真实数据流程见[中文说明](USER_GUIDE.zh-CN.md)。
+
+## Optional sparse-data controls
+
+`pace-livestock` is a lowercase alias of `pace`. No uppercase executable is installed.
+
+| Option | Meaning |
+|---|---|
+| --allow-cross-context-prior | Explicitly permit a same-species, same-assembly prior from another tissue |
+| --minimum-tss-weight | Filter TSSs by original weight, using one set per gene |
+| --missing-tss-policy strict or drop_missing | Keep all positive-weight TSSs, or remove those missing any planned contact |
+| --minimum-retained-tss-weight | Require this much original weight after filtering; default 0.9 |
+
+Set assay-specific offsets in YAML with `activity.pseudocounts`; they default to zero.
+For `fit-prior`, omitted `--min-distance` uses the matrix resolution.

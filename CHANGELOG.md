@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+
+- Add optional assay-specific activity pseudocounts without filling missing measurements.
+- Add gene-wide TSS filtering with a retained-weight threshold and original/effective weight output.
+- Allow explicit same-species, same-assembly contact-prior transfer between tissues; retain source context and clear target-validation claims.
+- Start cooler prior fits at the matrix resolution by default, including 10–25 kb maps.
+- Present activity × contact normalization as the main formula; document allocation as experimental.
+- Add the lowercase `pace-livestock` alias, remove a case-only duplicate documentation filename and update citation metadata.
+- Report incomplete genes as partial even when all measured supports are zero.
+- Remove review-draft documents and update the bilingual method and workflow documentation.
+
 ## 0.5.0
 
 - Withhold incomplete primary scores by default; report conditional scores and support sensitivity intervals.

@@ -1,4 +1,4 @@
-"""Strict YAML contracts and configuration-relative path resolution."""
+"""Validated YAML settings and configuration-relative paths."""
 
 from __future__ import annotations
 
@@ -53,6 +53,7 @@ DEFAULTS = {
         "missing_policy": "unresolved",
         "minimum_callable_fraction": 0.0,
         "replicate_aggregation": "equal_donor_mean",
+        "pseudocounts": {},
     },
     "contact": {
         "mode": "observed",
@@ -62,6 +63,7 @@ DEFAULTS = {
         "near_diagonal_policy": "prior_or_neighbor",
         "near_diagonal_bp": 0,
         "allow_prior_fallback": False,
+        "allow_cross_context_prior": False,
         "reliability": None,
         "reliability_source": None,
         "resolution": None,
@@ -73,7 +75,12 @@ DEFAULTS = {
         "pseudocount_strength": 1.0,
     },
     "scoring": {"partial_policy": "withhold"},
-    "promoters": {"weights": "provided"},
+    "promoters": {
+        "weights": "provided",
+        "minimum_weight": 0.0,
+        "missing_policy": "strict",
+        "minimum_retained_weight": 0.9,
+    },
     "allocation": {
         "eta": "auto",
         "missing_policy": "fixed_gene_set",
@@ -181,12 +188,25 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         ("contact", "pseudocount", {"auto", "none", "powerlaw"}),
         ("scoring", "partial_policy", {"withhold", "conditional"}),
         ("promoters", "weights", {"provided", "equal"}),
+        ("promoters", "missing_policy", {"strict", "drop_missing"}),
         ("multiomics", "mode", {"annotate", "ml"}),
         ("output", "format", {"tsv_gz"}),
     ]
     for section, key, values in choices:
         if cfg[section][key] not in values:
             raise PaceError(f"{section}.{key}: expected one of {sorted(values)}")
+    pseudocounts = cfg["activity"]["pseudocounts"]
+    strict_keys(pseudocounts, panel, "activity.pseudocounts")
+    cfg["activity"]["pseudocounts"] = {
+        assay: number(value, f"activity.pseudocounts.{assay}", minimum=0)
+        for assay, value in pseudocounts.items()
+    }
+    for key in ("minimum_weight", "minimum_retained_weight"):
+        cfg["promoters"][key] = number(
+            cfg["promoters"][key], f"promoters.{key}", minimum=0, maximum=1
+        )
+    if cfg["promoters"]["minimum_retained_weight"] == 0:
+        raise PaceError("promoters.minimum_retained_weight must be greater than zero")
     allocation = cfg["allocation"]
     if allocation["eta"] != "auto":
         allocation["eta"] = number(allocation["eta"], "allocation.eta", minimum=0, maximum=1)
@@ -278,6 +298,7 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
     for section, key in [
         ("catalog", "include_promoter_units"),
         ("contact", "allow_prior_fallback"),
+        ("contact", "allow_cross_context_prior"),
         ("output", "retain_all_candidates"),
         ("comparison", "full_delta_requires_complete"),
         ("comparison", "allow_conditional_intersection"),

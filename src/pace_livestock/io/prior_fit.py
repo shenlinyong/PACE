@@ -15,7 +15,7 @@ def cooler_distance_bins(
     uri,
     *,
     balanced=True,
-    min_distance=5000,
+    min_distance=None,
     max_distance=5_000_000,
     n_bins=30,
     test_chromosomes=(),
@@ -29,6 +29,7 @@ def cooler_distance_bins(
     if c.binsize is None or c.info.get("storage-mode") != "symmetric-upper":
         raise PaceError("Prior fitting requires fixed-size symmetric-upper cooler storage")
     resolution = int(c.binsize)
+    min_distance = resolution if min_distance is None else min_distance
     if min_distance < resolution or max_distance <= min_distance or n_bins < 2:
         raise PaceError(
             "Fit distances require resolution <= min_distance < max_distance and at least two bins"
@@ -179,7 +180,10 @@ def fit_cooler_command(args):
         "calibration_sources": [],
         "test_sources": [source] if args.test_chromosomes else [],
         "validation": {},
-        "fit_range": [args.min_distance, args.max_distance],
+        "fit_range": [
+            resolution if args.min_distance is None else args.min_distance,
+            args.max_distance,
+        ],
         "zero_pixel_policy": "all_callable_bin_opportunities_included",
     }
     for row in rows:

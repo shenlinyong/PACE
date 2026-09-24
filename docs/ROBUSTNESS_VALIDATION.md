@@ -30,7 +30,7 @@ Compare: PACE eta=0; no contact pseudocount; no near-diagonal correction; prior-
 
 ## Metrics and uncertainty
 
-Report average precision (AP, with its non-trapezoidal definition), precision–recall curves, recall at an independently selected precision target, and candidate/positive-label coverage. Because default PACE withholds incomplete primary scores, a higher AP among fewer available predictions is not sufficient. Report AP on a predeclared common evaluable set **and** abstention/coverage on all tested pairs. Show how many positives remain unscored and how coverage changes with depth.
+Report average precision (AP, with its non-trapezoidal definition), precision–recall curves, recall at an independently selected precision target, and candidate/positive-label coverage. Because default PACE withholds incomplete primary scores, a higher AP among fewer available predictions is not sufficient. Report AP on a prespecified common evaluable set **and** abstention/coverage on all tested pairs. Show how many positives remain unscored and how coverage changes with depth.
 
 Use paired bootstrap over independent gene/region groups, with the same sampled groups for every method. Chromosome holdout and the number of independent genes constrain precision; random edge bootstrap is not an independent biological replication. Report per-distance, promoter-count, gene-density and chromosome strata to expose confounding. Do not select a seed, cutoff or degradation level after inspecting final test performance.
 

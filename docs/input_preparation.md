@@ -8,7 +8,7 @@ names, normalization and quantitative windows consistent across all files.
 
 Keep one canonical table per evidence role, even when the source data arrive as many files. For example, merge the prepared rows from `animal_001_rep1_liver_ATAC.bw`, `animal_001_rep2_liver_ATAC.bw` and `animal_001_rep3_liver_ATAC.bw` into an activity table with one `sample_id` per replicate; do the same for contact, RNA-seq and methylation tables. Register the biological and technical replicate relationships in `samples.tsv` rather than encoding them only in filenames.
 
-Use `observed_activity.tsv` for the fixed primary panel (ATAC, DNase and/or H3K27ac), `observed_contacts.tsv` for Hi-C/Prom-Hi-C or a compatible contact assay, `expression.tsv` for RNA-seq, `methylation.tsv` for WGBS/RRBS counts, and `features.tsv` for additional histone marks or CTCF. Additional assays remain separately named evidence; they do not become extra factors in the PACE formula automatically. The [multi-omics guide](MULTIOMICS.md) explains the role and contract of each table.
+Use `observed_activity.tsv` for the fixed primary panel (ATAC, DNase and/or H3K27ac), `observed_contacts.tsv` for Hi-C/Prom-Hi-C or a compatible contact assay, `expression.tsv` for RNA-seq, `methylation.tsv` for WGBS/RRBS counts, and `features.tsv` for additional histone marks or CTCF. Additional assays remain separately named evidence; they do not become extra factors in the PACE formula automatically. The [multi-omics guide](MULTIOMICS.md) explains the role and definition of each table.
 
 ## Canonical catalog from BED and GTF
 
@@ -72,7 +72,7 @@ window label for a different promoter quantification protocol.
 The `kind: bed_features` preparation command (and Python `interval_features` adapter)
 extracts peak overlap and CTCF interval occupancy from BED sources; motif orientation requires an explicit strand-bearing motif table and `motif_strands: true`. Its output is
 annotation evidence, never an extra contact multiplier. Gene-level promoter features use fixed
-pi weights and report missing pi mass; they are not renormalized over observed promoters.
+pi weights by default. Optional gene-wide filtering and its retained-weight report are described in [the model](FORMULA.md#multiple-tsss).
 
 ## cool/mcool contact
 
@@ -92,7 +92,7 @@ normalization_id: hic_norm_protocol_1
 The pairs table contains `element_id,promoter_id,chrom,anchor0,tss0`. The unit anchor is
 floor((start+end−1)/2); TSS uses its exact base. The reader queries sparse bin rows and preserves
 shared bin-pair identifiers. Invalid balanced bins stay NA. Unstored pixels are zero only when
-explicitly declared and both bins are valid. Choose a matching resolution and state the scale;
+explicitly specified and both bins are valid. Choose a matching resolution and state the scale;
 raw counts and balanced values are not interchangeable. Near-diagonal handling is configured
 separately in the run. The adapter records same-bin neighbor maxima. A human reference contact shape is available only as an explicitly selected, unvalidated prior-only baseline. See [practical workflow](PRACTICAL_WORKFLOW.md) for direct cooler prior fitting.
 

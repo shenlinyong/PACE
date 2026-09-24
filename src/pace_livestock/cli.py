@@ -12,8 +12,8 @@ from .provenance import clean, output_policy
 from .run_options import add_run_options, config_from_args
 
 COMMANDS = {
-    "run": "Compute PACE from measured activity and declared contact evidence",
-    "validate": "Validate input tables, scope and scientific input contracts",
+    "run": "Compute PACE from measured activity and contact evidence",
+    "validate": "Check input tables, measurement compatibility and scoring settings",
     "capabilities": "Inspect available contact assets and validation scope",
     "prepare": "Convert genomic annotations and experimental tracks into standard tables",
     "fit-eta": "Learn the optional allocation exponent from independent functional labels",
@@ -223,7 +223,7 @@ def custom_commands(sub):
     p.add_argument("--config")
     p.add_argument("--cooler", help="cool file or mcool::/resolutions/N URI")
     p.add_argument("--balanced", action=argparse.BooleanOptionalAction, default=True)
-    p.add_argument("--min-distance", type=int, default=5000)
+    p.add_argument("--min-distance", type=int, help="Default: one contact bin")
     p.add_argument("--max-distance", type=int, default=5_000_000)
     p.add_argument("--distance-bins", type=int, default=30)
     p.add_argument("--reference-distance", type=int, default=5000)

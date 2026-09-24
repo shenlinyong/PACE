@@ -61,13 +61,13 @@ def audit(root: Path) -> list[str]:
         issues.append("FORMULA.md: authoritative total equation missing")
     else:
         expected = total.group(0)
-        for name in ("README.md", "README.zh-CN.md", "PACE_livestock_model.md"):
+        for name in ("README.md", "docs/FORMULA.zh-CN.md"):
             if expected not in (root / name).read_text(encoding="utf-8"):
                 issues.append(f"{name}: total equation differs from FORMULA.md")
         if "\\sum_{e\\in\\mathcal E(G)}" not in expected:
             issues.append("FORMULA.md: full-candidate denominator missing")
-        if "\\eta_{\\mathrm{used}}" not in expected:
-            issues.append("FORMULA.md: actual allocation exponent missing")
+        if "\\eta" in expected or "B(E,G)" in expected:
+            issues.append("FORMULA.md: allocation belongs in the experimental extension")
     reference = (root / "docs/parameters.md").read_text(encoding="utf-8")
     block = re.search(r"```yaml\n(.*?)\n```", reference, flags=re.S)
     if block is None or yaml.safe_load(block.group(1)) != DEFAULTS:

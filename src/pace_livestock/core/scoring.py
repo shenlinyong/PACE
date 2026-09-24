@@ -19,8 +19,16 @@ def nonnegative(values) -> np.ndarray:
     return x
 
 
-def activity(values) -> float:
+def activity(values, pseudocounts=None) -> float:
     x = nonnegative(values)
+    if pseudocounts is not None:
+        p = nonnegative(pseudocounts)
+        if p.shape != x.shape or not np.all(np.isfinite(p)):
+            raise PaceError("Activity pseudocounts must be finite and match the assay panel")
+        with np.errstate(over="ignore"):
+            x = x + p
+        if np.any(np.isinf(x)):
+            raise PaceError("Activity signal plus pseudocount exceeds the numeric range")
     if x.size == 0 or np.any(np.isnan(x)):
         return math.nan
     if np.any(x == 0):
@@ -148,11 +156,11 @@ def score(
         state = (
             "empty"
             if not valid
+            else "partial"
+            if len(valid) < len(indices)
             else "zero_support"
             if log_total == -math.inf
             else "complete"
-            if len(valid) == len(indices)
-            else "partial"
         )
         universe = digest(sorted(rows[i]["element_id"] for i in valid))
         summary = {

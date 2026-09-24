@@ -12,6 +12,7 @@ from .config import load_config
 from .core import activity, score, tss_contact
 from .errors import PaceError
 from .evidence.assets import builtin_contact_prior, capabilities, load_asset
+from .evidence.promoters import resolve_promoter_weights
 from .evidence.resolve import contact_measurement_contract, resolve_activity, resolve_contacts
 from .io.tables import write_table
 from .provenance import digest, environment, file_hash, output_directory, software_hash, write_json
@@ -52,6 +53,16 @@ def compute(cfg: dict):
         assets["contact_prior"] = builtin_contact_prior(cfg)
     resolved_a = resolve_activity(tables, cfg)
     resolved_c = resolve_contacts(tables, cfg, prior_asset=assets.get("contact_prior"))
+    prior_metadata = assets.get("contact_prior", {})
+    for row in resolved_c:
+        if row.get("prior_id"):
+            row["prior_source_context"] = prior_metadata.get(
+                "source_context_id", prior_metadata.get("context_id")
+            )
+            row["prior_transfer_status"] = prior_metadata.get("transfer_status", "matched_context")
+    tables["promoters"], promoter_summary = resolve_promoter_weights(tables, resolved_c, cfg)
+    for row in resolved_a:
+        row["activity_pseudocount"] = cfg["activity"]["pseudocounts"].get(row["assay"], 0.0)
     a_by_e, c_by_ep, gene_promoters = defaultdict(list), {}, defaultdict(list)
     for r in resolved_a:
         a_by_e[r["element_id"]].append(r)
@@ -66,6 +77,7 @@ def compute(cfg: dict):
         element, gene = edge["element_id"], edge["gene_id"]
         ar = a_by_e[element]
         ps = gene_promoters[gene]
+        promoter_info = promoter_summary[gene]
         cs = [c_by_ep[element, p["promoter_id"]] for p in ps]
         distance = min(abs(units[element]["anchor0"] - p["tss0"]) for p in ps)
         structural = sorted({r.get("structural_status", "not_assessed") for r in ar + cs})
@@ -83,14 +95,23 @@ def compute(cfg: dict):
             {
                 **edge,
                 **bounds.get((element, gene), {}),
-                "A_used": activity([r["resolved_value"] for r in ar]),
-                "Cbar": tss_contact([r["resolved_value"] for r in cs], [p["pi"] for p in ps]),
+                "A_used": activity(
+                    [r["resolved_value"] for r in ar],
+                    [r["activity_pseudocount"] for r in ar],
+                ),
+                "Cbar": tss_contact([r["resolved_value"] for r in cs], [p["pi"] for p in ps])
+                if promoter_info["tss_policy_status"] != "insufficient_retained_weight"
+                else math.nan,
+                **promoter_info,
                 "distance_bp": distance,
                 "n_tss": len(ps),
+                "n_tss_used": sum(p["pi"] > 0 for p in ps),
                 "n_contact_bins": len({(p["chrom"], p["tss0"] // cs[0]["resolution"]) for p in ps})
                 if cs[0].get("resolution")
                 else len(ps),
-                "reason": reason,
+                "reason": "insufficient_retained_tss_weight"
+                if promoter_info["tss_policy_status"] == "insufficient_retained_weight"
+                else reason,
                 "activity_sources": ";".join(sorted({r["evidence_type"] for r in ar})),
                 "contact_sources": ";".join(sorted({r["evidence_type"] for r in cs})),
                 "regime": cfg["regime"],
@@ -118,6 +139,7 @@ def compute(cfg: dict):
         "target_level": cfg["target_level"],
         "estimand": cfg["estimand"],
         "activity_panel": sorted(cfg["activity"]["panel"]),
+        "activity_pseudocounts": cfg["activity"]["pseudocounts"],
         "activity_scales": [list(row) for row in scale_contract],
         "contact_definition": {
             **contact_contract,
@@ -137,6 +159,7 @@ def compute(cfg: dict):
             "radius_bp": cfg["catalog"].get("candidate_radius_bp", 5_000_000),
             "include_promoter_units": cfg["catalog"]["include_promoter_units"],
             "promoter_weights": cfg["promoters"]["weights"],
+            "promoter_selection": cfg["promoters"],
         },
         "auxiliary_feature_policy": {
             "replicate_aggregation": cfg["activity"]["replicate_aggregation"],
@@ -188,6 +211,8 @@ def compute(cfg: dict):
     scores, summary = score(
         edges, eta=allocation["eta"], partial_policy=cfg["scoring"]["partial_policy"]
     )
+    for row in summary:
+        row.update(promoter_summary[row["gene_id"]])
     features, roles = multiomics_features(tables, scores, resolved_a, cfg)
     if cfg["multiomics"]["mode"] == "ml":
         if not cfg["multiomics"]["model_path"]:
@@ -230,6 +255,10 @@ def compute(cfg: dict):
         "n_partial_genes": sum(r["normalization_status"] == "partial" for r in summary),
         "score_bounds": "Sensitivity ranges conditional on support assumptions; not confidence intervals",
         "contact_processing": {
+            "prior_source_context": prior_metadata.get(
+                "source_context_id", prior_metadata.get("context_id")
+            ),
+            "prior_transfer_status": prior_metadata.get("transfer_status"),
             "pseudocount_policy": cfg["contact"]["pseudocount"],
             "compatible_prior_available": bool(assets.get("contact_prior")),
             "n_regularized": sum(r["evidence_type"] == "regularized" for r in resolved_c),
@@ -241,6 +270,17 @@ def compute(cfg: dict):
                 for r in resolved_c
             ),
         },
+        "promoter_processing": {
+            "settings": cfg["promoters"],
+            "n_filtered_genes": sum(
+                s["tss_policy_status"] == "filtered" for s in promoter_summary.values()
+            ),
+            "n_failed_genes": sum(
+                s["tss_policy_status"] == "insufficient_retained_weight"
+                for s in promoter_summary.values()
+            ),
+        },
+        "activity_pseudocounts": cfg["activity"]["pseudocounts"],
         "biological_validation": "not_assessed",
         "capabilities": capabilities(cfg),
         "interpretation": "PACE is a composition of regulatory support, not a causal probability or expression effect.",
@@ -252,6 +292,8 @@ def compute(cfg: dict):
         "target_level": cfg["target_level"],
         "context": cfg["context"],
         "panel": sorted(cfg["activity"]["panel"]),
+        "activity_pseudocounts": cfg["activity"]["pseudocounts"],
+        "promoter_selection": cfg["promoters"],
         "scales": scale_contract,
         "contact_scale": cfg["contact"]["scale"],
         "contact_measurement_contract": contact_contract,
@@ -305,6 +347,7 @@ def compute(cfg: dict):
         "region_scores": regional_scores(scores, tables["region_membership"]),
         "resolved_activity": resolved_a,
         "resolved_contacts": resolved_c,
+        "promoter_weights": tables["promoters"],
         "features": features,
         "evidence": evidence,
         "sources": sources,
@@ -325,6 +368,7 @@ def run(config_path, out):
             "region_scores",
             "resolved_activity",
             "resolved_contacts",
+            "promoter_weights",
             "evidence",
             "sources",
         ):
@@ -339,7 +383,7 @@ def run(config_path, out):
         )
         (dest / "report.md").write_text(
             f"# PACE run: {cfg['run_id']}\n\n"
-            f"Regime: {cfg['regime']}; profile: {cfg['execution_profile']}; estimand: bulk_proxy.\n\n"
+            f"Measured activity; profile: {cfg['execution_profile']}; target: {cfg['target_level']}.\n\n"
             f"Scorable candidates: {result['qc']['n_scoreable']} / {len(result['scores'])}. "
             "Partial normalization is conditional on the measurable subset.\n\n"
             "Scores are relative support shares. Changes in shares alone do not establish changes "

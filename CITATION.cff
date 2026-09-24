@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use PACE, cite this repository and the exact Git commit used."
 type: software
 title: PACE
-version: 0.2.1
+version: 0.6.0
 authors:
   - family-names: Shen
     given-names: Linyong
@@ -11,9 +11,9 @@ repository-code: https://github.com/shenlinyong/PACE
 url: https://github.com/shenlinyong/PACE
 license: MIT
 abstract: >-
-  Auditable activity-contact regulatory support for livestock research, with
-  measured, hybrid and genome-only evidence regimes, explicit missingness,
-  quantitative sequence adapters and common-denominator comparisons.
+  Enhancer-gene regulatory support from measured livestock activity and contact
+  data, with multiple promoters, explicit missing-data handling, distance priors
+  and comparisons on common candidate sets.
 keywords:
   - enhancer-gene regulation
   - livestock genomics

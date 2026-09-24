@@ -46,7 +46,7 @@ confidence interval is manufactured from a small number of animals.
 
 ## Functional-label benchmark
 
-When the run config supplies eta calibration labels or a frozen artifact, the benchmark
+When the run config supplies eta calibration labels or a fixed artifact, the benchmark
 adds `PACE_calibrated` alongside the endpoint baselines. It rejects functional evaluation
 labels sharing fitting genes, elements or groups. A fixed continuous exponent adds
 `PACE_fixed_eta`. Freeze eta before between-animal comparisons; separate refits can
@@ -65,7 +65,7 @@ thresholds: {}
 #     configuration: recorded_external_configuration
 ```
 
-Decision thresholds are omitted by default. If a threshold has been independently frozen
+Decision thresholds are omitted by default. If a threshold has been independently fixed
 from appropriate training/calibration data, map its method name to `value`, `source_split`
 and `source_id`; omit it when no such evidence exists. The benchmark never selects
 a deployment threshold using the test set. Labels use the [standard dictionary](data_dictionary.md)

@@ -47,6 +47,7 @@ activity:
   missing_policy: unresolved
   minimum_callable_fraction: 0.0
   replicate_aggregation: equal_donor_mean
+  pseudocounts: {}
 contact:
   mode: observed
   scale: depth_normalized_contact
@@ -55,6 +56,7 @@ contact:
   near_diagonal_policy: prior_or_neighbor
   near_diagonal_bp: 0
   allow_prior_fallback: false
+  allow_cross_context_prior: false
   reliability: null
   reliability_source: null
   resolution: null
@@ -68,6 +70,9 @@ scoring:
   partial_policy: withhold
 promoters:
   weights: provided
+  minimum_weight: 0.0
+  missing_policy: strict
+  minimum_retained_weight: 0.9
 allocation:
   eta: auto
   missing_policy: fixed_gene_set
@@ -102,15 +107,23 @@ seed: 17
 | target_level | individual requires one donor; population_mean aggregates donors equally |
 | activity.panel | Fixed measured assay set; no automatic per-element deletion of missing layers |
 | minimum_callable_fraction | Minimum usable track coverage, not a multiplier of activity |
-| catalog.profile | canonical_grid uses the declared width and offset; provided_regions uses supplied non-overlapping regions |
+| catalog.profile | canonical_grid uses the specified width and offset; provided_regions uses supplied non-overlapping regions |
 | include_promoter_units | Include eligible promoter units in the planned denominator; do not drop them silently |
 | contact.mode | observed, prior_only or shrinkage; activity remains measured in every case |
 | contact.reliability | Explicit observed-contact weight for shrinkage; needs reliability_source |
-| near_diagonal_policy | Use a supplied compatible prior or leave the contact unresolved |
+| near_diagonal_policy | Use a matching prior, or recorded neighbor maximum for same-bin contacts; otherwise NA |
 | promoters.weights | Provided fixed weights or explicit equal weights over distinct physical TSSs |
 | allocation.eta | auto defaults to zero without eligible validation; fixed [0,1] values are explicit sensitivity settings |
-| allocation labels/model | Use functional labels or a frozen calibrator, not both |
+| allocation labels/model | Use functional labels or a saved calibrator, not both |
 | multiomics.mode | annotate by default; ml requires an applicable independently trained model |
 | comparison | Recompute common denominators; partial comparisons remain conditional |
 
 No minimum sample-count setting by itself establishes adequate statistical power. Preserve the actual learned parameters, scientific context and source commit with the analysis. See [CLI](cli.md), [labels](eta_calibration.md) and [inputs](data_dictionary.md).
+
+| Optional setting | Behavior |
+|---|---|
+| activity.pseudocounts | Per-assay nonnegative offsets after aggregation; default empty; never fill NA |
+| promoters.minimum_weight | Filter original TSS weights below this threshold, once per gene |
+| promoters.missing_policy | strict by default; drop_missing uses one retained TSS set for all candidates of a gene |
+| promoters.minimum_retained_weight | Minimum retained original TSS weight; default 0.9; insufficient genes remain unscoreable |
+| contact.allow_cross_context_prior | Explicit same-species, same-assembly tissue transfer; default false; cannot establish target validation |

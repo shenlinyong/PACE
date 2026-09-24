@@ -51,6 +51,10 @@ VALUE_OPTIONS = {
     "contact_reliability": ("contact", "reliability"),
     "reliability_source": ("contact", "reliability_source"),
     "allow_prior_fallback": ("contact", "allow_prior_fallback"),
+    "allow_cross_context_prior": ("contact", "allow_cross_context_prior"),
+    "minimum_tss_weight": ("promoters", "minimum_weight"),
+    "missing_tss_policy": ("promoters", "missing_policy"),
+    "minimum_retained_tss_weight": ("promoters", "minimum_retained_weight"),
     "prior_preset": ("contact", "prior_preset"),
     "pseudocount": ("contact", "pseudocount"),
     "partial_policy": ("scoring", "partial_policy"),
@@ -142,6 +146,15 @@ def add_run_options(
     )
     model.add_argument("--pseudocount", choices=["auto", "none", "powerlaw"])
     model.add_argument("--partial-policy", choices=["withhold", "conditional"])
+    model.add_argument("--minimum-tss-weight", type=float)
+    model.add_argument("--missing-tss-policy", choices=["strict", "drop_missing"])
+    model.add_argument("--minimum-retained-tss-weight", type=float)
+    model.add_argument(
+        "--allow-cross-context-prior",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Use a same-species, same-assembly prior from another tissue; records the transfer",
+    )
     model.add_argument("--contact-scale")
     model.add_argument(
         "--contact-resolution",

@@ -1,147 +1,149 @@
-# PACE formulas and interpretation
+# PACE model
 
-[中文公式](FORMULA.zh-CN.md) · [Practical preparation](PRACTICAL_WORKFLOW.md) · [Parameters](parameters.md)
+[中文公式](FORMULA.zh-CN.md) · [Data preparation](PRACTICAL_WORKFLOW.md) · [Settings](parameters.md)
 
-PACE requires measured ATAC, DNase or H3K27ac activity. Its primary output is a relative support share within a fixed candidate universe, not a causal probability, a gene-expression fraction, or a calibrated score comparable across all genes.
+PACE uses measured activity and promoter-contact evidence to rank candidate regulatory elements for each gene. Scores are relative support shares, not causal probabilities or fractions of gene expression.
 
-## Total formula
+## Main formula
 
 ```math
 \boxed{
 \mathrm{PACE}(E,G)=
-\frac{A_\star(E)\,\overline C(E,G)\,[B(E,G)]^{\eta_{\mathrm{used}}}}
-{\displaystyle\sum_{e\in\mathcal E(G)}
- A_\star(e)\,\overline C(e,G)\,[B(e,G)]^{\eta_{\mathrm{used}}}}
+\frac{A_\star(E)\,\overline C(E,G)}
+{\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}
 }
 ```
 
-The denominator includes the **full planned candidate set** E(G). By default, the software publishes `pace_score` only when all planned supports are resolved and the total is positive. Unresolved candidates are retained. For an incomplete gene, `pace_score` is NA; the separate `pace_score_conditional` describes the available subset. This prevents incomplete-background scores from masquerading as full-background scores. Complete still means the planned catalog, not every biological enhancer.
+The denominator contains the **complete planned candidate set** E(G), including promoter units by default. A positive, fully resolved denominator is required for `pace_score`. If a candidate is unresolved, the primary score is NA and the available-subset score is reported separately as `pace_score_conditional`. Complete refers to the input catalog, not every biological enhancer.
 
-| Symbol | Meaning | Input/output |
+| Symbol | Meaning | Input or output |
 |---|---|---|
-| E, G | Current scoring unit and target gene | element_id, gene_id |
-| e | Each planned candidate for G | candidates.tsv |
+| E, G | Current element and target gene | element_id, gene_id |
+| e, E(G) | One candidate and the complete candidate set for G | candidates.tsv |
 | M, m | Fixed assay panel and one assay | activity.panel |
-| x_obs,m | Qualified normalized experimental signal after replicate aggregation | resolved_activity.tsv |
-| A_star | Equal geometric mean of the fixed assay panel | A_used |
+| x_m(E) | Measured signal after replicate aggregation | resolved_activity.tsv |
+| A_star(E) | Geometric mean activity | A_used |
 | T(G), t | Distinct physical TSSs and one TSS | promoters.tsv |
-| pi(t given G) | Frozen promoter weights summing to one per gene | pi |
-| Ctilde | Contact after the declared correction/prior policy | resolved_contacts.tsv |
-| Cbar | Sum of pi times Ctilde over promoters | Cbar |
-| G(E), H | Fixed candidate-gene set for an element and one gene | candidates.tsv |
-| B | Cbar divided by its sum over G(E) | B |
-| eta_used | Actual optional allocation exponent | eta_calibration.json |
-| E_score(G) | Subset whose support can be resolved | scoreable |
-
-## Fully expanded formula
-
-```math
-\mathrm{PACE}(E,G)=
-\frac{
-\left[\prod_{m\in\mathcal M}x_{\mathrm{obs},m}(E)\right]^{1/|\mathcal M|}
-\left[\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t)\right]
-\left[
-\frac{\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t)}
-{\sum_{H\in\mathcal G(E)}\sum_{u\in\mathcal T(H)}\pi(u\mid H)\widetilde C(E,u)}
-\right]^{\eta_{\mathrm{used}}}
-}{
-\displaystyle\sum_{e\in\mathcal E(G)}
-\left[\prod_{m\in\mathcal M}x_{\mathrm{obs},m}(e)\right]^{1/|\mathcal M|}
-\left[\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(e,t)\right]
-\left[
-\frac{\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(e,t)}
-{\sum_{H\in\mathcal G(e)}\sum_{u\in\mathcal T(H)}\pi(u\mid H)\widetilde C(e,u)}
-\right]^{\eta_{\mathrm{used}}}
-}.
-```
-
-This expression uses the same resolved-contact function in every numerator and denominator term. At eta=0, the entire allocation factor is omitted, including its data requirements.
+| pi(t given G) | TSS weight; sums to one per gene | promoter_weights.tsv |
+| Ctilde(E,t) | Processed contact to one TSS | resolved_contacts.tsv |
+| Cbar(E,G) | Weighted contact over the selected TSSs | Cbar |
 
 ## Measured activity
 
 ```math
-A_\star(E)=\left[\prod_{m\in\mathcal M}x_{\mathrm{obs},m}(E)\right]^{1/|\mathcal M|}.
+A_\star(E)=\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}.
 ```
 
-Panels: ATAC, DNase, H3K27ac, ATAC+H3K27ac, DNase+H3K27ac. A missing required assay gives NA; a measured zero remains zero. A panel cannot change per element. First average normalized technical replicates within biological replicates, then biological replicates within donors, then donors equally. `individual` requires one donor; `population_mean` explicitly pools donors.
+Supported panels are ATAC, DNase, H3K27ac, ATAC+H3K27ac and DNase+H3K27ac. The panel is fixed across elements. A missing required assay gives NA; a measured zero gives zero activity by default. Technical replicates are averaged within biological replicates, biological replicates within donors, and donors equally. Signals must be normalized comparably before averaging. `individual` requires one donor; `population_mean` pools donors explicitly.
 
-For raw window counts, `pace normalize-activity` implements count × 10^6 / filtered-library-size / window-length. Already normalized bigWigs must not be normalized a second time. Library-size correction is not batch correction; animal, sex, age, tissue and protocol remain part of study design.
+Multiplying every element's signal for assay m by the same positive constant multiplies all activities by a common factor. It cancels in a gene's normalized score. This does not remove differences in signal-to-noise, measurement windows, missingness or replicate-specific scaling.
 
-## Contact: prior, near diagonal and sparse counts
+For shallow measurements, users may set an assay-specific nonnegative pseudocount:
+
+```math
+A_{\star,\epsilon}(E)=
+\left[\prod_{m\in\mathcal M}(x_m(E)+\epsilon_m)\right]^{1/|\mathcal M|}.
+```
+
+`activity.pseudocounts` defaults to `{}` (all epsilon values zero). Pseudocounts are in the units of the normalized assay signal and are applied after replicate aggregation. Raw resolved measurements are preserved; `activity_pseudocount` records the addition. NA remains NA. Rescaling an assay preserves scores only if its pseudocount is rescaled too. A fixed positive offset can increase background support; choose it independently of test outcomes and report sensitivity to zero.
+
+`pace normalize-activity` converts raw counts to count × 10^6 / filtered-library-size / window-length. Already normalized bigWigs must not be normalized twice. Library-size normalization is not batch correction.
+
+## Contact evidence
 
 ```math
 P(d)=a\left[\frac{\max(d,d_{\min})}{d_{\mathrm{ref}}}\right]^{-\gamma},\qquad
 p(d)=\kappa\min\{P(d),P(d_0)\}.
 ```
 
-For off-diagonal measured contacts, the regularized form is:
-
-```math
-\widetilde C(E,t)=C_{\mathrm{obs}}(E,t)+p(d(E,t)).
-```
-
-`pseudocount: auto` adds this term only in observed mode when a compatible supplied prior exists. Otherwise it leaves the measurement unchanged and records that no prior was available. `powerlaw` requires a compatible prior; `none` disables it. Defaults: kappa=1, d0=5000 bp. These are algorithm settings, not demonstrated livestock optima. Missing activity is never filled.
-
-| Situation | Resolved contact |
+| Situation | Contact used |
 |---|---|
-| Same bin or declared near-distance range, with compatible prior | P(d), without adding another pseudocount |
-| Same bin, no prior, default prior_or_neighbor policy | Recorded maximum of valid neighboring contacts from the cooler adapter, if available |
-| Near diagonal with no eligible replacement | NA; partial primary scores are withheld |
-| Off-diagonal finite observation, including a sampled zero | Observation plus declared pseudocount, or the unchanged observation |
-| Missing contact with allow_prior_fallback=true and matching prior | P(d), explicitly labeled as a prior |
-| Missing contact without allowed fallback | NA |
-| Explicit prior_only | P(d) |
-| Explicit shrinkage | r C_obs + (1-r) P(d); do not add a second pseudocount |
+| Same bin or configured near-distance range, compatible prior available | P(d) |
+| Same bin, no prior, default prior_or_neighbor policy | Maximum of valid neighboring contacts recorded by the cooler adapter |
+| Near diagonal with no eligible replacement | NA |
+| Finite off-diagonal observation, including zero | Observed contact plus the configured pseudocount |
+| Missing observation with allow_prior_fallback=true and compatible prior | P(d), labeled as a prior |
+| Missing observation without allowed fallback | NA |
+| Explicit prior_only mode | P(d) |
+| Explicit shrinkage mode | r C_obs + (1-r) P(d) |
 
-Near-diagonal handling precedes ordinary contact-mode selection. `unresolved` deliberately retains near-diagonal NA. `prior_or_unresolved` is the earlier strict option; the default `prior_or_neighbor` also accepts the adapter's recorded neighbor correction. Same-bin geometry depends on resolution and bin boundaries, not just a distance less than 5 kb. A neighborhood maximum is a local contact surrogate, not an experimentally validated promoter loop.
+Near-diagonal handling runs first. Same-bin membership depends on bin boundaries and resolution; it is not equivalent to every pair within a fixed ±5 kb distance. `near_diagonal_policy: unresolved` leaves these contacts unavailable. `prior_or_unresolved` permits only a matching prior. The default `prior_or_neighbor` also accepts the recorded neighbor correction. A local maximum is a contact surrogate, not a measured regulatory loop.
 
-Raw `observed_value`, `prior_value`, `pseudocount_value`, evidence type, prior identity and resolution reason remain in the output. `regularized` distinguishes additive prior regularization from observations and from convex shrinkage. Its reliability field is the retained observation coefficient (1), not a posterior confidence. A contact count of zero is a sampling observation, not proof of absent biological interaction. Invalid balanced bins remain unavailable unless an explicitly declared prior replaces them.
+`contact.pseudocount: auto` adds p(d) only to finite, off-diagonal observations in observed mode when a compatible prior is available. `powerlaw` requires that prior; `none` disables the addition. The defaults are kappa=1 and d0=5000 bp; these have not been optimized for livestock. Pseudocounts are not added again to near-diagonal replacements, prior-only contacts or shrinkage. Invalid balanced bins remain unavailable unless an explicitly allowed prior replaces them.
 
-A prior mixed with measured contacts must match scale, normalization, resolution, balancing and measurement windows. Fit one directly using `pace fit-prior --cooler ...`. All callable bin opportunities, including unstored zeros, enter distance-bin means. Zero-mean bins cannot enter the logarithmic regression and are reported. Optional held-out chromosomes diagnose contact-decay fitting; they are not functional validation.
+Outputs retain `observed_value`, `prior_value`, `pseudocount_value`, evidence type, prior identity and processing reason. A regularized contact is labeled `regularized`; its retained observation coefficient is not a confidence probability.
 
-An explicit `prior_preset: abc_human` with `mode: prior_only` uses the published human ABC gamma=1.024238616787792, with a=1 and d_ref=d_min=5000 on a **relative** scale. Amplitude cancels in this prior-only score. This is an unvalidated transferred baseline, not a fitted livestock prior; it is rejected in validated/demonstration profiles and cannot be mixed with measured contact tables. No measured-activity requirement is relaxed.
+### Fitting and transferring a prior
 
-## Multiple TSSs and optional allocation
+`pace fit-prior --cooler ...` estimates decay from distance-bin means, including all callable zero pixels. The default lower fitting distance is the matrix resolution. Zero-mean bins cannot enter the log fit and are reported. Optional held-out chromosomes diagnose contact-decay fit; they do not validate enhancer–gene predictions. A prior mixed with observed contacts must match their scale, normalization, resolution, balancing and measurement window.
+
+A different tissue normally fails the context check. `contact.allow_cross_context_prior: true` permits a prior from the same species and assembly, with the same target level. Its original context is retained, the target context is recorded, and the transfer is marked unvalidated. It cannot be used in the `validated` profile. Renaming a scale or tissue does not calibrate a prior; assess transferred decay on target data when possible.
+
+The optional `prior_preset: abc_human` requires `mode: prior_only` and the research profile. It uses the [ABC reference configuration](https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/main/config/config.yaml) gamma=1.024238616787792, with a=1 and d_ref=d_min=5000 on a relative scale. This amplitude cancels in prior-only scores. It is a transferred human baseline, not a fitted livestock parameter, and cannot be mixed with measured contact tables. Measured activity is still required.
+
+## Multiple TSSs
 
 ```math
-\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t),\qquad
-B(E,G)=\frac{\overline C(E,G)}{\sum_{H\in\mathcal G(E)}\overline C(E,H)}.
+\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t).
 ```
 
-Deduplicate identical physical TSSs. Distinct TSSs in the same measured bin can reuse an available query for the same element and sample, without adding experimental replicates. Biological TSS identities and summed weight remain intact; `n_contact_bins` reports spatial resolution. The exact-distance prior may differ between TSSs within one bin. Missing a genuinely distinct positive-weight contact still gives NA; weights are not renormalized after missingness.
+Identical physical TSSs are deduplicated. Distinct TSSs in the same measured bin may reuse the same element/sample contact query without adding replicates. The distance prior may differ at their exact coordinates. By default all positive-weight TSSs are required; missing one gives NA. Zero-weight TSSs do not require contact.
 
-`pace prepare-promoter-weights` can freeze proportional ATAC, DNase, H3K4me3 or CAGE promoter-signal weights. These are assay-supported proxies, not necessarily transcription initiation fractions. All planned TSSs need measured signals. All-zero genes error unless an explicit equal-weight policy is requested. Gene TPM cannot identify promoter usage.
+`pace prepare-promoter-weights` calculates proportional weights from measured ATAC, DNase, H3K4me3 or CAGE promoter signals. These weights are proxies for promoter usage. Gene TPM alone cannot determine TSS usage.
 
-The allocation term satisfies Cbar × B^eta = Cbar^(1+eta) / (sum_H Cbar(E,H))^eta. Thus annotation and candidate-gene density matter. It is an extension, not a proven biological competition law. Default auto falls back to zero without independent grouped functional evidence. Benchmarks include `contact_power_2` as a control for merely squaring contact, alongside eta=0 and eta=1; final comparisons need independently selected settings and frozen gene annotations.
+Optional filtering uses **one retained set per gene for every candidate**:
 
-## Missing denominator: conditional score and sensitivity bounds
+- `promoters.minimum_weight` removes TSSs below the original weight threshold (default 0).
+- `promoters.missing_policy: drop_missing` removes a TSS if any planned candidate lacks a resolved contact to it. The default `strict` keeps it.
+- The retained original weight must reach `minimum_retained_weight` (default 0.9); otherwise the gene is left unscoreable.
 
-Let S_i be the nonnegative support of one candidate. For available support:
+```math
+\pi_{\mathrm{used}}(t\mid G)=
+\frac{\pi(t\mid G)}{\sum_{u\in\mathcal T_{\mathrm{keep}}(G)}\pi(u\mid G)},
+\qquad t\in\mathcal T_{\mathrm{keep}}(G).
+```
+
+The original candidates and promoter units remain in the denominator catalog. `promoter_weights.tsv` records original/effective weights, dropped TSSs, missing-contact counts and retained weight. `tss_contact_scope=selected_tss_set` identifies scores for a filtered promoter definition. They do not recover regulation through excluded promoters. Bounds refer to this selected definition too. Different retained sets cannot be treated as full biological score changes in `pace compare`. With sparse maps, dropping every TSS touched by a missing contact may leave too little weight; use a justified contact prior or retain the default NA result.
+
+## Experimental target allocation
+
+The optional extension adds a cross-gene contact share:
+
+```math
+B(E,G)=\frac{\overline C(E,G)}{\sum_{H\in\mathcal G(E)}\overline C(E,H)},\qquad
+\mathrm{PACE}_{\eta}(E,G)=
+\frac{A_\star(E)\overline C(E,G)B(E,G)^\eta}
+{\sum_{e\in\mathcal E(G)}A_\star(e)\overline C(e,G)B(e,G)^\eta}.
+```
+
+At eta=0 the allocation term and its data requirements are omitted, giving the main formula. `allocation.eta: auto` uses zero without eligible independent functional labels. A fixed nonzero value is an explicit experimental choice. At nonzero eta, missing contact to any candidate target prevents resolving B for that element; candidate genes are not silently removed.
+
+Cbar × B^eta equals Cbar^(1+eta) / (sum_H Cbar)^eta. This strengthens contact contrasts and depends on gene annotation density. It is not an established biological competition law. Compare it against eta=0 and the separate `contact_power_2` control using held-out functional data. See [calibration](eta_calibration.md).
+
+## Incomplete denominators
+
+Writing S=A_star×Cbar (or its explicitly selected experimental extension),
 
 ```math
 \mathrm{PACE}_{\mathrm{conditional}}(E,G)=
 \frac{S(E,G)}{\sum_{e\in\mathcal E^{\mathrm{score}}(G)}S(e,G)}.
 ```
 
-`scoring.partial_policy: conditional` explicitly restores this quantity in the primary column for legacy exploration; `score_scope` still identifies it as conditional. The default is `withhold`. Cross-run comparisons recompute common denominators and separate conditional differences.
+`scoring.partial_policy: conditional` also writes this quantity into the primary column for compatibility; `score_scope` still marks it conditional. The default is `withhold`. An incomplete gene with observed supports 2 and 1 has a conditional first score of 2/3. An unseen support of 97 would make its full score 0.02.
 
-For support assumptions L_i <= S_i <= U_i:
+For nonnegative support ranges L_i <= S_i <= U_i:
 
 ```math
 \mathrm{PACE}_{i,\mathrm{lo}}=\frac{L_i}{L_i+\sum_{j\ne i}U_j},\qquad
 \mathrm{PACE}_{i,\mathrm{hi}}=\frac{U_i}{U_i+\sum_{j\ne i}L_j}.
 ```
 
-Resolved supports have exact bounds. Unresolved supports default to [0,infinity); optional `inputs.support_bounds` supplies justified bounds on final A×C×B^eta support with a `bound_source`. These bounds do not impute activity or make the primary score complete. Empty `support_upper` means unbounded. Results are `pace_score_lo/hi`; they are sensitivity/identification ranges conditional on positive total support, **not statistical confidence intervals**. Correlated unknown supports can make the rectangular bounds conservative. If no positive total is possible, return NA; a sole potentially positive candidate has [1,1], which establishes no biological validity.
+Resolved supports are fixed. Unresolved supports default to [0,infinity); `inputs.support_bounds` accepts justified limits and a `bound_source`. Bounds do not impute a primary score. For supports (2,1,unknown), the first full-score range is [0,2/3]; bounding the unknown support to [2,4] narrows it to [2/7,2/5]. These are sensitivity ranges conditional on positive total support, **not confidence intervals**. A zero total yields NA. Correlated unknowns can make these ranges conservative.
 
-Example: observed supports 2 and 1, with a third unknown support. The first conditional share is 2/3; its full-background range is [0,2/3]. If independent assumptions constrain the missing support to [2,4], the range becomes [2/7,2/5]. Without justified upper limits, the software does not invent a narrow range.
+## Candidates and other omics
 
-## Region summaries and other omics
+The grid covers supplied regions and required promoters, not the whole genome. Duplicate or overlapping peaks do not duplicate cells. Broad or noisy input regions still enlarge the denominator; peak quality remains an upstream responsibility. `region_scores.tsv` sums unique member cells without changing the scoring denominator; overlapping region scores must not be added as independent units. This catalog is not identical to ABC's peak-centered catalog, so published ABC thresholds should not be transferred directly.
 
-A peak can overlap several unique 500 bp grid cells. `region_scores.tsv` sums each member cell once for each source/region/gene; it does not create a new scoring denominator. Overlapping regions must not be summed together as independent elements. This does not reproduce ABC's summit-centered candidate construction. Regional interval sums are conservative bounds, capped at one.
+RNA, additional histone marks, CTCF and methylation are annotations or inputs to a separate classifier. Multiplying both numerator and denominator by the same gene-expression weight cancels algebraically. Multiplying only after normalization changes the meaning of the score.
 
-RNA, H3K4me1/3, H3K27me3, H3K9me3, CTCF and methylation retain annotation and independently trained classifier interfaces. No generic expression multiplier or inhibitory constant is added to the core formula. H3K4me3/ATAC promoter weights are an explicit separate preparation choice. Software checks do not establish increased biological accuracy.
-
-## Reference implementations
-
-The contact pseudocount follows the minimum of distance expectation and the expectation at a fixed cap distance in the [ABC predictor](https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/main/workflow/scripts/predictor.py). Defaults are documented in the [ABC configuration](https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/main/config/config.yaml). PACE does not claim byte-for-byte equivalence to ABC: candidate construction, TSS handling, fallback policies and missing-denominator reporting differ. See [ABC comparison](ABC_COMPARISON.md) and the [validation design](ROBUSTNESS_VALIDATION.md).
+References: [Fulco et al., 2019](https://doi.org/10.1038/s41588-019-0538-0), [Nasser et al., 2021](https://doi.org/10.1038/s41586-021-03446-x), [ABC methods](https://abc-enhancer-gene-prediction.readthedocs.io/en/stable/usage/methods.html). Human benchmark results do not establish livestock accuracy.

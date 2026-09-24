@@ -8,7 +8,8 @@ performance results. The numerical tests cite these same hand-derived quantities
 ATAC=4 and H3K27ac=9 give activity sqrt(4*9)=6. If H3K27ac is measured zero,
 activity is zero. If it is unavailable, activity is NA under the two-assay panel.
 Contacts (2,6) with promoter weights (3/4,1/4) give Cbar=3. A missing required TSS
-contact does not permit reweighting the remaining TSS to weight one.
+contact remains unavailable by default. An explicit gene-wide TSS filter may
+renormalize a retained set, subject to a minimum retained-weight check.
 
 ## Endpoint and continuous allocation
 
@@ -29,7 +30,7 @@ is exactly the sum of those supports. A completely zero vector produces NA score
 Two equally weighted measured replicates of E1 have assay pairs (9,1) and (1,9). Two equally weighted measured replicates of E2 each have (4,4).
 The bulk calculation first averages assays, producing activities 5 and 4. With
 identical contact and eta zero, E1 receives 5/9. Computing support separately per
-replicate and summing gives 3/7 instead; that is a different, unimplemented estimand.
+replicate and summing gives 3/7 instead; that is a different quantity.
 
 Supports (1,1,2) and (1,1,NA) give conditional E1 shares 1/4 and 1/2. The second
 primary score is withheld because its full denominator is unknown; its default

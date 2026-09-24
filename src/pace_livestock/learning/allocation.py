@@ -118,6 +118,7 @@ def calibration_scope(cfg: dict, tables: dict, assets: dict, scales: list) -> di
         "catalog": {k: v for k, v in cfg["catalog"].items() if not k.endswith("_path")},
         "panel": sorted(cfg["activity"]["panel"]),
         "activity_policy": cfg["activity"],
+        "promoter_selection": cfg["promoters"],
         "scales": scales,
         "contact_policy": {k: v for k, v in cfg["contact"].items() if not k.endswith("_path")},
         "contact_measurement_contract": contact_measurement_contract(
