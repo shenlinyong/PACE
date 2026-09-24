@@ -2,6 +2,10 @@
 
 ## 0.8.1
 
+- Enforce contact measurement and resolved activity scale consistency across chromosome chunks.
+- Honor fitted bin-center coordinates when applying contact priors in every contact mode, and record the coordinate policy.
+- Reject fractional binary evaluation labels before integer conversion.
+- Add six regression cases and a scoped source-review report in `docs/REVIEW_2026-09-24.md`.
 - Chromosomes missing from a bigWig or Hi-C file (chrM, unplaced contigs) are marked unmeasured instead of aborting the run; a complete chromosome-name mismatch is reported with both naming styles.
 - GTF files without `transcript` lines (gffread, UCSC) are read from their exon lines.
 - BED peaks named `.` or with repeated names keep distinct region IDs; peaks extending past a chromosome end are clipped and counted.
