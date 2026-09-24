@@ -46,18 +46,42 @@ pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \
 
 ## How it works
 
-For every candidate element–gene pair within 5 Mb, PACE computes:
+For every candidate element–gene pair within 5 Mb, PACE computes one score. First the whole formula, then the same formula with every part written out:
 
 ```math
 \boxed{
-\mathrm{PACE}(E,G)=
-\frac{A_\star(E)\,\overline C(E,G)}
-{\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}
+\begin{aligned}
+\mathrm{PACE}(E,G)
+&=\frac{A_\star(E)\,\overline C(E,G)}
+{\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}\\
+&=\frac{\left[\displaystyle\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}
+\displaystyle\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)}
+{\displaystyle\sum_{e\in\mathcal E(G)}
+\left[\displaystyle\prod_{m\in\mathcal M}x_m(e)\right]^{1/|\mathcal M|}
+\displaystyle\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(e,t)}
+\end{aligned}
 }
 ```
 
-- **Activity** is how open and active the element is, taken from ATAC-seq, DNase-seq and/or H3K27ac ChIP-seq. When you have two assays, PACE uses their geometric mean.
-- **Contact** is how often the element touches the gene's promoter in 3D, taken from Hi-C. If a gene has several distinct transcription start sites (TSSs), PACE measures contact to each one and combines them.
+What each part means:
+
+| Term | Meaning |
+|---|---|
+| $\mathrm{PACE}(E,G)$ | **The score of candidate element E for gene G**: the share of gene G's total modelled regulatory support that comes from element E. Between 0 and 1; the scores of all candidates of one gene add up to 1. |
+| $A_\star(E)$ | **Activity of element E**: how open and active this element is in the tissue. It is the geometric mean of the element's measured signals, for example $\sqrt{\text{ATAC}\times\text{H3K27ac}}$ with two assays, or the ATAC signal itself with one. |
+| $x_m(E)$ | **Signal of assay m at element E**: the measured value of one assay (ATAC, DNase or H3K27ac) averaged over the element, after averaging replicates. |
+| $\mathcal M$, $\lvert\mathcal M\rvert$ | **The assay panel and its size**: the assays used for activity, for example {ATAC, H3K27ac}, so $\lvert\mathcal M\rvert=2$. |
+| $\overline C(E,G)$ | **Contact between element E and gene G**: how often the element touches the gene's promoter in 3D, as a TSS-weighted average over the gene's distinct transcription start sites. |
+| $\widetilde C(E,t)$ | **Contact between element E and one TSS t**: the Hi-C contact frequency of the two positions. Depending on your data it is the measured Hi-C value (case A), a distance-decay prior (cases B and C), or a combination of both (shrinkage). See [No Hi-C? Low-resolution Hi-C?](#no-hi-c-low-resolution-hi-c). |
+| $\pi(t\mid G)$ | **Weight of TSS t within gene G**: how much this start site counts for the gene. Equal for all distinct TSSs by default; weights of one gene sum to 1. |
+| $\mathcal T(G)$ | **The distinct TSSs of gene G**: start sites of its transcripts, with transcripts that share a TSS counted once. |
+| $A_\star(E)\,\overline C(E,G)$ | **Regulatory support of E for G** (column `support`): activity times contact, the numerator. |
+| $\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)$ | **Total support of gene G** (column `denominator`): the support of every candidate element e of the gene added up, including E itself. |
+| $\mathcal E(G)$ | **The candidate elements of gene G**: all elements within the search radius (default 5 Mb) of any of its TSSs. |
+
+In words: an element scores high for a gene when it is active and in frequent contact with the gene's promoter, relative to all other candidate elements of that gene.
+
+Worked example: ATAC = 4 and H3K27ac = 9 give $A_\star(E)=\sqrt{4\times 9}=6$. With two TSSs weighted 3/4 and 1/4 and contacts 2 and 6, $\overline C(E,G)=\tfrac34\times2+\tfrac14\times6=3$, so the support is $6\times3=18$. If the gene's total support is 60, $\mathrm{PACE}(E,G)=18/60=0.3$.
 
 For a complete candidate set with positive total support, the scores for one gene add up to 1. A score of 0.3 means 30% of the modeled activity-weighted contact in that set, not 30% of gene expression. Incomplete genes have NA primary scores by default; available-subset scores are separate.
 
@@ -501,27 +525,15 @@ Steps 1–3 generate most of these for you. You normally only write `samples.tsv
 
 ## The formula in full
 
-The default model is the main equation above, with the complete planned candidate
-set in its denominator. For a fixed assay panel and distinct TSSs:
+The default model is exactly the boxed equation in [How it works](#how-it-works), with the complete planned candidate set of each gene in the denominator. This section describes how each part is obtained in practice and which options change it.
 
-```math
-A_\star(E)=\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|},\qquad
-\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\widetilde C(E,t).
-```
+**Activity $A_\star(E)$.** The assay panel is fixed for the whole run (`--panel`). If an element has measured zero in any assay, its activity is 0; if any assay is missing (NA), its activity is NA. PACE never falls back to a single assay for some elements, because that would mix two scales in one gene's total. Optional `--activity-pseudocount ASSAY VALUE` adds an offset per assay after replicate averaging; it never fills NA.
 
-ATAC=4 and H3K27ac=9 give activity 6. Ctilde includes the configured contact policy:
-observations, near-diagonal correction, optional additive regularization, prior-only
-contact or explicit shrinkage. A missing required TSS gives NA by default.
+**TSS contact $\widetilde C(E,t)$.** This is where the contact options act: measured observations, the near-diagonal correction for element and TSS in the same Hi-C bin, the optional distance-based pseudocount, prior-only contact, or explicit shrinkage. A missing contact for a required TSS gives NA by default.
 
-Optional `activity.pseudocounts` adds per-assay offsets after aggregation, without
-filling NA. `promoters.minimum_weight` and `promoters.missing_policy: drop_missing`
-select one shared TSS set per gene and renormalize its weights. At least
-`promoters.minimum_retained_weight` (default 0.9) of the original weight must remain;
-otherwise the gene stays unscoreable. Filtered scores describe only the selected
-TSS definition. Both options are off by default; see [worked settings](docs/ADVANCED.md#sparse-activity-and-alternative-tsss).
+**TSS weights $\pi(t\mid G)$.** Equal per distinct TSS by default (`--tss-weights equal`). `--minimum-tss-weight` and `--missing-tss-policy drop_missing` select one shared TSS set per gene and renormalize its weights. At least `--minimum-retained-tss-weight` (default 0.9) of the original weight must remain; otherwise the gene stays unscoreable. Filtered scores describe only the selected TSS definition. Both options are off by default; see [worked settings](docs/ADVANCED.md#sparse-activity-and-alternative-tsss).
 
-The experimental allocation extension multiplies support by B(E,G)^eta, where B is
-the element's contact share across its candidate genes. `eta=auto` uses zero without
+**Experimental extension.** The optional allocation term multiplies support by $B(E,G)^\eta$, where $B(E,G)$ is the share of element E's contact that goes to gene G among all genes it is a candidate for. `--eta auto` (the default) uses zero without
 eligible independent functional evidence. This extension is separate from the
 main formula; see [equations and calibration](docs/ADVANCED.md#experimental-target-allocation).
 
