@@ -52,11 +52,29 @@ Other data and helpers:
   init           Write empty input-table templates for a new project
   demo           Run the bundled synthetic example
 
-Examples:
-  pace demo -o demo_out
-  pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
-      --hic sample.mcool --hic-resolution 10000 \\
-      --species pig --assembly Sscrofa11.1 --tissue liver -o pig_liver
+Quick start - choose A, B or C by the Hi-C you have
+(peaks, a GTF and at least one ATAC/DNase/H3K27ac bigWig are always required):
+
+  A. Hi-C from this sample (best)
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
+         --hic sample.mcool --hic-resolution 10000 \\
+         --species pig --assembly Sscrofa11.1 --tissue liver -o A_out
+
+  B. No Hi-C for this sample, but any Hi-C of the same species and assembly
+     (another tissue, animal or public dataset): fit gamma once, then reuse it
+     pace fit-prior --cooler other.mcool::/resolutions/10000 \\
+         --species pig --assembly Sscrofa11.1 --tissue liver -o pig_prior
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw \\
+         --prior pig_prior \\
+         --species pig --assembly Sscrofa11.1 --tissue liver -o B_out
+
+  C. No Hi-C for this species at all: human ABC power law (gamma = 1.02),
+     labelled "unvalidated" in the outputs
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --abc-prior \\
+         --species pig --assembly Sscrofa11.1 --tissue liver -o C_out
+
+  No parameter values need to be set by hand in A, B or C.
+  Test the installation first:  pace demo -o demo_out
 
 Run 'pace COMMAND --help' for the options of a command.
 """
@@ -188,21 +206,32 @@ def add_context(p, *, required=True):
 
 
 PREDICT_EPILOG = """\
-examples:
-  # ATAC + H3K27ac with Hi-C (a distance power law is fitted on the same map
-  # for the pseudocount and for masked bins, as in ABC)
-  pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
-      --hic pig1.mcool --hic-resolution 10000 \\
-      --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
+Pick ONE contact source according to your data:
 
-  # ATAC only, no Hi-C: distance-decay prior fitted on another pig Hi-C map
-  pace predict -b peaks.bed -g genes.gtf --atac atac.bw --prior pig_prior \\
-      --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
+  A. --hic FILE    Hi-C of this sample (.cool/.mcool), best choice.
+                   The distance power law of the same map is fitted
+                   automatically and fills masked Hi-C bins.
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
+         --hic pig1.mcool --hic-resolution 10000 \\
+         --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
 
-  # No Hi-C at all: the human ABC power law (a documented, unvalidated baseline)
-  pace predict -b peaks.bed -g genes.gtf --atac atac.bw --abc-prior \\
-      --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
+  B. --prior DIR   No Hi-C for this sample, but Hi-C of the same species and
+                   assembly exists (other tissue/animal/public data).
+                   Fit its gamma once with 'pace fit-prior', then reuse it.
+     pace fit-prior --cooler other.mcool::/resolutions/10000 \\
+         --species pig --assembly Sscrofa11.1 --tissue liver -o pig_prior
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --prior pig_prior \\
+         --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
+     (prior from another tissue: fit with that tissue's name, then score with
+      'pace run --allow-cross-context-prior'; see the README)
 
+  C. --abc-prior   No Hi-C for this species at all. Uses the human ABC power
+                   law (gamma = 1.02); outputs are labelled
+                   unvalidated_for_target_context.
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --abc-prior \\
+         --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
+
+No parameter values need to be set by hand in any of the three.
 Several bigWigs for one assay are treated as replicates of the same animal.
 The output folder holds the scores (scores.tsv.gz) and the prepared tables
 (prepared/), so each step can be inspected or re-run with 'pace run'.

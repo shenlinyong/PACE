@@ -8,6 +8,8 @@ The input formats are species-independent and require a matching reference, anno
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
+There are three ways to run it, depending on the Hi-C you have: Hi-C of the sample (A), Hi-C of the same species (B), or none (C). See [Which case am I?](#which-case-am-i-three-data-situations). The example below is case A.
+
 ```bash
 git clone https://github.com/shenlinyong/PACE.git && cd PACE
 conda env create -f environment.yml && conda activate pace
@@ -164,31 +166,59 @@ Every file must use the **same genome assembly and the same chromosome names** (
 | Chromosome sizes (optional) | `-c/--chrom-sizes` | `chrom.sizes`, `genome.fa.fai` or any bigWig; default: the first bigWig |
 | Species, assembly, tissue | `--species --assembly --tissue` | Free text, recorded in every output |
 
-**ATAC + H3K27ac with Hi-C**
+### Which case am I? Three data situations
+
+Activity data (peaks + at least one ATAC, DNase or H3K27ac bigWig) is always required. What differs between users is **contact** (Hi-C) data. Pick the one row that matches you:
+
+| Case | Your Hi-C situation | Option | Contact used for scoring | Parameters to set by hand |
+|---|---|---|---|---|
+| **A** | Hi-C from the same animal/tissue you score | `--hic FILE` | Measured contacts; a power law fitted on the same map fills masked bins | None |
+| **B** | No Hi-C for this sample, but **any** Hi-C of the same species and genome assembly (another tissue, another animal, a public dataset) | `--prior DIR` from `pace fit-prior` | Distance power law with γ fitted on **your species' own** Hi-C | None (γ is fitted) |
+| **C** | No Hi-C for this species at all | `--abc-prior` | Human ABC power law, γ = 1.024 | None (γ is built in) |
+
+Prefer A over B over C. The contact prior is `contact(d) = a × (max(d, d_min)/d_ref)^(−γ)`: contact falls as a power of the element–TSS distance `d`. The amplitude `a` cancels in PACE scores, so only γ (how fast contact decays) changes the ranking. See [No Hi-C? Low-resolution Hi-C?](#no-hi-c-low-resolution-hi-c) for details.
+
+**Case A – Hi-C of this sample**
 
 ```bash
 pace predict \
   -b data/liver_peaks.bed -g data/Sus_scrofa.Sscrofa11.1.gtf.gz \
   --atac data/pig1_ATAC.bw --h3k27ac data/pig1_H3K27ac.bw \
   --hic data/pig1.mcool --hic-resolution 10000 \
-  --gene-types protein_coding \
   --species pig --assembly Sscrofa11.1 --tissue liver \
   -t 4 -o results/pig1_liver
 ```
 
-With `--hic`, PACE also fits the distance power law of that same map (as ABC does) and uses it for a small distance-based pseudocount and for element–TSS pairs that fall in masked (unbalanceable) Hi-C bins. Each such pair is labelled `contact_prior` in `resolved_contacts.tsv`. Add `--strict-contacts` to leave those pairs NA instead.
+`--hic-resolution` picks the bin size inside an `.mcool` file (a single-resolution `.cool` needs none). PACE also fits the distance power law of this same map, as ABC does, and uses it for a small distance-based pseudocount and for element–TSS pairs in masked (unbalanceable) Hi-C bins. Each such pair is labelled `contact_prior` in `resolved_contacts.tsv`. Add `--strict-contacts` to leave those pairs NA instead.
 
-**ATAC only, no Hi-C**
+**Case B – Hi-C of the same species, but not of this sample**
+
+Step 1, once per species/assembly: fit γ from the Hi-C you have. Name the tissue the Hi-C came from.
 
 ```bash
-# a prior fitted on any Hi-C map of the same species and assembly (see below)
-pace predict -b peaks.bed -g genes.gtf --atac atac.bw --prior pig_prior \
-  --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig1_liver
+pace fit-prior --cooler public/pig_liver.mcool::/resolutions/10000 \
+  --species pig --assembly Sscrofa11.1 --tissue liver -o priors/pig_liver
+```
 
-# no livestock Hi-C at all: the human ABC power law, an explicit unvalidated baseline
-pace predict -b peaks.bed -g genes.gtf --atac atac.bw --abc-prior \
+Step 2: score your samples with that prior.
+
+```bash
+pace predict -b data/liver_peaks.bed -g data/genes.gtf --atac data/pig2_ATAC.bw \
+  --prior priors/pig_liver \
+  --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig2_liver
+```
+
+The fitted γ is stored in `priors/pig_liver/manifest.json`; `distance_bins.tsv` holds the observed and fitted decay for a plot. Species and assembly must match exactly. A prior from **another tissue** (for example liver Hi-C used for muscle) is allowed but must be requested explicitly; build the tables step by step and add `--allow-cross-context-prior` to `pace run` (see [Transfer between tissues](docs/ADVANCED.md#transfer-between-tissues)). The output then records the transfer as unvalidated.
+
+**Case C – no Hi-C for this species**
+
+```bash
+pace predict -b data/liver_peaks.bed -g data/genes.gtf --atac data/pig1_ATAC.bw \
+  --abc-prior \
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig1_liver
 ```
+
+This uses the human ABC reference γ = 1.024238616787792. It was validated with CRISPR perturbations in human cells, not in livestock, so the outputs are labelled `unvalidated_for_target_context`. State this in your methods, and switch to case B as soon as any Hi-C of your species becomes available.
 
 Several bigWigs for one assay (`--atac a.bw b.bw`) are averaged as replicates of the same animal. Supported activity panels: ATAC, DNase or H3K27ac alone, ATAC + H3K27ac, or DNase + H3K27ac. Evaluate the chosen panel on independent data; adding a low-quality assay does not guarantee better rankings.
 
