@@ -46,12 +46,14 @@ pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \
 
 ## How it works
 
-For every candidate element–gene pair within 5 Mb, PACE computes one score. First the whole formula, then the same formula with every part written out:
+For every candidate element–gene pair within 5 Mb, PACE computes one score. Read the equation from left to right: first in words, then in symbols, then with every part written out.
 
 ```math
 \boxed{
 \begin{aligned}
 \mathrm{PACE}(E,G)
+&=\frac{\text{Activity of }E\;\times\;\text{Contact of }E\text{ with }G}
+{\displaystyle\sum_{\text{all candidate elements }e\text{ of }G}\text{Activity of }e\;\times\;\text{Contact of }e\text{ with }G}\\
 &=\frac{A_\star(E)\,\overline C(E,G)}
 {\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}\\
 &=\frac{\left[\displaystyle\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}
@@ -63,32 +65,30 @@ For every candidate element–gene pair within 5 Mb, PACE computes one score. Fi
 }
 ```
 
-What each part means:
+**The biological idea.** An enhancer can only regulate a gene if two things are true at the same time: the enhancer is switched on in this tissue (**activity**), and the folded chromosome brings it close to the gene's promoter (**contact**). Their product is the enhancer's regulatory *support* for the gene. A gene is usually surrounded by dozens to hundreds of candidate elements, so PACE asks: *of all the support this gene receives, what share comes from this element?* That share is the score, so the scores of all candidates of one gene add up to 1. A score of 0.3 means the element provides 30% of the modelled activity-weighted contact the gene receives; it is a ranking of likely regulators, not a proportion of expression.
 
-| Term | Meaning |
-|---|---|
-| $\mathrm{PACE}(E,G)$ | **The score of candidate element E for gene G**: the share of gene G's total modelled regulatory support that comes from element E. Between 0 and 1; the scores of all candidates of one gene add up to 1. |
-| $A_\star(E)$ | **Activity of element E**: how open and active this element is in the tissue. It is the geometric mean of the element's measured signals, for example $\sqrt{\text{ATAC}\times\text{H3K27ac}}$ with two assays, or the ATAC signal itself with one. |
-| $x_m(E)$ | **Signal of assay m at element E**: the measured value of one assay (ATAC, DNase or H3K27ac) averaged over the element, after averaging replicates. |
-| $\mathcal M$, $\lvert\mathcal M\rvert$ | **The assay panel and its size**: the assays used for activity, for example {ATAC, H3K27ac}, so $\lvert\mathcal M\rvert=2$. |
-| $\overline C(E,G)$ | **Contact between element E and gene G**: how often the element touches the gene's promoter in 3D, as a TSS-weighted average over the gene's distinct transcription start sites. |
-| $\widetilde C(E,t)$ | **Contact between element E and one TSS t**: the Hi-C contact frequency of the two positions. Depending on your data it is the measured Hi-C value (case A), a distance-decay prior (cases B and C), or a combination of both (shrinkage). See [No Hi-C? Low-resolution Hi-C?](#no-hi-c-low-resolution-hi-c). |
-| $\pi(t\mid G)$ | **Weight of TSS t within gene G**: how much this start site counts for the gene. Equal for all distinct TSSs by default; weights of one gene sum to 1. |
-| $\mathcal T(G)$ | **The distinct TSSs of gene G**: start sites of its transcripts, with transcripts that share a TSS counted once. |
-| $A_\star(E)\,\overline C(E,G)$ | **Regulatory support of E for G** (column `support`): activity times contact, the numerator. |
-| $\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)$ | **Total support of gene G** (column `denominator`): the support of every candidate element e of the gene added up, including E itself. |
-| $\mathcal E(G)$ | **The candidate elements of gene G**: all elements within the search radius (default 5 Mb) of any of its TSSs. |
+What each part of the equation means biologically, and which livestock data problem it addresses:
 
-In words: an element scores high for a gene when it is active and in frequent contact with the gene's promoter, relative to all other candidate elements of that gene.
+**$A_\star(E)$, activity of element E: is this element switched on in the tissue?**
+Open chromatin (ATAC-seq or DNase-seq) shows that transcription factors can reach the element; H3K27ac marks elements that are actively enhancing. With both, PACE takes the geometric mean, $\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}=\sqrt{\text{ATAC}\times\text{H3K27ac}}$, so an element must be both open and acetylated to score high; if either is zero the activity is zero. Here $x_m(E)$ is the signal of assay $m$ at the element, averaged over replicates, and $\mathcal M$ is the set of assays used.
+*Livestock problem addressed:* few pig, cattle or chicken tissues have the full ENCODE-style panel. PACE works with ATAC, DNase or H3K27ac alone, or one accessibility assay plus H3K27ac, and uses the same panel for every element of a run so that genes are never scored on mixed scales. Because every gene's score is a share, sequencing depth and library normalization cancel out; data from different labs need no common scale. Replicates are averaged within each animal first, so one animal sequenced twice never counts as two animals.
 
-Worked example: ATAC = 4 and H3K27ac = 9 give $A_\star(E)=\sqrt{4\times 9}=6$. With two TSSs weighted 3/4 and 1/4 and contacts 2 and 6, $\overline C(E,G)=\tfrac34\times2+\tfrac14\times6=3$, so the support is $6\times3=18$. If the gene's total support is 60, $\mathrm{PACE}(E,G)=18/60=0.3$.
+**$\overline C(E,G)$, contact of element E with gene G: does the 3D genome bring them together?**
+DNA loops bring distant enhancers next to promoters; the closer and more frequent the contact, the more likely regulation is. Many livestock genes are annotated with several transcription start sites, and an enhancer may touch one promoter more than another. PACE therefore averages the contact with each distinct start site $t$ of the gene, $\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)$, where $\mathcal T(G)$ are the gene's distinct TSSs and $\pi(t\mid G)$ is how much each counts (equal by default, summing to 1).
+*Livestock problem addressed:* livestock annotations often contain many predicted transcripts with uncertain start sites. Transcripts that share a TSS are counted once, so a gene is not weighted by how many transcript models the annotation happens to list.
 
-For a complete candidate set with positive total support, the scores for one gene add up to 1. A score of 0.3 means 30% of the modeled activity-weighted contact in that set, not 30% of gene expression. Incomplete genes have NA primary scores by default; available-subset scores are separate.
+**$\widetilde C(E,t)$, contact of element E with one start site t: how is contact measured when Hi-C is scarce?**
+This is the part that most often limits livestock studies, and PACE offers three routes (cases A, B, C in the [quick start](#which-case-am-i-three-data-situations)):
+- **Hi-C of the sample (A):** the measured contact frequency. Shallow or 10–25 kb maps leave bins masked or near-empty; PACE fills masked bins and adds a small pseudocount from the distance decay fitted on the same map, and replaces the unreliable self-contact of an element and TSS in the same bin by the neighbouring contacts.
+- **Hi-C of the same species only (B):** contact frequency falls with genomic distance roughly as a power law, $\widetilde C \propto d^{-\gamma}$. PACE fits $\gamma$ on any Hi-C of the species (another tissue, animal or public dataset) and uses it for samples without Hi-C.
+- **No Hi-C for the species (C):** the human ABC power law ($\gamma\approx1.02$), labelled as unvalidated in the outputs.
+Sparse maps can also be combined with the fitted decay per pair (shrinkage), trusting observed counts where coverage is high and the distance expectation where it is low.
 
-Two consequences worth knowing:
+**$\sum_{e\in\mathcal E(G)}$, the denominator: which elements compete for this gene?**
+$\mathcal E(G)$ is every candidate element within the search radius (default 5 Mb) of the gene's start sites, including the gene's own promoter and promoters of neighbouring genes. The denominator is the gene's total support. An element's score therefore depends on its neighbours: a gene with one strong enhancer gives it a high share, a gene with many active enhancers shares the credit.
+*Livestock problem addressed:* missing measurements are common in incomplete datasets. If any candidate of a gene cannot be measured, the total is unknown and PACE withholds that gene's score rather than inflating the others; measured zero and "not measured" (NA) are kept apart.
 
-- Multiplying a whole assay by a constant (for example, a different sequencing depth) cancels out within a gene. So ATAC and H3K27ac do not need to be on the same scale.
-- A score is a share, not an absolute strength. An element's score can go down simply because a neighbouring element got stronger.
+Worked example: ATAC = 4 and H3K27ac = 9 give activity $A_\star(E)=\sqrt{4\times 9}=6$. The gene has two start sites weighted 3/4 and 1/4, with contacts 2 and 6, so $\overline C(E,G)=\tfrac34\times2+\tfrac14\times6=3$ and the element's support is $6\times3=18$. If the gene's total support from all candidates is 60, $\mathrm{PACE}(E,G)=18/60=0.3$: this element supplies 30% of the gene's modelled regulatory input.
 
 ## Is PACE right for your data?
 
