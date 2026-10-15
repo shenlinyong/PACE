@@ -49,7 +49,9 @@ def check_predict(args):
         raise PaceError("Use ATAC or DNase as the accessibility assay, not both")
     if not (args.hic or args.prior or args.abc_prior):
         raise PaceError("No contact information. " + CONTACT_HELP)
-    if (args.ctcf or args.genome) and not args.hic:
+    if bool(args.ctcf) != bool(args.genome):
+        raise PaceError("The CTCF boundary constraint needs both --ctcf peaks and --genome FASTA")
+    if args.ctcf and not args.hic:
         raise PaceError(
             "--ctcf and --genome add CTCF domain boundaries whose effect is fitted on --hic; "
             "for --prior, give them to 'pace fit-prior'"
@@ -176,7 +178,7 @@ def predict(args):
                     "    fitting the distance decay of this Hi-C map"
                     + (
                         " and the CTCF boundary effect"
-                        if args.genome and not args.no_boundaries
+                        if args.ctcf and not args.no_boundaries
                         else ""
                     )
                 )

@@ -276,19 +276,17 @@ def fit_boundary_prior(
 
 
 def map_boundaries(args):
-    """Domain boundaries from CTCF: ChIP/CUT&Tag peaks with --ctcf, else the built-in motif.
+    """Domain boundaries from CTCF ChIP/CUT&Tag peaks, oriented by the built-in motif.
 
-    Both need the reference FASTA (--genome). Without it there are no boundaries and the
-    prior is distance only.
+    Both the peaks (--ctcf) and the reference FASTA (--genome) are needed; without them
+    there are no boundaries and the prior is distance only.
     """
-    from ..boundary_prior import ctcf_boundaries, motif_genome_boundaries
+    from ..boundary_prior import ctcf_boundaries
 
-    if args.ctcf and not args.genome:
-        raise PaceError("--ctcf needs --genome (FASTA) to orient the CTCF motifs")
+    if bool(args.ctcf) != bool(args.genome):
+        raise PaceError("The CTCF boundary constraint needs both --ctcf peaks and --genome FASTA")
     if args.ctcf:
         return ctcf_boundaries(args.ctcf, args.genome), "ctcf_chip_motif"
-    if args.genome:
-        return motif_genome_boundaries(args.genome), "ctcf_motif"
     return [], None
 
 

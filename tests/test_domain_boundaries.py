@@ -8,6 +8,7 @@ import pytest
 
 from pace_livestock.boundary_prior import CTCF_PFM, BoundaryIndex, contact_prior, ctcf_boundaries
 from pace_livestock.cli import main
+from pace_livestock.errors import PaceError
 from pace_livestock.io.tables import read_table
 
 RESOLUTION = 10_000
@@ -68,6 +69,10 @@ def domains_genome(tmp_path_factory):
     return root
 
 
+def ctcf(root):
+    return ["--ctcf", root / "ctcf.bed", "--genome", root / "genome.fa"]
+
+
 def fit(domains_cool, tmp_path, *extra):
     out = tmp_path / "prior"
     argv = ["fit-prior", "--cooler", domains_cool, "--no-balanced", "--max-distance", "2000000"]
@@ -76,13 +81,9 @@ def fit(domains_cool, tmp_path, *extra):
     return out, json.loads((out / "manifest.json").read_text())
 
 
-@pytest.mark.parametrize("source", ["ctcf_motif", "ctcf_chip_motif"])
-def test_ctcf_boundaries_and_beta_fitted_on_hic(domains_cool, domains_genome, tmp_path, source):
-    extra = ["--genome", domains_genome / "genome.fa"]
-    if source == "ctcf_chip_motif":
-        extra += ["--ctcf", domains_genome / "ctcf.bed"]
-    out, prior = fit(domains_cool, tmp_path, *extra)
-    assert prior["boundary_source"] == source
+def test_ctcf_boundaries_and_beta_fitted_on_hic(domains_cool, domains_genome, tmp_path):
+    out, prior = fit(domains_cool, tmp_path, *ctcf(domains_genome))
+    assert prior["boundary_source"] == "ctcf_chip_motif"
     positions = [int(r["position0"]) for r in read_table(out / "boundaries.tsv")]
     assert positions == [e * RESOLUTION for e in EDGES]
     # One full-strength boundary multiplies contact by DROP.
@@ -90,15 +91,25 @@ def test_ctcf_boundaries_and_beta_fitted_on_hic(domains_cool, domains_genome, tm
     assert prior["gamma"] == pytest.approx(1.0, rel=0.1)
 
 
-def test_without_genome_the_prior_is_distance_only(domains_cool, tmp_path):
+def test_without_ctcf_the_prior_is_distance_only(domains_cool, tmp_path):
     out, prior = fit(domains_cool, tmp_path)
     assert "beta" not in prior and not (out / "boundaries.tsv").exists()
 
 
+@pytest.mark.parametrize("option", ["--ctcf", "--genome"])
+def test_constraint_needs_both_peaks_and_genome(domains_genome, option):
+    from types import SimpleNamespace
+
+    from pace_livestock.io.prior_fit import map_boundaries
+
+    args = SimpleNamespace(ctcf=None, genome=None)
+    setattr(args, option[2:], domains_genome / "x")
+    with pytest.raises(PaceError, match="both --ctcf"):
+        map_boundaries(args)
+
+
 def test_no_boundaries_fits_distance_only(domains_cool, domains_genome, tmp_path):
-    out, prior = fit(
-        domains_cool, tmp_path, "--genome", domains_genome / "genome.fa", "--no-boundaries"
-    )
+    out, prior = fit(domains_cool, tmp_path, *ctcf(domains_genome), "--no-boundaries")
     assert "beta" not in prior and not (out / "boundaries.tsv").exists()
 
 
@@ -134,7 +145,7 @@ def test_fitted_boundary_prior_is_applied_when_scoring(domains_cool, domains_gen
     from pace_livestock.evidence.assets import load_asset
     from pace_livestock.evidence.resolve import load_boundaries
 
-    out, _ = fit(domains_cool, tmp_path, "--genome", domains_genome / "genome.fa")
+    out, _ = fit(domains_cool, tmp_path, *ctcf(domains_genome))
     cfg = load_config(
         None, overrides={"context": {"species": "pig", "assembly": "test", "context_id": "liver"}}
     )
@@ -143,29 +154,6 @@ def test_fitted_boundary_prior_is_applied_when_scoring(domains_cool, domains_gen
     within = contact_prior("chr1", 1_000_000, 1_400_000, prior, index)
     across = contact_prior("chr1", 1_300_000, 1_700_000, prior, index)
     assert across / within == pytest.approx(math.exp(-prior["beta"]), rel=0.05)
-
-
-def test_motif_threshold_matches_the_random_sequence_tail():
-    from pace_livestock.boundary_prior import _log_pwm, ctcf_pwm_rows, pwm_threshold
-
-    log_pwm = _log_pwm(ctcf_pwm_rows())
-    rng = np.random.default_rng(0)
-    seqs = rng.integers(0, 4, size=(200_000, len(log_pwm)))
-    scores = log_pwm[np.arange(len(log_pwm)), seqs].sum(axis=1)
-    threshold = pwm_threshold(log_pwm, 1e-3)
-    assert np.mean(scores >= threshold) == pytest.approx(1e-3, rel=0.3)
-
-
-@pytest.mark.parametrize("left,right,boundaries", [("-", "+", 1), ("+", "-", 0)])
-def test_builtin_motif_scan_without_ctcf_peaks(tmp_path, left, right, boundaries):
-    from pace_livestock.boundary_prior import motif_genome_boundaries
-
-    filler = "AT" * 500
-    sequence = filler + motif(left) + filler + motif(right) + filler
-    (tmp_path / "genome.fa").write_text(">c\n" + sequence + "\n")
-    rows = motif_genome_boundaries(tmp_path / "genome.fa")
-    assert len(rows) == boundaries
-    assert all(r["evidence_type"] == "ctcf_motif" for r in rows)
 
 
 def test_reference_accepts_iupac_ambiguity_codes(tmp_path):

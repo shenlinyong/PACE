@@ -339,17 +339,14 @@ def predict_parser(command):
 
 def add_boundary_sources(group):
     group.add_argument(
-        "--genome",
-        metavar="FASTA",
-        help="Uncompressed reference FASTA. Domain boundaries are placed between CTCF sites "
-        "found with the built-in CTCF motif (JASPAR MA0139.1), and their effect is fitted "
-        "on the Hi-C. Without it, contact depends on distance only",
-    )
-    group.add_argument(
         "--ctcf",
         metavar="BED",
-        help="CTCF ChIP-seq/CUT&Tag peaks (BED or narrowPeak): use the CTCF sites in these "
-        "peaks instead of the genome-wide motif scan; needs --genome",
+        help="CTCF ChIP-seq/CUT&Tag peaks (BED or narrowPeak). With --genome, domain "
+        "boundaries are placed between CTCF sites oriented by the built-in CTCF motif "
+        "(JASPAR MA0139.1) in each peak, and their effect is fitted on the Hi-C",
+    )
+    group.add_argument(
+        "--genome", metavar="FASTA", help="Uncompressed reference FASTA, used with --ctcf"
     )
 
 
