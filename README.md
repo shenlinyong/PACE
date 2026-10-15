@@ -7,7 +7,7 @@ PACE ranks the candidate regulatory elements of every gene in a tissue. It is bu
 PACE is optimized for three situations that are common outside the best-studied model organisms:
 
 1. **Incomplete epigenomic panels.** ATAC-seq, DNase-seq or H3K27ac alone, or one accessibility assay plus H3K27ac, is enough. Missing measurements are never imputed.
-2. **Sparse, low-resolution or missing Hi-C.** Shallow or 10–25 kb maps are completed with a distance-decay law fitted on the same map, on Hi-C of the same species, or on the human ABC reference.
+2. **Sparse, low-resolution or missing Hi-C.** Shallow or 10–25 kb maps are completed with a distance-decay law fitted on the same map, on Hi-C of the same species, or by distance alone as in ABC.
 3. **Genes with several TSSs and few animals.** Transcripts sharing a TSS count once, multiple TSSs are weighted by their promoter usage (activity), and replicates are averaged within each animal, so one or a few animals per tissue are enough.
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
@@ -77,7 +77,7 @@ DNA loops bring distant enhancers next to promoters; the closer and more frequen
 This is the part that most often limits studies of non-model species, and PACE offers three routes (cases A, B, C in the [quick start](#which-case-am-i-three-data-situations)):
 - **Hi-C of the sample (A):** the measured contact frequency. Shallow or 10–25 kb maps leave bins masked or near-empty; PACE fills masked bins and adds a small pseudocount from the distance decay fitted on the same map, and replaces the unreliable self-contact of an element and TSS in the same bin by the neighbouring contacts.
 - **Hi-C of the same species only (B):** contact frequency falls with genomic distance roughly as a power law, $\widetilde C \propto d^{-\gamma}$. PACE fits $\gamma$ on any Hi-C of the species (another tissue, animal or public dataset) and uses it for samples without Hi-C.
-- **No Hi-C for the species (C):** the human ABC power law ($\gamma\approx1.02$), labelled as unvalidated in the outputs.
+- **No Hi-C at all (C):** contact is estimated from genomic distance alone, as in the ABC model, and labelled as unvalidated in the outputs.
 Sparse maps can also be combined with the fitted decay per pair (shrinkage), trusting observed counts where coverage is high and the distance expectation where it is low.
 
 **$\sum_{e\in\mathcal E(G)}$, the denominator: which elements compete for this gene?**
@@ -198,7 +198,7 @@ $d$ is the distance between the element and the TSS, and $\gamma$ is how fast co
 | | A. Hi-C of this sample | B. Hi-C of the same species | C. No Hi-C for the species |
 |---|---|---|---|
 | Contact $\widetilde C(E,t)$ | Measured Hi-C contact + small pseudocount | $P(d)$ | $P(d)$ |
-| Source of $\gamma$ | Fitted automatically on this Hi-C map | Fitted on Hi-C of the same species | Human ABC reference, 1.024 |
+| Source of $\gamma$ | Fitted automatically on this Hi-C map | Fitted on Hi-C of the same species | None: distance only (built-in ABC setting) |
 | Key option | `--hic` | `--prior` | `--abc-prior` |
 | Preference | First choice | Second choice | Third choice |
 
@@ -263,20 +263,20 @@ The fitted $\gamma$ is in `priors/pig_liver/manifest.json`; `distance_bins.tsv` 
 
 **When:** no Hi-C of the species is available.
 
-**Contact:**
+**Contact:** estimated from the distance between element and TSS only, as in the ABC model (Fulco et al. 2019):
 
 ```math
-\widetilde C(E,t)=P(d),\quad\gamma=1.024\ \text{(human ABC reference)}
+\widetilde C(E,t)=P(d)
 ```
 
-**Source of $\gamma$:** built in; nothing to prepare.
+No Hi-C and no parameter has to be supplied; the distance-decay setting is built in.
 
 ```bash
 pace predict -b peaks.bed -g genes.gtf --atac pig3_ATAC.bw --abc-prior \
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig3
 ```
 
-**Strength:** works immediately with activity data alone, using the distance decay established in human CRISPR studies. The outputs record the transfer (`unvalidated_for_target_context`) so it can be reported in the methods; move to Case B when Hi-C of the species becomes available.
+**Strength:** works immediately with activity data alone. In the ABC study, a distance-only estimate predicted human CRISPR results almost as well as K562 Hi-C (AUPRC 0.64 versus 0.65), and the ABC documentation recommends it for non-human species; it has not been validated in your species. The outputs record the transfer (`unvalidated_for_target_context`) so it can be reported in the methods; move to Case B when Hi-C of the species becomes available.
 
 Several bigWigs for one assay (`--atac a.bw b.bw`) are averaged as replicates of the same animal. Supported activity panels: ATAC, DNase or H3K27ac alone, ATAC + H3K27ac, or DNase + H3K27ac. Evaluate the chosen panel on independent data; adding a low-quality assay does not guarantee better rankings.
 
