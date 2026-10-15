@@ -6,16 +6,14 @@ PACE ranks the candidate regulatory elements of every gene in a tissue. It is bu
 
 **Recommended input:** ATAC-seq or DNase-seq plus H3K27ac ChIP-seq (or CUT&Tag) from the tissue. Activity is their geometric mean, so an element must be both accessible and acetylated to score high. A single assay also works.
 
-PACE keeps the ABC score and solves the problems that domestic-animal data usually have:
+PACE keeps the ABC score and adapts it to four differences between human and domestic-animal data:
 
-| Problem | PACE's solution |
+| Domestic-animal data | PACE |
 |---|---|
-| **Low-depth Hi-C**: most element–TSS pairs have only a few reads | Per-pair shrinkage (`pace fuse`): each contact is pulled toward the distance prior by an amount set by its read count, so noise from a few reads does not decide the ranking |
-| **Low-resolution Hi-C** (10–25 kb): nearby elements share the TSS bin, and many bins are masked | Same-bin pairs take the neighbouring bins' contact; masked bins take the distance prior fitted on the same map |
-| **Hi-C only from another tissue** | The distance-decay exponent $\gamma$ is fitted on that Hi-C and applied to your tissue (Case B) |
-| **No Hi-C** | Contact $= 1/d$ (Case C) |
-| **Several predicted TSSs per gene**, usage unknown | Contact is averaged over the gene's TSSs, weighted by each TSS's promoter activity in the tissue |
-| **One or two animals per tissue** | Replicates are averaged within an animal before animals are averaged, so one animal sequenced twice is not two animals |
+| **Hi-C is scarce and coarse.** Human cell lines have kilobase-resolution maps; most livestock tissues have 10–40 kb maps, low depth, or no Hi-C at all. | Low depth: per-pair shrinkage toward the distance prior, weighted by read count (`pace fuse`). Coarse bins: same-bin pairs take neighbouring contacts and masked bins take the distance prior. Hi-C only from another tissue: $\gamma$ fitted on it (Case B). No Hi-C: contact $=1/d$ (Case C). |
+| **TSS annotation is incomplete.** Many genes have several TSSs or alternative promoters, and many predicted TSSs are not used. ABC uses one TSS per gene. | All distinct TSSs of a gene are kept. Contact is averaged over them, weighted by each TSS's promoter activity in the tissue, so used promoters dominate and unused predicted TSSs get little weight. |
+| **No standard enhancer catalogue.** There is no equivalent of the human cCRE set, and peak calling differs between studies. Transposon-derived enhancers are common, especially in chicken and pig. | Candidates are built from your own ATAC/DNase or H3K27ac peaks on a fixed 500 bp grid, so no external catalogue is needed and all runs on one catalog share the same candidates. Elements from transposons are kept like any other candidate; `pace features` can mark their overlap with a repeat annotation. |
+| **TAD and CTCF patterns differ from human.** | Optional boundary-aware prior: contact across a CTCF boundary is reduced by $e^{-\beta s}$, with boundaries from CTCF motifs and ChIP peaks (`pace boundaries`) and $\beta$ fitted on Hi-C of the species (`pace fit-hic`). $\beta=0$ (no boundary effect) by default. |
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
