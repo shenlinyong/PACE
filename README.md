@@ -1,16 +1,22 @@
 # PACE
 
-**Enhancer–gene prediction for domestic animals, from chromatin activity and 3D contact.**
+**Enhancer–gene prediction for domestic animals from chromatin activity and 3D contact.**
 
-PACE ranks the candidate regulatory elements of every gene in a tissue. It is built on the Activity-by-Contact (ABC) model: the score of an element is its share of the gene's activity-weighted contact. It is designed for the data that pig, cattle, sheep, goat, chicken and other domestic-animal projects actually have, and works for any species with a reference genome, a gene annotation and measured chromatin data.
+PACE ranks the candidate regulatory elements of each gene in a tissue. It uses the Activity-by-Contact (ABC) score — an element's activity times its contact with the gene, as a share of the total over all candidates of that gene — and changes how activity and contact are estimated for the data that pig, cattle, sheep, goat and chicken projects usually have. Any species with a reference genome, a gene annotation and measured chromatin data can be analysed.
 
-**Recommended input:** ATAC-seq or DNase-seq plus H3K27ac ChIP-seq (or CUT&Tag) from the tissue. Activity is their geometric mean, so an element must be both accessible and acetylated to score high. A single assay also works.
+```bash
+pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \
+  --hic liver.mcool --hic-resolution 10000 --ctcf ctcf.narrowPeak --genome genome.fa \
+  --species pig --assembly Sscrofa11.1 --tissue liver -t 4 -o pig1_liver
+```
+
+## What PACE improves
 
 PACE keeps the ABC score and changes how its terms are estimated where domestic-animal data differ from human data:
 
 **1. Sparse Hi-C.** Most livestock Hi-C is shallow and binned at 10–40 kb, and many tissues have none.
 - *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = r\,C_{\mathrm{obs}} + (1-r)\,P(d)$ with $r = \frac{P(d)/f}{P(d)/f+\kappa}$, so pairs supported by few reads are drawn toward the distance expectation (`pace fuse`).
-- *Coarse bins:* an element in the TSS's own bin takes the maximum of the neighbouring bins instead of the diagonal, which is dominated by self-ligation; masked bins take $P(d)$ fitted on the same map.
+- *Coarse bins:* an element in the TSS's own bin, whose diagonal value is dominated by self-ligation, takes $P(d)$ fitted on the same map (or, without a fitted prior, the maximum of the neighbouring bins); masked bins also take $P(d)$.
 - *No Hi-C of the tissue:* $P(d)$ is fitted on Hi-C of the same species (Case B). *No Hi-C:* $\widetilde C = 1/\max(d,\,5\,\mathrm{kb})$ (Case C).
 
 **2. Alternative TSSs.** Annotations list several predicted TSSs per gene, many of them unused in a given tissue; ABC uses one TSS per gene. PACE averages contact over the gene's distinct TSSs, $\overline C(E,G) = \sum_t \pi_t\,\widetilde C(E,t)$, weighting each by its share of promoter activity, $\pi_t = A_t / \sum_{t'} A_{t'}$. The promoter in use dominates, whatever the number of transcript models.
@@ -19,201 +25,78 @@ PACE keeps the ABC score and changes how its terms are estimated where domestic-
 
 **4. One or a few animals.** Technical replicates, then biological replicates, then animals are averaged in turn, so repeated sequencing of one animal is not counted as several animals.
 
-Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
-
-There are three ways to run it, depending on the Hi-C you have: Hi-C of the same species and tissue (A), Hi-C of the same species from another tissue (B), or none (C). See [Which case am I?](#which-case-am-i-three-data-situations). The example below is case A.
-
-```bash
-git clone https://github.com/shenlinyong/PACE.git && cd PACE
-conda env create -f environment.yml && conda activate pace
-
-pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \
-  --hic pig1.mcool --hic-resolution 10000 \
-  --species pig --assembly Sscrofa11.1 --tissue liver -t 4 -o pig1_liver
-```
-
 ---
 
 ## Contents
 
-1. [How it works](#how-it-works)
-2. [Is PACE right for your data?](#is-pace-right-for-your-data)
-3. [Installation](#installation)
-4. [Tests](#tests)
-5. [Quick start: one command](#quick-start-one-command)
-6. [Step by step](#step-by-step)
-7. [Several animals](#several-animals)
-8. [No Hi-C? Low-resolution Hi-C?](#no-hi-c-low-resolution-hi-c)
-9. [Whole genomes: memory and threads](#whole-genomes-memory-and-threads)
-10. [Reading the results](#reading-the-results)
-11. [Comparing animals, tissues or treatments](#comparing-animals-tissues-or-treatments)
-12. [RNA-seq, methylation and other data](#rna-seq-methylation-and-other-data)
-13. [Command reference](#command-reference)
-14. [Input table reference](#input-table-reference)
-15. [The formula in full](#the-formula-in-full)
-16. [PACE and ABC](#pace-and-abc)
-17. [Troubleshooting](#troubleshooting)
-18. [Citation](#citation)
+1. [Installation](#installation)
+2. [Input data](#input-data)
+3. [Running PACE: choose your case](#running-pace-choose-your-case)
+4. [Reading the results](#reading-the-results)
+5. [The model](#the-model)
+6. [Step by step, several animals and comparisons](#step-by-step-several-animals-and-comparisons)
+7. [RNA-seq, methylation and other data](#rna-seq-methylation-and-other-data)
+8. [Reference](#reference)
+9. [PACE and ABC](#pace-and-abc)
+10. [Troubleshooting](#troubleshooting)
+11. [Citation](#citation)
 
 ---
 
-## How it works
-
-For every candidate element–gene pair within 5 Mb, PACE computes one score. Read the equation from left to right: in words, in symbols, and with every part written out.
-
-```math
-\boxed{
-\mathrm{PACE}(E,G)
-=\frac{\text{Activity}\times\text{Contact}}{\sum\left(\text{Activity}\times\text{Contact}\right)}
-=\frac{A_\star(E)\,\overline C(E,G)}{\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}
-=\frac{\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)}{\displaystyle\sum_{e\in\mathcal E(G)}\left[\prod_{m\in\mathcal M}x_m(e)\right]^{1/|\mathcal M|}\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(e,t)}
-}
-```
-
-**The biological idea.** An enhancer can only regulate a gene if two things are true at the same time: the enhancer is switched on in this tissue (**activity**), and the folded chromosome brings it close to the gene's promoter (**contact**). Their product is the enhancer's regulatory *support* for the gene. A gene is usually surrounded by dozens to hundreds of candidate elements, so PACE asks: *of all the support this gene receives, what share comes from this element?* That share is the score, so the scores of all candidates of one gene add up to 1. A score of 0.3 means the element provides 30% of the modelled activity-weighted contact the gene receives; it is a ranking of likely regulators, not a proportion of expression.
-
-The terms:
-
-- **Activity $A_\star(E)$** — is the element active in this tissue? The geometric mean of the assays used, $\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}$, e.g. $\sqrt{\text{ATAC}\times\text{H3K27ac}}$: an element must be both accessible and acetylated to score high. $x_m(E)$ is the replicate-averaged signal of assay $m$. Because the score is a share within a gene, a constant scale factor of a track (library size, normalization) cancels.
-- **Contact $\overline C(E,G)$** — does chromatin folding bring the element to the gene? The usage-weighted mean of its contacts with the gene's distinct TSSs, $\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)$, with $\pi(t\mid G)$ the TSS's share of the gene's promoter activity.
-- **TSS contact $\widetilde C(E,t)$** — measured Hi-C with a distance term (Case A), the distance–boundary prior $P(d)\,e^{-\beta\min(S,1)}$ fitted on Hi-C of the species (Case B), or $1/\max(d,5\,\mathrm{kb})$ (Case C); see [Which case am I?](#which-case-am-i-three-data-situations).
-- **Denominator** — the summed support of all candidates $\mathcal E(G)$ within 5 Mb of the gene's TSSs, including promoters. A gene with one strong enhancer gives it a large share; a gene with many shares the credit. If any candidate is unmeasured the total is unknown, and the score is withheld.
-
-Worked example: ATAC = 4 and H3K27ac = 9 give activity $A_\star(E)=\sqrt{4\times 9}=6$. The gene has two start sites weighted 3/4 and 1/4, with contacts 2 and 6, so $\overline C(E,G)=\tfrac34\times2+\tfrac14\times6=3$ and the element's support is $6\times3=18$. If the gene's total support from all candidates is 60, $\mathrm{PACE}(E,G)=18/60=0.3$: this element supplies 30% of the gene's modelled regulatory input.
-
-## Is PACE right for your data?
-
-**Good fit**
-
-- You have ATAC-seq, DNase-seq or H3K27ac ChIP-seq (or CUT&Tag) from any tissue of your species.
-- You want to connect GWAS hits, eQTLs or selection signals to target genes.
-- You have one or a few animals, not dozens.
-- Your Hi-C is 10–25 kb resolution, shallow, from another tissue, or missing entirely.
-
-**Not a good fit**
-
-- You only have FASTQ files. PACE starts from processed files (peaks, bigWig, cool/mcool). Do alignment, peak calling and Hi-C processing first.
-- You have no activity data at all. PACE does not predict enhancer activity from DNA sequence.
-- You need a causal probability. PACE ranks candidates. Functional validation is still needed to prove regulation.
-
 ## Installation
 
-Requirements: Linux or macOS, Python 3.11 or newer. No GPU.
-
-**Conda (recommended)**
+Linux or macOS, Python 3.11 or newer; no GPU.
 
 ```bash
-git clone https://github.com/shenlinyong/PACE.git
-cd PACE
-conda env create -f environment.yml
-conda activate pace
+git clone https://github.com/shenlinyong/PACE.git && cd PACE
+conda env create -f environment.yml && conda activate pace     # recommended
+# or: python3 -m venv .venv && source .venv/bin/activate && pip install '.[io,ml]'
 pace --version
 ```
 
-**pip**
+The `io` extra (pyBigWig, cooler, pandas) is needed to read bigWig and Hi-C files; `ml` (scikit-learn, scipy) only for the optional classifier. With Docker, `docker build -t pace .` and mount your data folder (`-v "$PWD":/work -w /work`); every path you pass must be inside it.
 
-```bash
-git clone https://github.com/shenlinyong/PACE.git
-cd PACE
-python3 -m venv .venv
-source .venv/bin/activate
-pip install '.[io,ml]'
-```
+`pace` lists all commands; `pace COMMAND --help` shows each option with its default. Record `pace --version` and `git rev-parse HEAD` for publications.
 
-The extras are optional. `io` adds pyBigWig, cooler and pandas, which you need to read bigWig and Hi-C files. `ml` adds scikit-learn and scipy for the optional classifier.
+## Input data
 
-**Docker**
+PACE starts from processed files. All files must use the **same genome assembly and the same chromosome names** (`chr1` and `1` do not match; see `--aliases`).
 
-```bash
-docker build -t pace:local .
-docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work pace:local \
-  predict -b peaks.bed -g genes.gtf --atac atac.bw --distance-only \
-  --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig_liver
-```
+| Data | Needed | Format | Option | Used for |
+|---|---|---|---|---|
+| Candidate regions | Required | BED, e.g. MACS2/3 peaks of ATAC/DNase or H3K27ac; several files are united | `-b` | Candidate elements |
+| Gene annotation | Required | GTF with `transcript` or `exon` lines (Ensembl, NCBI) | `-g` | TSSs |
+| Chromatin accessibility | Recommended | ATAC-seq or DNase-seq bigWig | `--atac` / `--dnase` | Activity |
+| Active-enhancer mark | Recommended | H3K27ac ChIP-seq or CUT&Tag bigWig | `--h3k27ac` | Activity |
+| Hi-C | Optional | `.cool`/`.mcool` contact frequencies, balanced | `--hic` (A) or `pace fit-prior` (B) | Contact |
+| CTCF + genome | Optional, with Hi-C | CTCF ChIP-seq or CUT&Tag peaks (BED or narrowPeak) **and** the uncompressed genome FASTA | `--ctcf` + `--genome` | Domain boundaries |
+| Chromosome sizes | Optional | `chrom.sizes`, `genome.fa.fai` or a bigWig | `-c` | Grid bounds (default: first bigWig) |
 
-Any path you pass to the container must be inside the mounted directory.
+- **Activity.** At least one of ATAC, DNase or H3K27ac is required; accessibility (ATAC or DNase) plus H3K27ac is recommended, because their geometric mean requires an element to be both open and acetylated. Make bigWigs with, for example, deepTools `bamCoverage --normalizeUsing CPM`. Several bigWigs of one assay are averaged as replicates of the same animal.
+- **Hi-C.** Give contact frequencies, not observed/expected matrices, p-values or loop calls: these remove the distance dependence PACE models. Convert `.hic` files to `.mcool` (for example with `hic2cool`) and balance them with `cooler balance`.
+- **CTCF.** Both files are needed: the peaks say where CTCF is bound, and the built-in CTCF motif (JASPAR MA0139.1) found in each peak on the genome sequence gives the site's orientation. The peak signal (narrowPeak column 7) is the site strength. Without them, the model has no boundary term.
+- **Not covered.** PACE does not align reads, call peaks or process Hi-C, and does not predict activity from DNA sequence.
 
-`pace` alone lists every command; `pace COMMAND --help` shows its options with defaults and an example.
-`pace-livestock` is an alias of `pace`.
+## Running PACE: choose your case
 
-**No git?**
+Choose by the Hi-C you have. All three cases use the same score; only the element–TSS contact $\widetilde C(E,t)$ differs.
 
-```bash
-wget -O PACE-main.tar.gz https://github.com/shenlinyong/PACE/archive/refs/heads/main.tar.gz
-tar -xzf PACE-main.tar.gz && cd PACE-main
-```
-
-For published analyses, record the exact version you used:
-
-```bash
-pace --version
-git rev-parse HEAD
-```
-
-## Tests
-
-```bash
-pip install -e '.[dev]' && pytest
-```
-
-`pace validate` checks inputs and computes a scoring preview without writing a result directory. By default `-o/--out` must be a new folder. `--force` replaces a recognized PACE result only after keeping the old one as a sibling backup.
-
-## Quick start: one command
-
-`pace predict` runs the whole pipeline: it builds candidate elements from your peaks, quantifies each bigWig, extracts Hi-C contacts, and scores every element–gene pair.
-
-Every file must use the **same genome assembly and the same chromosome names** (`chr1` and `1` do not match).
-
-| Input | Option | How to get it |
-|---|---|---|
-| Peaks or candidate regions (BED) | `-b/--peaks` | MACS2/MACS3 on ATAC or DNase; several files (for example one per animal) are united |
-| Gene annotation (GTF) with `transcript` lines | `-g/--gtf` | Ensembl or NCBI for your assembly |
-| ATAC-seq, DNase-seq and/or H3K27ac bigWig | `--atac`, `--dnase`, `--h3k27ac` | deepTools `bamCoverage --normalizeUsing CPM` |
-| Hi-C `.cool` or `.mcool` (recommended) | `--hic` and `--hic-resolution` | HiC-Pro, distiller or Juicer (then `hic2cool`); balance with `cooler balance` |
-| Chromosome sizes (optional) | `-c/--chrom-sizes` | `chrom.sizes`, `genome.fa.fai` or any bigWig; default: the first bigWig |
-| Species, assembly, tissue | `--species --assembly --tissue` | Free text, recorded in every output |
-
-### Which case am I? Three data situations
-
-Choose by the Hi-C you have. All three cases use the **same PACE formula**; they differ only in how the contact between an element and a TSS, $\widetilde C(E,t)$, is obtained:
-
-```math
-\mathrm{PACE}(E,G)=\frac{A_\star(E)\,\overline C(E,G)}{\sum_{e\in\mathcal E(G)}A_\star(e)\,\overline C(e,G)},\qquad
-\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)
-```
-
-| | A. Same species, same tissue | B. Same species, another tissue | C. No Hi-C |
+| | A. Hi-C of the same tissue | B. Hi-C of another tissue | C. No Hi-C |
 |---|---|---|---|
-| Hi-C used | Hi-C of the sample itself | Hi-C of the same species and assembly (another tissue, animal or public data) | None |
-| Contact $\widetilde C(E,t)$ | Measured contact + small distance term | Distance decay $P(d)$ with $\gamma$ fitted on that Hi-C | Distance only: $1/\max(d,\,5\,\mathrm{kb})$ |
-| Option | `--hic` | `--prior` | `--distance-only` |
-| Preference | First choice | Second choice | Third choice |
+| Hi-C | Of the sample itself | Same species and assembly: another tissue, animal or public dataset | None |
+| Contact $\widetilde C(E,t)$ | Measured contact + distance term | $P(d)$ fitted on that Hi-C | $1/\max(d,\,5\,\mathrm{kb})$ |
+| Domain boundaries | With `--ctcf --genome`; $\beta$ fitted on the sample's Hi-C | With `--ctcf --genome`; $\beta$ fitted on that Hi-C | Not used |
+| Option | `--hic` | `--prior` from `pace fit-prior` | `--distance-only` |
 
-Here $d$ is the distance between the element and the TSS. Cases A and B use the distance decay with a domain-boundary term:
-
-```math
-P(d)=a\left(\frac{\max(d,\,5\,\mathrm{kb})}{d_{\mathrm{ref}}}\right)^{-\gamma}\,e^{-\beta\,\min(S,\,1)}
-```
-
-- $\gamma$: how fast contact falls with distance (larger $\gamma$ favours nearby elements).
-- $S$: the summed strength (0–1 each) of the domain boundaries between the element and the TSS; $S=0$ inside one domain.
-- $\beta$: how much one boundary reduces contact. One full-strength boundary multiplies contact by $e^{-\beta}$. $S$ is capped at 1 because contact drops at the first boundary and does not keep falling with every further one.
-
-The amplitude $a$ cancels in the score. $\gamma$ and $\beta$ are fitted on the Hi-C (below), so no parameter has to be set by hand. Case C has no Hi-C to fit $\beta$ on, so it uses distance only.
-
-#### Case A: Hi-C of the same species and tissue
-
-**When:** the animal and tissue you score have their own Hi-C.
-
-**Contact:**
+Cases A and B use the distance–boundary prior
 
 ```math
-\widetilde C(E,t)=\text{measured Hi-C contact}(E,t)+P\big(\max(d,\,5\,\mathrm{kb})\big)
+P(d)=a\left(\frac{\max(d,\,5\,\mathrm{kb})}{d_{\mathrm{ref}}}\right)^{-\gamma}\,e^{-\beta\,\min(S,\,1)},
 ```
 
-- **Measured Hi-C contact:** the balanced contact frequency between the Hi-C bin of the element and the bin of the TSS.
-- **$P(\max(d,5\,\mathrm{kb}))$:** a small distance-based term, so that sparse zero pixels do not erase distal elements. $\gamma$ is fitted automatically on the same map; with `--ctcf peaks.bed --genome genome.fa`, CTCF boundaries are added and $\beta$ is fitted on the same map, as in Case B.
-- **Special bins:** in masked (unbalanceable) bins the contact is $P(d)$; when the element and the TSS share one bin, the neighbouring contacts are used. Each such pair is marked in `resolved_contacts.tsv`; `--strict-contacts` leaves them NA instead.
+where $d$ is the element–TSS distance, $\gamma$ the rate at which contact falls with distance, $S$ the summed strength (0–1 each) of the boundaries between element and TSS, and $\beta$ the drop in log contact across one full-strength boundary. $S$ is capped at 1 because contact falls at the first boundary and not again at each further one. The amplitude $a$ cancels in the score; $\gamma$ and $\beta$ are fitted on the Hi-C, so nothing is set by hand. Without `--ctcf` and `--genome` the prior is $P(d)$ without the boundary term.
+
+### Case A: Hi-C of the same tissue
 
 ```bash
 pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27ac.bw \
@@ -221,96 +104,152 @@ pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27a
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig1
 ```
 
-`--hic-resolution` chooses the bin size inside an `.mcool` file; a single-resolution `.cool` needs none.
+$\widetilde C(E,t)$ is the balanced contact between the bins of element and TSS, plus $P(\max(d,5\,\mathrm{kb}))$ fitted on the same map, so that sparse zero pixels do not erase distal elements. An element in the TSS's own bin, and a pair in a masked bin, takes $P(d)$; such pairs are marked in `resolved_contacts.tsv`, and `--strict-contacts` leaves them NA instead. `--hic-resolution` selects the bin size in an `.mcool`. This is the most direct case: loops between distal enhancers and promoters are measured.
 
-**Strength:** uses the measured 3D contacts of the sample itself, including loops that bring distal enhancers to promoters. This is the most accurate case.
-
-#### Case B: Hi-C of the same species from another tissue
-
-**When:** your sample has no Hi-C, but Hi-C of the same species and genome assembly exists: another tissue, another animal or a public dataset.
-
-**Contact:**
-
-```math
-\widetilde C(E,t)=P(d),\quad\gamma,\ \beta\ \text{fitted on the Hi-C of the same species}
-```
-
-**Fitting once with `pace fit-prior`:**
-
-1. **Boundary positions, from CTCF** (`--ctcf peaks.bed --genome genome.fa`): CTCF ChIP-seq or CUT&Tag peaks of the target tissue show where CTCF is bound; the built-in CTCF motif (JASPAR MA0139.1), found in each peak on the genome sequence, gives the site's orientation, and the peak signal its strength. A boundary is placed between each reverse site and the next forward site, because CTCF loop anchors face into their own domain. Strengths are scaled to 0–1. Both files are needed; without them there are no boundaries and only $\gamma$ is fitted.
-2. **Valid bin pairs** are grouped by distance (30 logarithmic classes, one bin to 5 Mb) and by the boundary strength $S$ between them. Pixels absent from the sparse matrix count as zeros.
-3. **$\beta$, from the Hi-C:** the drop in log contact per unit of $S$ between pairs at the same distance, using pairs up to 1 Mb.
-4. **$\gamma$** is the slope of the boundary-corrected mean contact against $\log(d/5\,\mathrm{kb})$, weighting each class by its number of pairs.
-
-`--no-boundaries` skips steps 1 and 3 and fits $\gamma$ only.
+### Case B: Hi-C of another tissue of the same species
 
 ```bash
-# Step 1: fit once per species and assembly, with CTCF peaks of your target tissue
+# 1. fit the prior once on the available Hi-C, with CTCF peaks of your target tissue
 pace fit-prior --cooler public_pig_liver.mcool::/resolutions/10000 \
   --ctcf muscle_CTCF.narrowPeak --genome Sscrofa11.1.fa \
   --species pig --assembly Sscrofa11.1 --tissue liver -o priors/pig_liver
 
-# Step 2: score your samples
-pace predict -b peaks.bed -g genes.gtf --atac pig2_ATAC.bw \
-  --prior priors/pig_liver \
-  --species pig --assembly Sscrofa11.1 --tissue muscle -o results/pig2
+# 2. score any sample of the species
+pace predict -b peaks.bed -g genes.gtf --atac pig2_ATAC.bw --h3k27ac pig2_H3K27ac.bw \
+  --prior priors/pig_liver --species pig --assembly Sscrofa11.1 --tissue muscle -o results/pig2
 ```
 
-The fitted $\gamma$ and $\beta$ are in `priors/pig_liver/manifest.json`, the boundaries in `boundaries.tsv`, and the mean contact of every distance class in `distance_bins.tsv`. Species and assembly must match; the tissue may differ, and the transfer is recorded in the outputs. With `pace run`, add `--allow-cross-context-prior` for a prior from another tissue (see [Transfer between tissues](docs/ADVANCED.md#transfer-between-tissues)).
+`pace fit-prior`:
 
-**Strength:** the distance decay comes from real Hi-C of your own species, and one fitted prior serves every sample of that species. Using one shared prior also keeps several animals directly comparable.
+1. **Boundaries** are placed between each reverse CTCF site and the next forward site, as CTCF loop anchors face into their own domain; strengths are scaled to 0–1.
+2. **Valid bin pairs** are grouped by distance (30 logarithmic classes from one bin to 5 Mb) and by the crossed boundary strength $S$. Pixels absent from the sparse matrix count as zeros.
+3. **$\beta$** is the drop in log contact per unit of $S$ between pairs at the same distance, up to 1 Mb.
+4. **$\gamma$** is the slope of the boundary-corrected mean contact against $\log d$, weighted by the number of pairs.
 
-#### Case C: no Hi-C
+The fitted values are in `manifest.json`, the boundaries in `boundaries.tsv`. The prior's tissue may differ from the sample's; the transfer is recorded in the outputs. One prior serves every sample of the species and keeps them comparable.
 
-**When:** no Hi-C is available for the species, or you do not want to use one.
-
-**Contact:** estimated from the distance between element and TSS only:
-
-```math
-\widetilde C(E,t)=\frac{1}{\max(d,\,5\,\mathrm{kb})}
-```
-
-Nearer elements contribute more, in inverse proportion to distance. There is nothing to fit and no parameter to supply.
+### Case C: no Hi-C
 
 ```bash
-pace predict -b peaks.bed -g genes.gtf --atac pig3_ATAC.bw --distance-only \
-  --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig3
+pace predict -b peaks.bed -g genes.gtf --atac pig3_ATAC.bw --h3k27ac pig3_H3K27ac.bw \
+  --distance-only --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig3
 ```
 
-**Strength:** works immediately with activity data alone. When Hi-C of the species becomes available, move to Case B or A.
+Contact is estimated from distance alone, $\widetilde C(E,t)=1/\max(d,\,5\,\mathrm{kb})$; there is nothing to fit. Without Hi-C, $\beta$ cannot be estimated, so the boundary term is not used.
 
-Several bigWigs for one assay (`--atac a.bw b.bw`) are averaged as replicates of the same animal. Supported activity panels: ATAC, DNase or H3K27ac alone, ATAC + H3K27ac, or DNase + H3K27ac. Evaluate the chosen panel on independent data; adding a low-quality assay does not guarantee better rankings.
-
-The output folder holds the results (`scores.tsv.gz` and the files described in [Reading the results](#reading-the-results)) and every intermediate table under `prepared/`. The folder is self-contained: `resolved_config.yaml` records every setting with paths relative to the folder, so it can be moved or archived with a publication.
-
-Useful options (`pace predict --help` lists all):
+### Useful options
 
 | Option | Default | Meaning |
 |---|---|---|
 | `-w/--width` | 500 | Element width on a fixed genome grid (bp) |
-| `-r/--radius` | 5000000 | Pair each gene with elements up to this distance from its TSS |
-| `--gene-types` | all | Keep only these biotypes, for example `protein_coding` (Ensembl) or `mRNA` (NCBI) |
+| `-r/--radius` | 5000000 | Pair each gene with elements up to this distance from its TSSs; 5 Mb matches ABC |
+| `--gene-types` | all | Keep only these biotypes, e.g. `protein_coding` (Ensembl) or `mRNA` (NCBI) |
 | `--skip-unlisted-chroms` | off | Ignore peaks and genes on contigs missing from the chromosome sizes |
 | `--min-callable-fraction` | 0 | Elements with less bigWig coverage become NA; 0.8 is a common choice |
-| `--missing-as-zero` | off | Treat bases absent from the bigWig as measured zero signal |
-| `--partial-policy` | withhold | Genes with unscored candidates: `withhold` or `conditional` |
-| `-t/--threads` | 1 | Chromosome chunks scored in parallel |
+| `--missing-as-zero` | off | Read bases absent from the bigWig as measured zero signal |
+| `--tss-weights` | `usage` | TSS weights: promoter activity share, `equal`, or `provided` (`promoters.tsv`) |
+| `--no-boundaries` | off | Fit the distance decay only, even with CTCF data |
+| `--partial-policy` | `withhold` | Genes with unscored candidates: `withhold` or `conditional` |
+| `-t/--threads` | 1 | Chromosomes scored in parallel; memory grows with each thread |
 
-`radius` is a search window, not a biological claim. 5 Mb matches ABC. If you change it, check that your top predictions are stable.
+The output folder is self-contained: scores, every intermediate table (`prepared/`) and `resolved_config.yaml`, which records every setting with paths relative to the folder. `pace validate` checks the inputs without writing results. `-o` must be a new folder; `--force` replaces a PACE result after keeping the old one as a backup.
 
-## Step by step
+## Reading the results
 
-`predict` is a shortcut for the commands below. Run them yourself to reuse a catalog across animals, to combine replicates, or to inspect each step.
+| File | Content |
+|---|---|
+| `scores.tsv.gz` | **Main result**, one row per element–gene pair |
+| `gene_summary.tsv` | Per gene: candidates, how many could be scored, denominator |
+| `qc_report.json` | Overall quality summary; read it first |
+| `resolved_contacts.tsv` | The contact used for every element–TSS pair and its source (measured, prior, neighbour, shrinkage) |
+| `resolved_activity.tsv` | Activity values used, per element and assay |
+| `promoter_weights.tsv` | TSS weights per gene |
+| `run_manifest.json` | Input hashes, software version and environment, for the methods section |
+| `resolved_config.yaml` | Every setting, defaults included |
 
-| Step | Command | Output |
-|---|---|---|
-| 1. Candidates | `pace catalog` | `units.tsv`, `promoters.tsv`, `candidates.tsv`, `region_membership.tsv` |
-| 2. Activity | `pace activity` (once per bigWig), then `pace merge` | `observed_activity.tsv` |
-| 3. Contact | `pace contacts` (Hi-C) and/or `pace fit-prior` | `observed_contacts.tsv`, prior folder |
-| 4. Scores | `pace run` | `scores.tsv.gz` and QC reports |
+Key columns of `scores.tsv.gz`:
+
+| Column | Meaning |
+|---|---|
+| `element_id`, `gene_id` | The pair |
+| `pace_score` | Share of the gene's support, 0–1; withheld (NA) for genes with unscored candidates |
+| `A_used`, `Cbar` | Activity of the element; its contact with the gene |
+| `support` | Activity × contact before dividing by the gene total |
+| `normalization_status` | `complete`, `partial`, `zero_support` or `empty` |
+| `reason` | Why a value is NA |
 
 ```bash
-# 1. candidate elements and distinct TSSs
+zcat results/pig1/scores.tsv.gz | head -5 | column -t
+```
+
+How to read them:
+
+- **Check coverage first.** Only `complete` genes have a primary score; a share computed from an incomplete total would inflate the remaining candidates.
+- **NA is not zero.** NA means the value could not be computed; zero means a measured zero signal. Never replace NA with 0.
+- **A score of 1** only means that one candidate carries all the gene's support.
+- **Thresholds** from human ABC studies depend on their assays and candidates. Calibrate a cutoff on independent functional data of your species where possible, and filter after scoring so that gene totals are unchanged.
+- **A score is a ranking**, not a probability of regulation; functional validation is still needed.
+
+## The model
+
+```math
+\boxed{
+\mathrm{PACE}(E,G)
+=\frac{A_\star(E)\,\overline C(E,G)}{\displaystyle\sum_{e\in\mathcal E(G)} A_\star(e)\,\overline C(e,G)}
+=\frac{\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)}{\displaystyle\sum_{e\in\mathcal E(G)}\left[\prod_{m\in\mathcal M}x_m(e)\right]^{1/|\mathcal M|}\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(e,t)}
+}
+```
+
+An enhancer regulates a gene when it is active in the tissue and chromatin folding brings it to the gene's promoter. The product of activity and contact is the element's *support* for the gene, and the score is its share of the gene's total support, so the scores of one gene sum to 1.
+
+- **Activity $A_\star(E)$:** the geometric mean of the assays $\mathcal M$ used, e.g. $\sqrt{\text{ATAC}\times\text{H3K27ac}}$, where $x_m(E)$ is the replicate-averaged signal of assay $m$. The same assays are used for every element of a run. A constant scale factor of a track (library size, normalization) cancels in the share.
+- **Contact $\overline C(E,G)$:** the weighted mean of the contacts with the gene's distinct TSSs $\mathcal T(G)$; transcripts that start at the same position count once. $\pi(t\mid G)$ is the TSS's share of the gene's promoter activity (the activity of the 500 bp cell containing it). Genes whose promoter cells are unmeasured or all zero use equal weights. `--tss-weights equal` or `provided` (the `pi` column of `promoters.tsv`, e.g. from CAGE with `pace promoter-weights`) change this.
+- **TSS contact $\widetilde C(E,t)$:** from Hi-C and the distance–boundary prior, depending on the case (above and below).
+- **Denominator:** all candidates $\mathcal E(G)$ within the radius of the gene's TSSs, including promoters of the gene and its neighbours. A gene with one strong enhancer gives it a large share; a gene with many shares the credit.
+
+*Worked example.* ATAC = 4 and H3K27ac = 9 give $A_\star=\sqrt{36}=6$. Two TSSs with weights 3/4 and 1/4 and contacts 2 and 6 give $\overline C=\tfrac34\cdot2+\tfrac14\cdot6=3$, so the support is 18. If the gene's total support is 60, the score is $18/60=0.3$.
+
+### Contact from sparse Hi-C
+
+| Situation | Contact used |
+|---|---|
+| Measured pair | Balanced contact + $P(\max(d,5\,\mathrm{kb}))$ (`--pseudocount auto`, when a fitted prior is available) |
+| Element and TSS in the same bin | $P(d)$, or without a prior the maximum of the neighbouring bins, instead of the self-ligation diagonal |
+| Masked or unbalanceable bin | $P(d)$ (`--allow-prior-fallback` with `pace run`; automatic in `pace predict`) |
+| Low counts (`pace fuse`) | Gamma–Poisson posterior mean, below |
+
+**Shrinkage.** `pace fuse` treats the true contact as Gamma-distributed with mean $P(d)$ and shape $\kappa$, and the raw count $y$ as Poisson with mean $C/f$, where $f$ converts counts to balanced contact. The posterior mean is
+
+```math
+\widetilde C = r\,f\,y + (1-r)\,P(d),\qquad r=\frac{P(d)/f}{P(d)/f+\kappa}.
+```
+
+A pair whose expected count is small gets a small $r$ and stays near the prior; a pair with a large expected count follows the data. A zero count is kept as an observation. $\kappa$ comes from the prior or is estimated from the run's bin pairs, and each replicate is shrunk before averaging. A fixed weight can be given instead (`pace run --contact-mode shrinkage --contact-reliability 0.5 --reliability-source "<how it was chosen>"`).
+
+### Zero and NA
+
+A measured zero and an unmeasured value are kept apart.
+
+| Situation | Result |
+|---|---|
+| An assay is 0 at an element | Activity 0, support 0, score 0; the pair stays in the gene's total |
+| An assay is missing (NA) at an element | Activity NA, even if another assay is 0 (`reason: unresolved_activity`) |
+| Contact is NA for a TSS with positive weight | Contact NA (`reason: unresolved_contact`) |
+| Hi-C pixel absent from the sparse matrix | Measured zero |
+| bigWig without data for part of an element | Covered bases are averaged; elements below `--min-callable-fraction` or without coverage are NA |
+| Some candidates of a gene are NA | `pace_score` withheld; `pace_score_conditional` gives the share among the scored candidates |
+| All candidates of a gene have support 0 | No share can be computed; scores NA (`zero_support`) |
+
+### Optional allocation term (experimental)
+
+An enhancer near several genes may share its effect among them. The optional term multiplies support by $B(E,G)^\eta$, where $B(E,G)=\overline C(E,G)/\sum_{H}\overline C(E,H)$ is the share of the element's contact that goes to gene $G$ among all genes it is a candidate for. $\eta=0$ (default) leaves the score unchanged; $\eta=1$ favours elements whose contact is concentrated on one gene. It depends on gene annotation density and is not an established biological law; compare it with $\eta=0$ on independent functional data. See [equations and calibration](docs/ADVANCED.md#experimental-target-allocation).
+
+## Step by step, several animals and comparisons
+
+`pace predict` runs four commands, which can be run separately to reuse a catalog across animals or inspect each step:
+
+```bash
+# 1. candidate elements (500 bp grid cells overlapping peaks and TSSs) and distinct TSSs
 pace catalog -b data/peaks.bed -g data/genes.gtf -c data/genome.fa.fai -o prepared/catalog
 
 # 2. activity per bigWig, then one table
@@ -320,300 +259,110 @@ pace merge -t observed_activity \
   -i prepared/pig1_atac/observed_activity.tsv prepared/pig1_k27ac/observed_activity.tsv \
   -o prepared/activity
 
-# 3. Hi-C contacts for every element-TSS pair, plus the distance prior of the same map
+# 3. Hi-C contacts of every element-TSS pair, and the prior of the same map
 pace contacts -i data/pig1.mcool -r 10000 -d prepared/catalog -o prepared/pig1_hic
-pace fit-prior --cooler data/pig1.mcool::/resolutions/10000 \
-  --species pig --assembly Sscrofa11.1 --tissue liver -o prepared/pig1_prior
+pace fit-prior --cooler data/pig1.mcool::/resolutions/10000 --ctcf data/pig1_CTCF.narrowPeak \
+  --genome data/Sscrofa11.1.fa --species pig --assembly Sscrofa11.1 --tissue liver -o prepared/pig1_prior
 
 # 4. score
-pace run -d prepared/catalog \
-  --activity prepared/activity/observed_activity.tsv \
+pace run -d prepared/catalog --activity prepared/activity/observed_activity.tsv \
   --contacts prepared/pig1_hic/observed_contacts.tsv \
   --contact-prior prepared/pig1_prior --allow-prior-fallback \
-  --species pig --assembly Sscrofa11.1 --tissue liver \
-  --by-chromosome -t 4 -o results/pig1_liver
+  --species pig --assembly Sscrofa11.1 --tissue liver --by-chromosome -t 4 -o results/pig1
 ```
 
-Notes:
+`pace run` without `--samples` treats every sample as a replicate of one animal. bigWigs often omit regions without reads, which may mean "zero" or "not measured"; use `--missing-as-zero` only if you know which.
 
-- `pace catalog` builds a non-overlapping grid of `--width` bp cells overlapping your peaks and all TSSs, not ABC peak-centred windows. `promoters.tsv` has one row per distinct physical TSS (transcripts sharing a TSS are counted once). Broad or noisy peaks enlarge the denominator.
-- `pace activity`: bigWig files often leave out regions with no reads. That can mean "measured, zero signal" or "not measured". If you are not sure how your bigWig was made, do not use `--missing-as-zero`. The sample name defaults to the file name; `--normalization-id` is a label for how the bigWig was normalized and must be the same for files you want to compare.
-- `pace contacts` needs contact frequencies (balanced by default, or raw with `--no-balance`). Observed/expected matrices, p-values or loop calls give wrong results, because they remove the distance effect PACE needs. Do not mix resolutions or normalizations. For `.hic` input, first convert to cool/mcool with a compatible converter and check the stored resolutions and balancing weights.
-- `pace run` without `--samples` treats every sample as a replicate of one animal and writes the tables it inferred (`inferred_samples.tsv`, `inferred_sources.tsv`) to the result folder. The contact scale label is read from the contact table.
-
-## Several animals
-
-Score each animal separately first and check that the top predictions agree between animals. Then, for a tissue-level map, run once with all animals and a sample table that says which animal each library came from:
+**Several animals.** Score each animal first and check that the top predictions agree. For a tissue-level map, run once with all animals and a sample table naming each library's animal:
 
 ```
 sample_id	donor_id	assay	biological_replicate	technical_replicate	species	assembly	context_id	source_id
 pig1_ATAC	pig1	ATAC	1	1	pig	Sscrofa11.1	liver	pig1_ATAC
 pig2_ATAC	pig2	ATAC	1	1	pig	Sscrofa11.1	liver	pig2_ATAC
-pig1_HiC	pig1	HiC	1	1	pig	Sscrofa11.1	liver	pig1_HiC
 ```
 
 ```bash
-pace run -d prepared/catalog --activity prepared/all_activity.tsv \
-  --contacts prepared/all_contacts.tsv --samples prepared/samples.tsv \
-  --target-level population_mean \
+pace run -d prepared/catalog --activity prepared/all_activity.tsv --contacts prepared/all_contacts.tsv \
+  --samples prepared/samples.tsv --target-level population_mean \
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/liver_population
 ```
 
-`species`, `assembly` and `context_id` in the table must be spelled exactly as on the command line. PACE averages technical replicates within each biological replicate, then biological replicates within each animal, then gives every animal equal weight. Technical replicates never count as extra animals. A `sources.tsv` table recording where each file came from (GEO/SRA accession, processing, checksum) is optional; `pace validate` reports any value that is not accepted.
+Technical replicates are averaged within each biological replicate, biological replicates within each animal, and every animal has equal weight. `species`, `assembly` and `context_id` must match the command line.
 
-## No Hi-C? Low-resolution Hi-C?
-
-Hi-C is the data type most often missing. PACE has three contact modes (`pace run --contact-mode`):
-
-| Mode | Uses | When to use |
-| --- | --- | --- |
-| `observed` | Measured Hi-C, optional matching-prior regularization | A contact matrix with suitable coverage and resolution |
-| `shrinkage` | Observed contact and a compatible distance prior | Sparse maps: a fixed observation weight, or per-pair Gamma–Poisson shrinkage (`pace fuse`) |
-| `prior_only` | Distance-decay prior only | No usable Hi-C |
-
-The distance-decay prior has the form
-
-```
-contact_prior(d) = a × ( max(d, d_min) / d_ref ) ^ (−γ)
-```
-
-where `d` is the element–TSS distance. Fit it on Hi-C from your species with `pace fit-prior`, which counts callable zero pixels:
+**Comparing animals, tissues or treatments.** Scores are shares, so a change in one element shifts the others of the same gene; do not subtract two score tables. Score both runs on the same candidates (the same peak files, e.g. the union of both animals' peaks, GTF, width, radius and assays) and the same contact prior, then:
 
 ```bash
-pace fit-prior --cooler pig_liver.mcool::/resolutions/10000 \
-  --species pig --assembly Sscrofa11.1 --tissue liver -o pig_prior
-pace predict ... --prior pig_prior        # or: pace run ... --contact-prior pig_prior --contact-mode prior_only
-```
-
-The lower distance defaults to the matrix resolution. A prior from a different tissue requires `--allow-cross-context-prior`; source and target contexts are retained and the transfer is recorded in the outputs. The species, assembly, target level and measurement definitions must match. Tissue transfer requires evaluation; it is not assumed equivalent to target-tissue Hi-C.
-
-Without Hi-C, `--distance-only` (`pace run --prior-preset abc_human --contact-mode prior_only`) estimates contact from distance alone, $1/\max(d,5\,\mathrm{kb})$. See [the model](docs/ADVANCED.md#fitting-and-transferring-a-prior).
-
-**Shrinkage for sparse Hi-C (`shrinkage` mode).** When counts are low, the measured contact is combined with the distance prior $P(d)$:
-
-```math
-\widetilde C = r\,C_{\mathrm{observed}} + (1-r)\,P(d),\qquad r\in[0,1]
-```
-
-$r$ is the weight given to the measurement: $r=1$ keeps the observed contact and $r=0$ uses the prior. Masked or missing bins have $r=0$. There are two ways to set $r$:
-
-- **Fixed $r$.** The same value for every pair: `--contact-mode shrinkage --contact-reliability 0.5 --reliability-source "<how 0.5 was chosen>"`. The source is required so that the choice is recorded.
-- **Per pair from raw counts (`pace fuse`).** $r$ is computed for each element–TSS pair from its raw count $y$. The true contact is given a Gamma prior with mean $P(d)$ and shape $\kappa$, and the count is Poisson with mean $C/f$, where $f$ converts counts to balanced contact. The posterior mean is the formula above with
-
-```math
-r=\frac{P(d)/f}{P(d)/f+\kappa}
-```
-
-  A pair whose expected count $P(d)/f$ is small gets a small $r$ and stays close to the prior, because one or two reads carry little information; a pair with a large expected count follows the data. A true zero count is kept as an observation. $\kappa$ (how far real contacts scatter around the distance curve) is taken from the fitted prior or estimated from the run's own bin pairs, and each replicate is shrunk separately before the usual averaging. `pace contacts` exports the raw counts and conversion factors that this needs.
-
-Equations, the estimation of $\kappa$ and limitations are in [boundary priors and weak calibration](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
-
-Results from `prior_only` and `shrinkage` runs are labelled as such in the output. Report the mode you used in your methods.
-
-Two settings matter most with low-resolution Hi-C:
-
-- Near-diagonal pairs (default `prior_or_neighbor`). Elements in the same Hi-C bin as the TSS would otherwise get the diagonal value, which mostly reflects bin self-contact. PACE uses the prior if one is given, or else the recorded maximum of valid neighbouring contacts. If neither is available, contact remains NA.
-- `--pseudocount auto` (default). Adds a distance-based term to finite off-diagonal measurements only when a compatible fitted prior is available. Without one, observations are unchanged. Missing values are not converted to measured zeros.
-
-**Other contact priors.** `pace boundaries`, `pace prior` and `pace fit-hic` build a boundary prior from your own boundary table or from raw Hi-C counts, and `pace fuse` applies per-pair shrinkage. Equations, input formats and limitations are in [Advanced use](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
-
-## Whole genomes: memory and threads
-
-Everything in the default model is computed within a chromosome, so PACE can score whole chromosomes separately and concatenate them without changing any score. `pace predict` does this by default; add `--by-chromosome` to `pace run`. `-t/--threads N` scores N chromosome chunks in parallel.
-
-Memory is set by the largest chromosome and grows with the number of element–gene pairs; a lower `--radius` reduces both.
-
-## Reading the results
-
-The output folder contains:
-
-| File                         | What's in it                                                 |
-| ---------------------------- | ------------------------------------------------------------ |
-| `scores.tsv.gz`              | **Main result.** One row per element–gene pair               |
-| `gene_summary.tsv`           | One row per gene: number of candidates, how many could be scored, coverage, denominator |
-| `qc_report.json`             | Overall quality summary. Read this first                     |
-| `report.md`                  | Short human-readable summary of the run                      |
-| `resolved_activity.tsv` | Measured values and optional assay offsets, kept separate |
-| `promoter_weights.tsv` | Original/effective TSS weights, retained weight and filtering reasons |
-| `resolved_contacts.tsv`      | The exact contact value used for every element–TSS pair, and where it came from |
-| `resolved_config.yaml`       | Your configuration with every default filled in              |
-| `run_manifest.json`          | Input file hashes, software version and environment. Useful for the methods section |
-| `eta_calibration.json`       | Whether the optional allocation term was used (normally not) |
-| `multiomics_features.tsv.gz` | Extra annotations, if you supplied RNA-seq, methylation etc. |
-
-Key columns in `scores.tsv.gz`:
-
-| Column                   | Meaning                                                      |
-| ------------------------ | ------------------------------------------------------------ |
-| `element_id`, `gene_id`  | The pair                                                     |
-| `pace_score`             | The relative score, 0–1; withheld for incomplete genes by default                 |
-| `A_used`                 | Activity of the element                                      |
-| `Cbar`                   | Contact between the element and the gene's promoters         |
-| `support`, `log_support` | Activity × contact before dividing by the gene total         |
-| `scoreable`              | Whether the pair has calculable support; the full gene denominator may still be incomplete                            |
-| `normalization_status`   | `complete`, `partial`, `zero_support` or `empty` (see below) |
-| `reason`                 | Why a value is NA                                            |
-
-Look at the top of the file:
-
-```bash
-zcat results/pig1_liver/scores.tsv.gz | head -5 | column -t
-```
-
-Or in Python:
-
-```python
-import pandas as pd
-s = pd.read_csv("results/pig1_liver/scores.tsv.gz", sep="\t")
-top = s[s.normalization_status == "complete"].dropna(subset=["pace_score"]).sort_values("pace_score", ascending=False)
-print(top[["element_id", "gene_id", "pace_score", "A_used", "Cbar"]].head(20))
-```
-
-**How to interpret the results**
-
-- **Check coverage before scores.** `normalization_status` tells you whether every planned candidate for the gene could be scored (`complete`) or only some (`partial`). With `partial_policy: withhold` (default), partial genes get no score, because dividing by an incomplete total would inflate the remaining candidates.
-- **NA is not zero.** NA means the value could not be computed. Zero means the assay measured zero signal; it does not prove the absence of biological activity or contact. Never replace NA with 0.
-- **A score of 1 is not automatically a strong enhancer.** If only one candidate has any support, it gets 1 by definition.
-- **Choose your own threshold.** Published ABC cutoffs depend on the assay panel, candidate definition and human perturbation benchmark. Calibrate a threshold for your species on independent functional labels where available; eQTL colocalisation provides complementary association evidence, not interchangeable causal labels. Filter after scoring, never before, so the gene totals stay the same.
-- **A score is not a probability.** It ranks candidates for follow-up.
-
-## Comparing animals, tissues or treatments
-
-Do not subtract two score tables directly. Because scores are shares, a change in one element shifts every other element of the same gene. Use `pace compare`, which rescores both runs over the candidates they have in common:
-
-```bash
-pace compare --left results/pig1_liver --right results/pig2_liver -o results/pig2_vs_pig1
-```
-
-To make two animals comparable, score both on the **same candidate set**: give every run the same peak files (for example the union of both animals' peaks, `-b pig1_peaks.bed pig2_peaks.bed`), the same GTF, width and radius, and the same assays:
-
-```bash
-for pig in pig1 pig2; do
-  pace predict -b pig1_peaks.bed pig2_peaks.bed -g genes.gtf --atac ${pig}_ATAC.bw \
-    --prior priors/pig_liver --species pig --assembly Sscrofa11.1 --tissue liver -o results/$pig
-done
 pace compare --left results/pig1 --right results/pig2 -o results/pig2_vs_pig1
 ```
 
-Using one shared contact prior (`--prior`, case B) keeps the contact model identical. If each animal has its own Hi-C (case A), each run fits its own power law; `compare` then reports that the evidence differs and needs `--allow-evidence-difference`, which gives conditional differences only.
+`pace compare` rescores both runs over their common candidates and reports right minus left. Runs with their own Hi-C each have their own contact model and need `--allow-evidence-difference`, which gives conditional differences only. Interpret a difference through activity, contact and the gene total, not `pace_score` alone.
 
-Differences are right minus left. Both runs must use the same context, candidate catalog, effective promoter definition, compatible measurements (including resolution and normalization) and the same execution mode (both chunked or both unchunked). Cross-tissue runs are not accepted as full comparable effects by this command. When interpreting a difference, look at activity, contact, `support` and the gene total together, not only at `pace_score`.
+**Whole genomes.** Every term is computed within a chromosome, so `pace predict` scores chromosomes separately (`--by-chromosome` in `pace run`) and in parallel (`-t`) with identical results. Memory is set by the largest chromosome; a smaller `--radius` reduces it.
 
 ## RNA-seq, methylation and other data
 
-The main score uses only activity (ATAC/DNase/H3K27ac) and contact (Hi-C). Other data can be added as annotations, so they appear next to each prediction without changing the score:
+The score uses only activity and contact. Other data are added as annotations next to each prediction:
 
-| Data | Prepare with | Add to `pace run` with | What PACE does with it |
-| --- | --- | --- | --- |
-| RNA-seq | `pace expression --tpm transcripts.tsv -d prepared/catalog` | `--expression` | Gene expression annotation |
-| DNA methylation (WGBS, RRBS) | `pace methylation --counts cpg.tsv -d prepared/catalog` | `--methylation` | Element and promoter methylation, with coverage kept |
-| H3K4me1, H3K4me3, H3K27me3, H3K9me3, CTCF peaks | `pace features -b ctcf.bed -d prepared/catalog` | `--features` | Chromatin state annotations |
+| Data | Prepare with | Add to `pace run` with |
+|---|---|---|
+| RNA-seq | `pace expression --tpm transcripts.tsv -d prepared/catalog` | `--expression` |
+| DNA methylation (WGBS, RRBS) | `pace methylation --counts cpg.tsv -d prepared/catalog` | `--methylation` |
+| Other marks or peaks (H3K4me1, H3K4me3, H3K27me3) | `pace features -b marks.bed -d prepared/catalog` | `--features` |
 
-Why RNA-seq is not multiplied into the score: a gene's expression would multiply both the top and the bottom of the fraction, so it cancels. Use it to filter out genes that are not expressed in your tissue.
+Expression is not multiplied into the score because it would scale numerator and denominator alike and cancel; use it to set aside genes not expressed in the tissue. Uncovered CpGs are reported as missing, not unmethylated.
 
-Uncovered CpGs are reported as missing, not as unmethylated.
+**Optional classifier.** With functional labels (e.g. CRISPRi), `pace train` fits a separate classifier, applied with `pace run --ml-model` or `pace predict-ml`. Its `pace_ml_score` and `pace_ml_probability` are kept separate from `pace_score`.
 
-**Optional classifier.** If you have functional labels (for example CRISPRi results), you can train a separate classifier with `pace train` and apply it with `pace run --ml-model` or `pace predict-ml`. It writes `pace_ml_score` and, if calibration passes, `pace_ml_probability`. These columns are kept separate from `pace_score` and are never averaged with it.
-
-## Command reference
-
-`pace COMMAND --help` shows every option with its default.
+## Reference
 
 | Command | Purpose | Key options |
 |---|---|---|
-| `predict` | Peaks + GTF + bigWig (+ Hi-C) to scores in one step | `-b -g --atac/--dnase/--h3k27ac --hic/--prior/--distance-only -o` |
+| `predict` | Peaks + GTF + bigWig (+ Hi-C, CTCF) to scores in one step | `-b -g --atac/--dnase/--h3k27ac --hic/--prior/--distance-only --ctcf --genome -o` |
 | `catalog` | Candidate elements, TSSs and pairs | `-b -g -c -w -r --gene-types -o` |
-| `activity` | Signal per element from a bigWig | `-i -a -d -s -o` |
+| `activity` | Signal per element from a bigWig | `-i -a -d -o` |
 | `contacts` | Element–TSS contacts from cool/mcool | `-i -r -d --no-balance -o` |
+| `fit-prior` | Distance–boundary prior from cool/mcool (+ CTCF) | `--cooler --ctcf --genome --species --assembly --tissue -o` |
 | `merge` | Combine tables with duplicate checks | `-t -i -o` |
-| `run` / `validate` | Score prepared tables / check them | `-d --activity --contacts --contact-prior --species --assembly --tissue -o` |
-| `fit-prior` | Distance prior from a cool/mcool map | `--cooler --species --assembly --tissue -o` |
-| `boundaries`, `prior`, `fit-hic` | Boundary-aware priors | see `--help` |
-| `fuse` | Per-pair shrinkage of sparse contacts | same as `run`, plus `--contact-prior` |
-| `fit-labels` | eQTL tuning of gamma, beta, eta | `--run --eqtl --test-chromosomes -o` |
-| `compare`, `stability`, `benchmark` | Downstream evaluation | `--left --right`, `--replicates`, `--run --labels --membership` |
-| `fit-eta`, `train`, `predict-ml` | Functional-label models | see `--help` |
-| `features`, `methylation`, `expression` | Annotation tables | see `--help` |
-| `pairs`, `normalize-activity`, `promoter-weights`, `init` | Helpers | see `--help` |
+| `run` / `validate` | Score prepared tables / check them | `-d --activity --contacts --contact-prior -o` |
+| `fuse` | Per-pair shrinkage of sparse contacts | as `run` |
+| `compare`, `stability`, `benchmark` | Downstream evaluation | see `--help` |
+| `boundaries`, `prior`, `fit-hic`, `fit-labels`, `fit-eta`, `train`, `predict-ml` | Advanced models | see [Advanced use](docs/ADVANCED.md) |
+| `features`, `methylation`, `expression`, `pairs`, `normalize-activity`, `promoter-weights`, `init` | Annotation tables and helpers | see `--help` |
 
-Main `pace run` settings:
+Main `pace run` options:
 
-| Option | Default | What it does |
+| Option | Default | Meaning |
 |---|---|---|
-| `--target-level` | `individual` | `individual` needs exactly one animal. `population_mean` averages animals with equal weight |
-| `--panel` | assays present | Assays used for activity: `ATAC`, `DNase`, `H3K27ac`, or accessibility + `H3K27ac` |
+| `--target-level` | `individual` | `individual`: one animal; `population_mean`: animals averaged with equal weight |
+| `--panel` | assays present | Activity assays: ATAC, DNase or H3K27ac alone, or accessibility + H3K27ac |
 | `--contact-mode` | `observed` | `observed`, `shrinkage` or `prior_only` |
-| `--contact-prior` | none | Distance-decay prior, needed for `shrinkage` and `prior_only` |
-| `--allow-prior-fallback` | off | Missing observed contacts use the prior |
-| `--pseudocount` | `auto` | Distance-based pseudocount for sparse matrices |
-| `--partial-policy` | `withhold` | Genes where not every candidate could be scored get no score |
-| `--eta` | `auto` | Experimental allocation exponent; `auto` stays 0 without a calibrator |
-| `--by-chromosome`, `-t` | off, 1 | Chunked scoring and parallel chunks |
+| `--contact-prior` | none | Prior folder from `fit-prior`; needed for `shrinkage` and `prior_only` |
+| `--allow-prior-fallback` | off | Masked or missing contacts take the prior |
+| `--allow-cross-context-prior` | off | Accept a prior fitted on another tissue |
+| `--partial-policy` | `withhold` | Genes with unscored candidates get no primary score |
+| `--eta` | `auto` | Allocation exponent; `auto` is 0 without a calibrator |
+| `--by-chromosome`, `-t` | off, 1 | Chunked and parallel scoring |
 
-Every setting and its default is listed in [Advanced use](docs/ADVANCED.md#complete-configuration-defaults); `resolved_config.yaml` in every result folder records the complete set used. Without `--panel`, the panel is the set of ATAC, DNase and H3K27ac assays present in the activity table.
+All settings and defaults are listed in [Advanced use](docs/ADVANCED.md#complete-configuration-defaults).
 
-## Input table reference
+**Input tables** (written by the commands above; usually only `samples.tsv` is written by hand). Tab-separated with a header, optionally gzipped; coordinates 0-based, half-open as in BED; `NA` for missing values and `0` only for measured zeros.
 
-All tables are tab-separated with a header row, UTF-8, optionally gzipped. Do not rename an `.xlsx` file to `.tsv`. Coordinates are 0-based, half-open, like BED. Write `NA` for missing values and `0` only for measured zeros.
-
-Steps 1–3 generate most of these for you. You normally only write `samples.tsv` and `sources.tsv` by hand.
-
-| Table                    | Columns                                                      |
-| ------------------------ | ------------------------------------------------------------ |
-| `units`                  | `element_id chrom start end anchor0 element_roles canonical_catalog_id` |
-| `region_membership`      | `region_id element_id source_id membership_rule`             |
-| `promoters`              | `gene_id promoter_id chrom tss0 strand pi pi_source`         |
-| `candidates`             | `element_id gene_id candidate_universe_id`                   |
-| `samples`                | `sample_id donor_id assay biological_replicate technical_replicate species assembly context_id source_id` |
-| `sources`                | `source_id path_or_accession source_type assembly processing_method normalization_id checksum` |
-| `observed_activity`      | `element_id sample_id assay signal measurement_status callable_fraction unit normalization_id window_id` |
-| `observed_contacts`      | `element_id promoter_id sample_id contact_value measurement_status bin_pair_id scale resolution source_id` |
-| `expression` (optional)  | `gene_id sample_id tpm status`                               |
+| Table | Columns |
+|---|---|
+| `units` | `element_id chrom start end anchor0 element_roles canonical_catalog_id` |
+| `promoters` | `gene_id promoter_id chrom tss0 strand pi pi_source` |
+| `candidates` | `element_id gene_id candidate_universe_id` |
+| `samples` | `sample_id donor_id assay biological_replicate technical_replicate species assembly context_id source_id` |
+| `observed_activity` | `element_id sample_id assay signal measurement_status callable_fraction unit normalization_id window_id` |
+| `observed_contacts` | `element_id promoter_id sample_id contact_value measurement_status bin_pair_id scale resolution source_id` |
+| `region_membership` | `region_id element_id source_id membership_rule` |
+| `sources` (optional) | `source_id path_or_accession source_type assembly processing_method normalization_id checksum` |
+| `expression` (optional) | `gene_id sample_id tpm status` |
 | `methylation` (optional) | `chrom dyad_start0 methylated_count total_count sample_id assay` |
-| `features` (optional)    | `entity_type entity_id feature_name value evidence_id status` |
-| `labels` (optional)      | `label_id assayed_region_id gene_id context_id perturbation_type effect_direction effect_size label_status assay_id group_id source_id` |
+| `features` (optional) | `entity_type entity_id feature_name value evidence_id status` |
+| `labels` (optional) | `label_id assayed_region_id gene_id context_id perturbation_type effect_direction effect_size label_status assay_id group_id source_id` |
 
 `measurement_status` is one of `observed`, `unmeasured`, `low_coverage`, `unmappable`, `invalid`, `not_applicable`.
-
-## The formula in full
-
-The default model is exactly the boxed equation in [How it works](#how-it-works), with the complete planned candidate set of each gene in the denominator. This section describes how each part is obtained in practice and which options change it.
-
-**Activity $A_\star(E)$.** The assay panel is fixed for the whole run (`--panel`). If an element has measured zero in any assay, its activity is 0; if any assay is missing (NA), its activity is NA, even when another assay is zero. PACE never falls back to a single assay for some elements, because that would mix two scales in one gene's total. Optional `--activity-pseudocount ASSAY VALUE` adds an offset per assay after replicate averaging; it never fills NA.
-
-**TSS contact $\widetilde C(E,t)$.** This is where the contact options act: measured observations, the near-diagonal correction for element and TSS in the same Hi-C bin, the optional distance-based pseudocount, prior-only contact, or explicit shrinkage. A missing contact for a required TSS gives NA by default.
-
-**TSS weights $\pi(t\mid G)$.** Promoter activity share by default (`--tss-weights usage`); a gene whose promoter cells are unmeasured or all zero gets equal weights. `--tss-weights equal` gives every distinct TSS the same weight and `--tss-weights provided` uses the `pi` column of `promoters.tsv` (see `pace promoter-weights` for CAGE, ATAC or H3K4me3 signal). `--minimum-tss-weight` and `--missing-tss-policy drop_missing` select one shared TSS set per gene and renormalize its weights. At least `--minimum-retained-tss-weight` (default 0.9) of the original weight must remain; otherwise the gene stays unscoreable. Filtered scores describe only the selected TSS definition. Both options are off by default; see [worked settings](docs/ADVANCED.md#sparse-activity-and-alternative-tsss).
-
-**Zero and NA.** A measured zero and a value that could not be measured are different things, and PACE never turns one into the other.
-
-| Situation | Result |
-|---|---|
-| An assay measured 0 at an element | Activity is 0, so the pair has support 0 and score 0. It stays in the gene's total. |
-| An assay is missing (NA) at an element | Activity is NA, even if another assay is 0. The pair cannot be scored (`reason: unresolved_activity`). |
-| Contact between an element and a TSS is measured as 0 | Contact is 0, so support and score are 0. |
-| Contact is NA for a TSS with positive weight | Contact is NA (`reason: unresolved_contact`). TSSs with weight 0 are ignored. |
-| Hi-C pixel absent from the sparse matrix | Counted as measured zero. |
-| Hi-C bin masked or not balanceable | NA, or filled from the distance decay when a prior is available; filled pairs are marked in `resolved_contacts.tsv`. |
-| bigWig has no data for part of an element | Uncovered bases are ignored and the rest is averaged. Elements below `--min-callable-fraction`, or with no coverage, are NA. `--missing-as-zero` reads absent bases as zero instead. |
-| Some candidates of a gene are NA | The gene is `partial`. `pace_score` is withheld (NA); `pace_score_conditional` gives the share among the scored candidates, and support bounds can be supplied. `--partial-policy conditional` puts the conditional share in `pace_score`. |
-| Every candidate of a gene has support 0 | The total is 0, so no share can be computed and the scores are NA (`zero_support`). |
-| An activity pseudocount is set | It is added to measured values only; it never fills NA. |
-
-**Optional allocation term (experimental).** The main formula treats each gene separately. An enhancer, however, can sit near several genes, and its effect may be shared among them. The optional extension multiplies the support by $B(E,G)^\eta$:
-
-```math
-B(E,G)=\frac{\overline C(E,G)}{\sum_{H\in\mathcal G(E)}\overline C(E,H)},\qquad
-\mathrm{PACE}_{\eta}(E,G)=\frac{A_\star(E)\,\overline C(E,G)\,B(E,G)^{\eta}}{\sum_{e\in\mathcal E(G)}A_\star(e)\,\overline C(e,G)\,B(e,G)^{\eta}}
-```
-
-$B(E,G)$ is the share of element E's contact that goes to gene G, among all genes $\mathcal G(E)$ for which E is a candidate. It is between 0 and 1, and is close to 1 when E touches mainly G.
-
-- **$\eta=0$ (default):** $B^0=1$, so the term has no effect and the score is exactly the main formula. `--eta auto` stays at 0 unless you supply functional labels or an eQTL-based model.
-- **$\eta=1$:** support is multiplied by $B$. An element whose contact is concentrated on gene G gains weight for G, and an element whose contact is shared among many genes loses weight for each of them. Since $\overline C\,B^\eta=\overline C^{\,1+\eta}/(\sum_H\overline C)^\eta$, this sharpens contact differences.
-- **$0<\eta<1$:** a partial version of the same effect. Any value in [0, 1] can be set with `--eta`.
-
-At $\eta>0$ every candidate gene of an element needs a contact value; if one is NA, $B$ cannot be computed and the pair is NA (`reason: fixed_gene_set_contact_missing`), instead of dropping that gene silently. The term also depends on how densely genes are annotated. It is not an established biological law: compare it with $\eta=0$ on independent functional data before using it, and see [equations and calibration](docs/ADVANCED.md#experimental-target-allocation) for fitting $\eta$ with `pace fit-eta`.
 
 ## PACE and ABC
 
@@ -633,51 +382,36 @@ Scores from different runs are comparable only when candidates, assays, normaliz
 
 ## Troubleshooting
 
-**`pace: command not found`**
-The environment is not active. Run `conda activate pace`, or `source .venv/bin/activate` if you used pip.
+**`pace: command not found`** — activate the environment (`conda activate pace` or `source .venv/bin/activate`).
 
-**File not found, but the file exists**
-Paths on the command line are relative to your current folder. In Docker, the file must be inside the mounted folder.
+**Chromosome name mismatch** — BED, GTF, bigWig, Hi-C and FASTA disagree on names (`chr1` vs `1`, `chrMT` vs `MT`). Rename in one place or give `--aliases`; drop unneeded contigs with `--skip-unlisted-chroms`.
 
-**`Output already exists`**
-Choose a new `-o` folder, or use `--force` to keep the existing PACE result as a sibling backup before replacement.
+**"needs both --ctcf peaks and --genome FASTA"** — the boundary term needs both files. The FASTA must be uncompressed (`gunzip genome.fa.gz`).
 
-**Chromosome name mismatch / "not in the chromosome sizes"**
-Your BED, GTF, bigWig and mcool disagree on names (`chr1` vs `1`, `chrMT` vs `MT`). Rename in one place so all files match, or give a renaming table with `--aliases`. If the extra names are unplaced contigs you do not need, add `--skip-unlisted-chroms`.
+**Most genes are `partial` or NA** — usually Hi-C is missing for some pairs. See the `reason` column. `pace predict --hic` fills masked bins from the prior; with `pace run`, add `--contact-prior` and `--allow-prior-fallback`. Do not replace NA with 0.
 
-**Most genes are `partial` or NA**
-Usually Hi-C is missing for some TSSs or elements (masked bins). Look at the `reason` column in `scores.tsv.gz`. `pace predict --hic` uses the distance prior of the same map for masked bins; with `pace run`, give `--contact-prior` and `--allow-prior-fallback`. Equal weights do not repair missing contacts. Do not replace NA with 0.
+**"requires tables for every declared activity assay"** — `--panel` names an assay absent from the activity table; check the `assay` column or omit `--panel`.
 
-**"requires tables for every declared activity assay"**
-`--panel` names an assay that is not in the activity table. Check the `assay` column, or leave `--panel` out to use the assays present.
+**`scale` or `normalization_id` mismatch** — all contact tables and the prior must describe the same measurement. Relabelling does not convert data; reprocess the files the same way.
 
-**`scale` or `normalization_id` mismatch**
-All contact tables and the prior must describe the same measurement. Changing a label does not convert data. If two Hi-C files really are on different scales, reprocess them the same way.
+**`Output already exists`** — choose a new `-o` folder, or `--force` to replace it after a backup.
 
-**`eta_calibration.json` says eta is 0**
-That is normal. It stays 0 without a calibrator, and fitted models can also select 0. Supply functional labels with `fit-eta`, or use `fit-labels` and `pace run --weak-model` for separately marked eQTL weak calibration.
+**Out of memory** — fewer `--threads`, a smaller `--radius`, or chunked scoring (default in `predict`, `--by-chromosome` in `run`).
 
-**Only one animal. Is that OK?**
-Yes. That is the default (`--target-level individual`). You just can't say anything about variation between animals.
+**Only one animal?** — supported (`--target-level individual`); variation between animals cannot be assessed.
 
-**Out of memory**
-Use chunked scoring (default in `predict`, `--by-chromosome` in `run`), fewer `--threads`, or a smaller `--radius`.
-
-**Which species can I use?**
-Any. The readers accept species-independent formats. Use matching measured activity, annotation and reference data; a compatible contact prior is needed when contact is unavailable. Performance must be assessed for your species and tissue.
-
-Still stuck? Open an [issue](https://github.com/shenlinyong/PACE/issues) and include the output of `pace --version`, the command you ran, and `qc_report.json`.
+Still stuck? Open an [issue](https://github.com/shenlinyong/PACE/issues) with `pace --version`, the command and `qc_report.json`.
 
 ## Citation
 
-PACE is not yet published. If you use it, please cite this repository with the commit you used (`git rev-parse HEAD`), and the ABC papers it builds on:
+PACE is not yet published. Please cite this repository with the commit used (`git rev-parse HEAD`) and the ABC papers it builds on:
 
 > Fulco CP, Nasser J, Jones TR, et al. Activity-by-contact model of enhancer–promoter regulation from thousands of CRISPR perturbations. *Nature Genetics* 51, 1664–1669 (2019).
 >
 > Nasser J, Bergman DT, Fulco CP, et al. Genome-wide enhancer maps link risk variants to disease genes. *Nature* 593, 238–243 (2021).
 
+The built-in CTCF motif is JASPAR MA0139.1 (Castro-Mondragon JA, et al. JASPAR 2022. *Nucleic Acids Research* 50, D165–D173 (2022)).
+
 ## License and contact
 
-MIT License. Written and maintained by Linyong Shen, Northwest A&F University. Questions and bug reports: [GitHub Issues](https://github.com/shenlinyong/PACE/issues).
-
-[Advanced use](docs/ADVANCED.md): multiomics processing, classifier training, eta calibration, worked calculations, validation and complete defaults.
+MIT License. Written and maintained by Linyong Shen, Northwest A&F University. Questions and bug reports: [GitHub Issues](https://github.com/shenlinyong/PACE/issues). Methods, multiomics, classifier training, calibration and complete defaults: [Advanced use](docs/ADVANCED.md).

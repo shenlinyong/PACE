@@ -207,6 +207,8 @@ P(d)=a\left[\frac{\max(d,d_{\min})}{d_{\mathrm{ref}}}\right]^{-\gamma},\qquad
 p(d)=\kappa\min\{P(d),P(d_0)\}.
 ```
 
+With CTCF peaks and the genome FASTA, a prior fitted by `pace fit-prior` also carries the domain-boundary term, $P(d)\,e^{-\beta\min(S,1)}$ ([Fit from a contact map](#fit-from-a-contact-map)); every use of $P(d)$ below then includes it.
+
 | Situation | Contact used |
 |---|---|
 | Same bin or configured near-distance range, compatible prior available | P(d) |
@@ -228,7 +230,7 @@ Outputs retain `observed_value`, `prior_value`, `pseudocount_value`, evidence ty
 
 `pace fit-prior --cooler ...` estimates decay from distance-bin means, including all callable zero pixels. The default lower fitting distance is the matrix resolution. Zero-mean bins cannot enter the log fit and are reported. Optional held-out chromosomes diagnose contact-decay fit; they do not validate enhancer–gene predictions. A prior mixed with observed contacts must match their scale, normalization, resolution, balancing and measurement window.
 
-A different tissue normally fails the context check. `--allow-cross-context-prior` permits a prior from the same species and assembly, with the same target level. Its original context is retained, the target context is recorded, and the transfer is marked unvalidated. It cannot be used in the `validated` profile. Renaming a scale or tissue does not calibrate a prior; assess transferred decay on target data when possible.
+`pace predict --prior` accepts a prior fitted on another tissue of the same species. With `pace run`, a different tissue fails the context check unless `--allow-cross-context-prior` is given, which permits a prior from the same species and assembly, with the same target level. Its original context is retained, the target context is recorded, and the transfer is marked unvalidated. It cannot be used in the `validated` profile. Renaming a scale or tissue does not calibrate a prior; assess transferred decay on target data when possible.
 
 The distance-only estimate (`pace predict --distance-only`, or `pace run --prior-preset abc_human --contact-mode prior_only`) requires the research profile. It sets gamma=1, a=1 and d_ref=d_min=5000, so contact is 1/max(d, 5 kb) on a relative scale. The amplitude cancels in prior-only scores. It cannot be mixed with measured contact tables. Measured activity is still required.
 
@@ -884,7 +886,8 @@ PACE is research software for relative regulatory support from measured activity
 | Candidate catalog | Supplied/experimental regions and trusted promoter annotations; completeness refers to this planned catalog |
 | Contact | Measured contacts or an explicitly supplied applicable distance prior; prior evidence is not an observed regulatory loop |
 | Contact shrinkage | Fixed weights or per-pair Gamma–Poisson posteriors; the count model and matching measurement scale must be appropriate |
-| Multiple TSSs | Fixed distinct physical promoters and weights; incorrect annotations remain a limitation |
+| Multiple TSSs | Distinct physical TSSs weighted by promoter activity; TSSs missing from the annotation cannot be recovered |
+| Domain boundaries | CTCF peaks oriented by motif; effect fitted on Hi-C and capped at one boundary; not used without Hi-C or CTCF |
 | Replicates | Specified technical/biological/donor aggregation; no automatic batch correction or increase in independent sample size |
 | Additional omics | Named experimental annotations; optional separate classifier with its own validation |
 | Allocation | Separate functional and eQTL weak calibration; neither forces a positive eta, and independent evaluation remains necessary |

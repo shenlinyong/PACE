@@ -52,26 +52,28 @@ Other data and helpers:
   init           Write empty input-table templates for a new project
 
 Quick start - choose A, B or C by the Hi-C you have
-(peaks, a GTF and at least one ATAC/DNase/H3K27ac bigWig are always required):
+(peaks, a GTF and ATAC/DNase + H3K27ac bigWigs; one assay also works):
 
-  A. Hi-C of the same species and tissue (best)
+  A. Hi-C of the same tissue (best)
      pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
          --hic sample.mcool --hic-resolution 10000 \\
+         --ctcf ctcf.narrowPeak --genome genome.fa \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o A_out
 
-  B. Hi-C of the same species and assembly from another tissue, animal or
-     public dataset: fit gamma once, then reuse it
+  B. Hi-C of another tissue, animal or public dataset of the same species:
+     fit the prior once, then score any sample with it
      pace fit-prior --cooler other.mcool::/resolutions/10000 \\
+         --ctcf ctcf.narrowPeak --genome genome.fa \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o pig_prior
-     pace predict -b peaks.bed -g genes.gtf --atac atac.bw \\
-         --prior pig_prior \\
-         --species pig --assembly Sscrofa11.1 --tissue liver -o B_out
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
+         --prior pig_prior --species pig --assembly Sscrofa11.1 --tissue muscle -o B_out
 
-  C. No Hi-C at all: contact estimated from distance only
-     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --distance-only \\
-         --species pig --assembly Sscrofa11.1 --tissue liver -o C_out
+  C. No Hi-C: contact estimated from distance only
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
+         --distance-only --species pig --assembly Sscrofa11.1 --tissue liver -o C_out
 
-  No parameter values need to be set by hand in A, B or C.
+  --ctcf (CTCF ChIP-seq/CUT&Tag peaks) with --genome (FASTA) adds the
+  domain-boundary term in A and B; its strength is fitted on the Hi-C.
 
 Run 'pace COMMAND --help' for the options of a command.
 """
@@ -206,32 +208,28 @@ def add_context(p, *, required=True, target_level=True):
 PREDICT_EPILOG = """\
 Pick ONE contact source according to your data:
 
-  A. --hic FILE    Hi-C of the same species and tissue (.cool/.mcool), best choice.
-                   The distance power law of the same map is fitted
-                   automatically and fills masked Hi-C bins.
+  A. --hic FILE      Hi-C of the same tissue (.cool/.mcool), best choice. The
+                     distance decay of the same map is fitted automatically
+                     and fills masked bins.
      pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
          --hic pig1.mcool --hic-resolution 10000 \\
+         --ctcf pig1_ctcf.narrowPeak --genome genome.fa \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
 
-  B. --prior DIR   Hi-C of the same species and assembly from another
-                   tissue, animal or public dataset.
-                   Fit its gamma once with 'pace fit-prior', then reuse it.
-     pace fit-prior --cooler other.mcool::/resolutions/10000 \\
-         --species pig --assembly Sscrofa11.1 --tissue liver -o pig_prior
-     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --prior pig_prior \\
-         --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
-     (prior from another tissue: fit with that tissue's name, then score with
-      'pace run --allow-cross-context-prior'; see the README)
+  B. --prior DIR     Hi-C of another tissue, animal or public dataset of the
+                     same species and assembly, fitted once with
+                     'pace fit-prior' (add --ctcf and --genome there).
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
+         --prior pig_prior --species pig --assembly Sscrofa11.1 --tissue muscle -o pig1_muscle
 
-  C. --distance-only   No Hi-C at all. Contact is estimated from the distance
-                   between element and TSS only.
-     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --distance-only \\
-         --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
+  C. --distance-only No Hi-C. Contact is 1/distance.
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
+         --distance-only --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
 
-No parameter values need to be set by hand in any of the three.
-Several bigWigs for one assay are treated as replicates of the same animal.
-The output folder holds the scores (scores.tsv.gz) and the prepared tables
-(prepared/), so each step can be inspected or re-run with 'pace run'.
+--ctcf and --genome must be given together; without them the model has no
+domain-boundary term. Several bigWigs for one assay are replicates of the same
+animal. The output folder holds the scores (scores.tsv.gz) and the prepared
+tables (prepared/), so each step can be inspected or re-run with 'pace run'.
 """
 
 
