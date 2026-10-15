@@ -390,7 +390,24 @@ The lower distance defaults to the matrix resolution. A prior from a different t
 
 Without Hi-C, `--distance-only` (`pace run --prior-preset abc_human --contact-mode prior_only`) estimates contact from distance alone, $1/\max(d,5\,\mathrm{kb})$. See [the model](docs/ADVANCED.md#fitting-and-transferring-a-prior).
 
-For `shrinkage`, either give a fixed weight with `--contact-reliability 0.5 --reliability-source <how it was chosen>`, or use `pace fuse`, which estimates a weight per pair from raw counts and the prior (`pace contacts` exports the counts and conversion factors). See [boundary priors and weak calibration](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
+**Shrinkage for sparse Hi-C (`shrinkage` mode).** When counts are low, the measured contact is combined with the distance prior $P(d)$:
+
+```math
+\widetilde C = r\,C_{\mathrm{observed}} + (1-r)\,P(d),\qquad r\in[0,1]
+```
+
+$r$ is the weight given to the measurement: $r=1$ keeps the observed contact and $r=0$ uses the prior. Masked or missing bins have $r=0$. There are two ways to set $r$:
+
+- **Fixed $r$.** The same value for every pair: `--contact-mode shrinkage --contact-reliability 0.5 --reliability-source "<how 0.5 was chosen>"`. The source is required so that the choice is recorded.
+- **Per pair from raw counts (`pace fuse`).** $r$ is computed for each element–TSS pair from its raw count $y$. The true contact is given a Gamma prior with mean $P(d)$ and shape $\kappa$, and the count is Poisson with mean $C/f$, where $f$ converts counts to balanced contact. The posterior mean is the formula above with
+
+```math
+r=\frac{P(d)/f}{P(d)/f+\kappa}
+```
+
+  A pair whose expected count $P(d)/f$ is small gets a small $r$ and stays close to the prior, because one or two reads carry little information; a pair with a large expected count follows the data. A true zero count is kept as an observation. $\kappa$ (how far real contacts scatter around the distance curve) is taken from the fitted prior or estimated from the run's own bin pairs, and each replicate is shrunk separately before the usual averaging. `pace contacts` exports the raw counts and conversion factors that this needs.
+
+Equations, the estimation of $\kappa$ and limitations are in [boundary priors and weak calibration](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
 
 Results from `prior_only` and `shrinkage` runs are labelled as such in the output. Report the mode you used in your methods.
 
