@@ -4,13 +4,17 @@
 
 PACE ranks the candidate regulatory elements of every gene in a tissue. It is built on the Activity-by-Contact (ABC) model: the score of an element is its share of the gene's activity-weighted contact. It is designed for the data that pig, cattle, sheep, goat, chicken and other domestic-animal projects actually have, and works for any species with a reference genome, a gene annotation and measured chromatin data.
 
-Domestic-animal projects typically work with an incomplete set of assays, shallow or no Hi-C, gene annotations with many transcripts, and one or a few animals per tissue. PACE is organised around these conditions:
+Unlike human, mouse or other model organisms, domestic animals usually lack complete, experimentally validated annotation and matched multi-omics data. PACE is built around five consequences of this. Each item below names the problem, the method PACE uses and what it means biologically.
 
-1. **Few assays.** ATAC-seq, DNase-seq or H3K27ac alone, or one accessibility assay plus H3K27ac, is enough. A missing measurement is never replaced by a guess.
-2. **Sparse, low-resolution or missing Hi-C.** Contact comes from Hi-C of the same species and tissue, from a distance decay fitted on Hi-C of the same species, or from distance alone.
-3. **Genes with several TSSs.** Transcripts sharing a TSS count once, and each TSS is weighted by its promoter usage (activity).
-4. **One or a few animals.** Replicates are averaged within each animal first, so one animal sequenced twice never counts as two animals.
-5. **Large genomes with many contigs.** Scoring runs by chromosome and in parallel; chromosomes missing from a track are marked unmeasured instead of stopping the run.
+1. **No standard set of assays.** Few tissues have ATAC-seq, DNase-seq and H3K27ac from the same animal. Activity is the geometric mean of whichever assays you provide (one or two); one assay alone is allowed. The same assays are used for every element of a run, so all scores are on one scale. Biologically, an element counts as active when it is accessible and, if H3K27ac is available, also carries the active-enhancer mark; a missing measurement stays missing and is not guessed.
+
+2. **Little or no Hi-C.** Public livestock Hi-C is often shallow, 10–25 kb, or from another tissue. Contact between an element and a TSS is taken from the sample's own Hi-C (A); otherwise from the distance dependence of contact, $\propto d^{-\gamma}$, with $\gamma$ fitted on Hi-C of the same species (B), or $\propto 1/d$ (C). The decay of contact with linear distance is a general property of chromatin folding and is largely shared between tissues, so it carries the information that is missing when the map is.
+
+3. **TSSs are predicted, not validated.** Human genes have CAGE-supported promoters; in domestic animals a gene often has many predicted transcripts with alternative TSSs and no information on which one is used. PACE merges transcripts that start at the same position into one TSS, and weights each TSS by the activity of the 500 bp cell around it (ATAC/H3K27ac signal), $\pi_t = A_t/\sum A$. The contact of an element with a gene is then the usage-weighted mean of its contacts with the gene's TSSs, so the promoter that is actually open and marked in this tissue counts most and an unused predicted TSS counts little, whatever the number of transcript models listed. Use `--tss-weights equal` for equal weights.
+
+4. **One or a few animals per tissue.** There are too few animals to estimate between-animal variance. Technical replicates are averaged first, then biological replicates, then animals, so one animal sequenced twice is not counted as two animals.
+
+5. **Fragmented assemblies.** Domestic-animal assemblies often contain many unplaced scaffolds, absent from peaks, tracks or Hi-C. Such chromosomes are marked unmeasured instead of stopping the run, and the genome is scored chromosome by chromosome in parallel.
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
@@ -73,7 +77,7 @@ Open chromatin (ATAC-seq or DNase-seq) shows that transcription factors can reac
 
 **$\overline C(E,G)$, contact of element E with gene G: does the 3D genome bring them together?**
 DNA loops bring distant enhancers next to promoters; the closer and more frequent the contact, the more likely regulation is. Many genes are annotated with several transcription start sites, and an enhancer may touch one promoter more than another. PACE therefore averages the contact with each distinct start site $t$ of the gene, $\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)$, where $\mathcal T(G)$ are the gene's distinct TSSs and $\pi(t\mid G)$ is how much each counts. By default it is the TSS's share of the gene's promoter activity, the activity $A_\star$ of the cell that contains the TSS divided by the sum over the gene's TSSs, so the TSSs that are used most weigh most (weights sum to 1).
-*Problem addressed:* annotations often contain many predicted transcripts with uncertain start sites. Transcripts that share a TSS are counted once, and TSSs are weighted by how active their promoter is, so a gene is not weighted by how many transcript models the annotation happens to list.
+*Problem addressed:* domestic-animal annotations list many predicted transcripts per gene without evidence for which TSS is used. Transcripts that start at the same position are merged into one TSS, and TSSs are weighted by the activity of the cell that contains them, so the promoter that is open and marked in this tissue dominates the gene's contact, rather than the TSS that happens to have the most transcript models.
 
 **$\widetilde C(E,t)$, contact of element E with one start site t: how is contact measured when Hi-C is scarce?**
 This is the part that most often limits studies of non-model species, and PACE offers three routes (cases A, B, C in the [quick start](#which-case-am-i-three-data-situations)):
@@ -605,7 +609,7 @@ What PACE changes:
 
 | | ABC | PACE |
 |---|---|---|
-| TSSs of a gene | One TSS per gene in the gene file | All distinct TSSs of the gene, each weighted by its promoter usage (activity of the cell that contains it) |
+| TSSs of a gene | One TSS per gene in the gene file | All distinct TSSs of the gene, each weighted by the activity of the cell that contains it |
 | Candidate elements | Windows centred on the strongest peaks | A fixed grid of cells overlapping your peaks and all TSSs, so every run on the same catalog has the same candidates |
 | Contact without Hi-C | Fixed power-law constants from human Hi-C | Distance only (Case C), or $\gamma$ fitted on Hi-C of the same species (Case B) |
 | Hi-C resolution | 5 kb | Any `.cool`/`.mcool` resolution, for example 10–25 kb |
