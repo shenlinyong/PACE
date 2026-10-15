@@ -1,4 +1,4 @@
-"""Domain boundaries from Hi-C insulation or oriented CTCF sites, and their fitted effect."""
+"""CTCF domain boundaries and the boundary effect fitted on Hi-C."""
 
 import json
 import math
@@ -8,13 +8,17 @@ import pytest
 
 from pace_livestock.boundary_prior import CTCF_PFM, BoundaryIndex, contact_prior, ctcf_boundaries
 from pace_livestock.cli import main
-from pace_livestock.io.insulation import boundary_calls, insulation_scores
 from pace_livestock.io.tables import read_table
 
 RESOLUTION = 10_000
 N_BINS = 600
 EDGES = (150, 300, 450)  # first bin of each new domain
 DROP = 0.4  # contact factor for a pair separated by one boundary
+
+
+def motif(strand):
+    best = "".join(max("ACGT", key=lambda b: CTCF_PFM[b][i]) for i in range(len(CTCF_PFM["A"])))
+    return best if strand == "+" else best[::-1].translate(str.maketrans("ACGT", "TGCA"))
 
 
 def domain_of(i):
@@ -47,16 +51,21 @@ def domains_cool(tmp_path_factory):
     return path
 
 
-def test_insulation_minimum_marks_the_domain_edge():
-    n, window = 200, 10
-    valid = np.ones(n, dtype=bool)
-    band = np.full((2 * window + 1, n), np.nan)
-    for k in range(1, 2 * window + 1):
-        for a in range(n - k):
-            band[k, a] = (1.0 / k) * (0.3 if (a < 100) != (a + k < 100) else 1.0)
-    score = insulation_scores(band, valid, window)
-    calls = boundary_calls(score, window)
-    assert [i for i, _ in calls] == [99]
+@pytest.fixture(scope="module")
+def domains_genome(tmp_path_factory):
+    """A reverse CTCF site just left and a forward site just right of each domain edge."""
+    root = tmp_path_factory.mktemp("genome")
+    sequence = bytearray(b"AT" * (N_BINS * RESOLUTION // 2))
+    peaks = []
+    for e in EDGES:
+        edge = e * RESOLUTION
+        for strand, start in (("-", edge - 100 - len(motif("-"))), ("+", edge + 100)):
+            sequence[start : start + len(motif(strand))] = motif(strand).encode()
+            peaks.append(f"chr1\t{start - 50}\t{start + 70}\tp\t0\t.\t5.0\n")
+    lines = [sequence[i : i + 80].decode() for i in range(0, len(sequence), 80)]
+    (root / "genome.fa").write_text(">chr1\n" + "\n".join(lines) + "\n")
+    (root / "ctcf.bed").write_text("".join(peaks))
+    return root
 
 
 def fit(domains_cool, tmp_path, *extra):
@@ -67,19 +76,29 @@ def fit(domains_cool, tmp_path, *extra):
     return out, json.loads((out / "manifest.json").read_text())
 
 
-def test_hic_boundaries_and_beta_are_fitted_by_default(domains_cool, tmp_path):
-    out, prior = fit(domains_cool, tmp_path, "--insulation-window", "200000")
-    assert prior["boundary_source"] == "hic_insulation"
+@pytest.mark.parametrize("source", ["ctcf_motif", "ctcf_chip_motif"])
+def test_ctcf_boundaries_and_beta_fitted_on_hic(domains_cool, domains_genome, tmp_path, source):
+    extra = ["--genome", domains_genome / "genome.fa"]
+    if source == "ctcf_chip_motif":
+        extra += ["--ctcf", domains_genome / "ctcf.bed"]
+    out, prior = fit(domains_cool, tmp_path, *extra)
+    assert prior["boundary_source"] == source
     positions = [int(r["position0"]) for r in read_table(out / "boundaries.tsv")]
-    assert len(positions) == len(EDGES)
-    assert all(min(abs(p - e * RESOLUTION) for p in positions) <= RESOLUTION for e in EDGES)
+    assert positions == [e * RESOLUTION for e in EDGES]
     # One full-strength boundary multiplies contact by DROP.
-    assert prior["beta"] == pytest.approx(-math.log(DROP), rel=0.15)
+    assert prior["beta"] == pytest.approx(-math.log(DROP), rel=0.1)
     assert prior["gamma"] == pytest.approx(1.0, rel=0.1)
 
 
-def test_no_boundaries_fits_distance_only(domains_cool, tmp_path):
-    out, prior = fit(domains_cool, tmp_path, "--no-boundaries")
+def test_without_genome_the_prior_is_distance_only(domains_cool, tmp_path):
+    out, prior = fit(domains_cool, tmp_path)
+    assert "beta" not in prior and not (out / "boundaries.tsv").exists()
+
+
+def test_no_boundaries_fits_distance_only(domains_cool, domains_genome, tmp_path):
+    out, prior = fit(
+        domains_cool, tmp_path, "--genome", domains_genome / "genome.fa", "--no-boundaries"
+    )
     assert "beta" not in prior and not (out / "boundaries.tsv").exists()
 
 
@@ -93,11 +112,6 @@ def test_prior_attenuates_contact_across_a_boundary():
     two = BoundaryIndex([{"chrom": "c", "position0": p, "strength": 1.0} for p in (50_000, 60_000)])
     # Crossed strength is capped, so a second boundary adds no further loss.
     assert contact_prior("c", 40_000, 70_000, prior, two) == pytest.approx(across)
-
-
-def motif(strand):
-    best = "".join(max("ACGT", key=lambda b: CTCF_PFM[b][i]) for i in range(len(CTCF_PFM["A"])))
-    return best if strand == "+" else best[::-1].translate(str.maketrans("ACGT", "TGCA"))
 
 
 @pytest.mark.parametrize("left,right,boundaries", [("-", "+", 1), ("+", "-", 0)])
@@ -115,12 +129,12 @@ def test_ctcf_boundary_needs_reverse_then_forward_sites(tmp_path, left, right, b
         assert first < rows[0]["position0"] < second
 
 
-def test_fitted_boundary_prior_is_applied_when_scoring(domains_cool, tmp_path):
+def test_fitted_boundary_prior_is_applied_when_scoring(domains_cool, domains_genome, tmp_path):
     from pace_livestock.config import load_config
     from pace_livestock.evidence.assets import load_asset
     from pace_livestock.evidence.resolve import load_boundaries
 
-    out, _ = fit(domains_cool, tmp_path, "--insulation-window", "200000")
+    out, _ = fit(domains_cool, tmp_path, "--genome", domains_genome / "genome.fa")
     cfg = load_config(
         None, overrides={"context": {"species": "pig", "assembly": "test", "context_id": "liver"}}
     )

@@ -13,7 +13,7 @@ PACE keeps the ABC score and adapts it to four differences between human and dom
 | **Hi-C is scarce and coarse.** Human cell lines have kilobase-resolution maps; most livestock tissues have 10–40 kb maps, low depth, or no Hi-C at all. | Low depth: per-pair shrinkage toward the distance prior, weighted by read count (`pace fuse`). Coarse bins: same-bin pairs take neighbouring contacts and masked bins take the distance prior. Hi-C only from another tissue: $\gamma$ fitted on it (Case B). No Hi-C: contact $=1/d$ (Case C). |
 | **TSS annotation is incomplete.** Many genes have several TSSs or alternative promoters, and many predicted TSSs are not used. ABC uses one TSS per gene. | All distinct TSSs of a gene are kept. Contact is averaged over them, weighted by each TSS's promoter activity in the tissue, so used promoters dominate and unused predicted TSSs get little weight. |
 | **No standard enhancer catalogue.** There is no equivalent of the human cCRE set, and peak calling differs between studies. Transposon-derived enhancers are common, especially in chicken and pig. | Candidates are built from your own ATAC/DNase or H3K27ac peaks on a fixed 500 bp grid, so no external catalogue is needed and all runs on one catalog share the same candidates. Elements from transposons are kept like any other candidate; `pace features` can mark their overlap with a repeat annotation. |
-| **TAD and CTCF patterns differ from human.** | Domain-boundary soft constraint, on by default whenever Hi-C is used (Cases A and B): contact across a boundary is reduced by $e^{-\beta s}$. Boundaries come from CTCF ChIP-seq/CUT&Tag peaks (`--ctcf`) when available, otherwise from the built-in CTCF motif scanned over the genome (`--genome`), otherwise from the insulation of the Hi-C map; $\beta$ is fitted on the Hi-C. |
+| **TAD and CTCF patterns differ from human.** | Domain-boundary soft constraint: contact across a boundary is reduced by $e^{-\beta s}$. CTCF gives the boundary positions (ChIP-seq/CUT&Tag peaks with `--ctcf`, otherwise the built-in CTCF motif scanned over the genome with `--genome`); Hi-C gives $\beta$ (Cases A and B). |
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
@@ -222,12 +222,12 @@ The amplitude $a$ cancels in the score. $\gamma$ and $\beta$ are fitted on the H
 ```
 
 - **Measured Hi-C contact:** the balanced contact frequency between the Hi-C bin of the element and the bin of the TSS.
-- **$P(\max(d,5\,\mathrm{kb}))$:** a small distance-based term, so that sparse zero pixels do not erase distal elements. $\gamma$, the domain boundaries and $\beta$ are fitted automatically on the same map (boundaries from `--ctcf`/`--genome` if given, as in Case B); `--no-boundaries` fits $\gamma$ only.
+- **$P(\max(d,5\,\mathrm{kb}))$:** a small distance-based term, so that sparse zero pixels do not erase distal elements. $\gamma$ is fitted automatically on the same map; with `--genome` (and optionally `--ctcf`), CTCF boundaries are added and $\beta$ is fitted on the same map, as in Case B.
 - **Special bins:** in masked (unbalanceable) bins the contact is $P(d)$; when the element and the TSS share one bin, the neighbouring contacts are used. Each such pair is marked in `resolved_contacts.tsv`; `--strict-contacts` leaves them NA instead.
 
 ```bash
 pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27ac.bw \
-  --hic pig1.mcool --hic-resolution 10000 \
+  --hic pig1.mcool --hic-resolution 10000 --genome Sscrofa11.1.fa \
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig1
 ```
 
@@ -247,14 +247,13 @@ pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27a
 
 **Fitting once with `pace fit-prior`:**
 
-1. **Domain boundaries**, from the best source you have:
+1. **Boundary positions, from CTCF:**
    - **CTCF ChIP-seq or CUT&Tag peaks** of the target tissue (`--ctcf peaks.bed --genome genome.fa`): the strongest CTCF motif in each peak gives the site's orientation, and the peak signal its strength.
    - **No CTCF data** (`--genome genome.fa` only): the built-in CTCF motif (JASPAR MA0139.1) is scanned over the whole genome (p ≤ 10⁻⁵); the motif score gives the strength.
-   - **Neither:** boundaries are called from the Hi-C map itself, where the insulation score (mean contact in a 500 kb square spanning each bin) has a local minimum; its depth gives the strength.
 
-   With CTCF sites, a boundary is placed between each reverse site and the next forward site, because CTCF loop anchors face into their own domain. Strengths are scaled to 0–1.
+   A boundary is placed between each reverse site and the next forward site, because CTCF loop anchors face into their own domain. Strengths are scaled to 0–1. Without `--genome` there are no boundaries and only $\gamma$ is fitted.
 2. **Valid bin pairs** are grouped by distance (30 logarithmic classes, one bin to 5 Mb) and by the boundary strength $S$ between them. Pixels absent from the sparse matrix count as zeros.
-3. **$\beta$** is the drop in log contact per unit of $S$ between pairs at the same distance, using pairs up to 1 Mb.
+3. **$\beta$, from the Hi-C:** the drop in log contact per unit of $S$ between pairs at the same distance, using pairs up to 1 Mb.
 4. **$\gamma$** is the slope of the boundary-corrected mean contact against $\log(d/5\,\mathrm{kb})$, weighting each class by its number of pairs.
 
 `--no-boundaries` skips steps 1 and 3 and fits $\gamma$ only.

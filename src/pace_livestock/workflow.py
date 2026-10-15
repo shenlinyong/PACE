@@ -51,8 +51,8 @@ def check_predict(args):
         raise PaceError("No contact information. " + CONTACT_HELP)
     if (args.ctcf or args.genome) and not args.hic:
         raise PaceError(
-            "--ctcf and --genome set the domain boundaries fitted on --hic; for --prior, "
-            "give them to 'pace fit-prior'"
+            "--ctcf and --genome add CTCF domain boundaries whose effect is fitted on --hic; "
+            "for --prior, give them to 'pace fit-prior'"
         )
     if args.abc_prior and (args.hic or args.prior):
         raise PaceError("--distance-only replaces Hi-C and fitted priors; do not combine them")
@@ -172,7 +172,14 @@ def predict(args):
             )
             contacts = str(prepared / "hic" / "observed_contacts.tsv")
             if not args.prior:
-                log("    fitting the distance decay and domain boundaries of this Hi-C map")
+                log(
+                    "    fitting the distance decay of this Hi-C map"
+                    + (
+                        " and the CTCF boundary effect"
+                        if args.genome and not args.no_boundaries
+                        else ""
+                    )
+                )
                 fit_cooler_command(
                     SimpleNamespace(
                         cooler=cooler_uri(args.hic, resolution),
@@ -189,7 +196,6 @@ def predict(args):
                         no_boundaries=args.no_boundaries,
                         ctcf=args.ctcf,
                         genome=args.genome,
-                        insulation_window=500_000,
                         synthetic=False,
                         species=args.species,
                         assembly=args.assembly,

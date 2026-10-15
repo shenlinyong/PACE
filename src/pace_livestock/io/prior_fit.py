@@ -275,27 +275,21 @@ def fit_boundary_prior(
     }
 
 
-def map_boundaries(args, balanced):
-    """Boundaries for the fit, in order of preference.
+def map_boundaries(args):
+    """Domain boundaries from CTCF: ChIP/CUT&Tag peaks with --ctcf, else the built-in motif.
 
-    CTCF ChIP/CUT&Tag peaks (--ctcf, oriented by the motif in each peak); otherwise the
-    built-in CTCF motif scanned over the genome (--genome alone); otherwise the
-    insulation score of the Hi-C map itself.
+    Both need the reference FASTA (--genome). Without it there are no boundaries and the
+    prior is distance only.
     """
     from ..boundary_prior import ctcf_boundaries, motif_genome_boundaries
 
+    if args.ctcf and not args.genome:
+        raise PaceError("--ctcf needs --genome (FASTA) to orient the CTCF motifs")
     if args.ctcf:
-        if not args.genome:
-            raise PaceError("--ctcf needs --genome (FASTA) to orient the CTCF motifs")
         return ctcf_boundaries(args.ctcf, args.genome), "ctcf_chip_motif"
     if args.genome:
         return motif_genome_boundaries(args.genome), "ctcf_motif"
-    from .insulation import insulation_boundaries
-
-    return (
-        insulation_boundaries(args.cooler, balanced=balanced, window_bp=args.insulation_window),
-        "hic_insulation",
-    )
+    return [], None
 
 
 def fit_cooler_command(args):
@@ -341,7 +335,7 @@ def fit_cooler_command(args):
     fitted = fit_binned_prior(pooled, d_ref=args.reference_distance, d_min=d_min)
     boundaries, boundary_source, cells = [], None, []
     if not getattr(args, "no_boundaries", True):
-        boundaries, boundary_source = map_boundaries(args, args.balanced)
+        boundaries, boundary_source = map_boundaries(args)
     if boundaries:
         cells, _ = cooler_boundary_cells(
             args.cooler,

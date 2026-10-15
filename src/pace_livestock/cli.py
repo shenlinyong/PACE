@@ -294,7 +294,7 @@ def predict_parser(command):
     contact.add_argument(
         "--no-boundaries",
         action="store_true",
-        help="With --hic: fit the distance decay without the domain-boundary term",
+        help="With --hic: fit the distance decay without the CTCF domain-boundary term",
     )
     add_boundary_sources(contact)
     contact.add_argument(
@@ -339,16 +339,17 @@ def predict_parser(command):
 
 def add_boundary_sources(group):
     group.add_argument(
-        "--ctcf",
-        metavar="BED",
-        help="CTCF ChIP-seq/CUT&Tag peaks (BED or narrowPeak): domain boundaries from the "
-        "oriented CTCF motif in each peak; needs --genome",
-    )
-    group.add_argument(
         "--genome",
         metavar="FASTA",
-        help="Uncompressed reference FASTA. Without --ctcf, boundaries come from a genome-wide "
-        "scan of the built-in CTCF motif (JASPAR MA0139.1). Without either, from Hi-C insulation",
+        help="Uncompressed reference FASTA. Domain boundaries are placed between CTCF sites "
+        "found with the built-in CTCF motif (JASPAR MA0139.1), and their effect is fitted "
+        "on the Hi-C. Without it, contact depends on distance only",
+    )
+    group.add_argument(
+        "--ctcf",
+        metavar="BED",
+        help="CTCF ChIP-seq/CUT&Tag peaks (BED or narrowPeak): use the CTCF sites in these "
+        "peaks instead of the genome-wide motif scan; needs --genome",
     )
 
 
@@ -539,16 +540,9 @@ def prior_parsers(command):
     p.add_argument("--model-id", default="fitted_contact_prior")
     add_boundary_sources(p)
     p.add_argument(
-        "--insulation-window",
-        type=int,
-        default=500_000,
-        metavar="BP",
-        help="Window of the Hi-C insulation score used to call domain boundaries",
-    )
-    p.add_argument(
         "--no-boundaries",
         action="store_true",
-        help="Fit the distance decay only, without the domain-boundary term",
+        help="Fit the distance decay only, without the CTCF domain-boundary term",
     )
     p.add_argument(
         "--synthetic", action="store_true", help="Label a toy cooler asset for demonstration only"
