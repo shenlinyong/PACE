@@ -561,15 +561,41 @@ Steps 1–3 generate most of these for you. You normally only write `samples.tsv
 
 The default model is exactly the boxed equation in [How it works](#how-it-works), with the complete planned candidate set of each gene in the denominator. This section describes how each part is obtained in practice and which options change it.
 
-**Activity $A_\star(E)$.** The assay panel is fixed for the whole run (`--panel`). If an element has measured zero in any assay, its activity is 0; if any assay is missing (NA), its activity is NA. PACE never falls back to a single assay for some elements, because that would mix two scales in one gene's total. Optional `--activity-pseudocount ASSAY VALUE` adds an offset per assay after replicate averaging; it never fills NA.
+**Activity $A_\star(E)$.** The assay panel is fixed for the whole run (`--panel`). If an element has measured zero in any assay, its activity is 0; if any assay is missing (NA), its activity is NA, even when another assay is zero. PACE never falls back to a single assay for some elements, because that would mix two scales in one gene's total. Optional `--activity-pseudocount ASSAY VALUE` adds an offset per assay after replicate averaging; it never fills NA.
 
 **TSS contact $\widetilde C(E,t)$.** This is where the contact options act: measured observations, the near-diagonal correction for element and TSS in the same Hi-C bin, the optional distance-based pseudocount, prior-only contact, or explicit shrinkage. A missing contact for a required TSS gives NA by default.
 
 **TSS weights $\pi(t\mid G)$.** Promoter activity share by default (`--tss-weights usage`); a gene whose promoter cells are unmeasured or all zero gets equal weights. `--tss-weights equal` gives every distinct TSS the same weight and `--tss-weights provided` uses the `pi` column of `promoters.tsv` (see `pace promoter-weights` for CAGE, ATAC or H3K4me3 signal). `--minimum-tss-weight` and `--missing-tss-policy drop_missing` select one shared TSS set per gene and renormalize its weights. At least `--minimum-retained-tss-weight` (default 0.9) of the original weight must remain; otherwise the gene stays unscoreable. Filtered scores describe only the selected TSS definition. Both options are off by default; see [worked settings](docs/ADVANCED.md#sparse-activity-and-alternative-tsss).
 
-**Experimental extension.** The optional allocation term multiplies support by $B(E,G)^\eta$, where $B(E,G)$ is the share of element E's contact that goes to gene G among all genes it is a candidate for. `--eta auto` (the default) uses zero without
-eligible independent functional evidence. This extension is separate from the
-main formula; see [equations and calibration](docs/ADVANCED.md#experimental-target-allocation).
+**Zero and NA.** A measured zero and a value that could not be measured are different things, and PACE never turns one into the other.
+
+| Situation | Result |
+|---|---|
+| An assay measured 0 at an element | Activity is 0, so the pair has support 0 and score 0. It stays in the gene's total. |
+| An assay is missing (NA) at an element | Activity is NA, even if another assay is 0. The pair cannot be scored (`reason: unresolved_activity`). |
+| Contact between an element and a TSS is measured as 0 | Contact is 0, so support and score are 0. |
+| Contact is NA for a TSS with positive weight | Contact is NA (`reason: unresolved_contact`). TSSs with weight 0 are ignored. |
+| Hi-C pixel absent from the sparse matrix | Counted as measured zero. |
+| Hi-C bin masked or not balanceable | NA, or filled from the distance decay when a prior is available; filled pairs are marked in `resolved_contacts.tsv`. |
+| bigWig has no data for part of an element | Uncovered bases are ignored and the rest is averaged. Elements below `--min-callable-fraction`, or with no coverage, are NA. `--missing-as-zero` reads absent bases as zero instead. |
+| Some candidates of a gene are NA | The gene is `partial`. `pace_score` is withheld (NA); `pace_score_conditional` gives the share among the scored candidates, and support bounds can be supplied. `--partial-policy conditional` puts the conditional share in `pace_score`. |
+| Every candidate of a gene has support 0 | The total is 0, so no share can be computed and the scores are NA (`zero_support`). |
+| An activity pseudocount is set | It is added to measured values only; it never fills NA. |
+
+**Optional allocation term (experimental).** The main formula treats each gene separately. An enhancer, however, can sit near several genes, and its effect may be shared among them. The optional extension multiplies the support by $B(E,G)^\eta$:
+
+```math
+B(E,G)=\frac{\overline C(E,G)}{\sum_{H\in\mathcal G(E)}\overline C(E,H)},\qquad
+\mathrm{PACE}_{\eta}(E,G)=\frac{A_\star(E)\,\overline C(E,G)\,B(E,G)^{\eta}}{\sum_{e\in\mathcal E(G)}A_\star(e)\,\overline C(e,G)\,B(e,G)^{\eta}}
+```
+
+$B(E,G)$ is the share of element E's contact that goes to gene G, among all genes $\mathcal G(E)$ for which E is a candidate. It is between 0 and 1, and is close to 1 when E touches mainly G.
+
+- **$\eta=0$ (default):** $B^0=1$, so the term has no effect and the score is exactly the main formula. `--eta auto` stays at 0 unless you supply functional labels or an eQTL-based model.
+- **$\eta=1$:** support is multiplied by $B$. An element whose contact is concentrated on gene G gains weight for G, and an element whose contact is shared among many genes loses weight for each of them. Since $\overline C\,B^\eta=\overline C^{\,1+\eta}/(\sum_H\overline C)^\eta$, this sharpens contact differences.
+- **$0<\eta<1$:** a partial version of the same effect. Any value in [0, 1] can be set with `--eta`.
+
+At $\eta>0$ every candidate gene of an element needs a contact value; if one is NA, $B$ cannot be computed and the pair is NA (`reason: fixed_gene_set_contact_missing`), instead of dropping that gene silently. The term also depends on how densely genes are annotated. It is not an established biological law: compare it with $\eta=0$ on independent functional data before using it, and see [equations and calibration](docs/ADVANCED.md#experimental-target-allocation) for fitting $\eta$ with `pace fit-eta`.
 
 ## How PACE differs from ABC
 
