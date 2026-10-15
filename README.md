@@ -4,27 +4,15 @@
 
 PACE ranks the candidate regulatory elements of every gene in a tissue. It is built on the Activity-by-Contact (ABC) model: the score of an element is its share of the gene's activity-weighted contact. It is designed for the data that pig, cattle, sheep, goat, chicken and other domestic-animal projects actually have, and works for any species with a reference genome, a gene annotation and measured chromatin data.
 
-Unlike human and mouse, domestic animals lack complete regulatory annotation and matched multi-omics data. PACE keeps the ABC score and adapts it to five common gaps. For each: the problem, what PACE does, and why it is reasonable.
+ABC was developed on human cell lines that have matched DNase/ATAC and H3K27ac, 5 kb Hi-C and one curated TSS per gene. Pig, cattle, sheep, goat and chicken projects usually have something different, and PACE changes the following:
 
-1. **Few assays.** Few tissues have both ATAC-seq (or DNase-seq) and H3K27ac from the same animal.
-   *PACE:* uses one or two assays; activity is their geometric mean (the signal itself when there is one assay), with the same assays for every element of a run. A missing measurement stays NA and is never guessed.
-   *Why:* accessibility shows that an element can be bound by regulators, and H3K27ac, when available, shows that it is active. A single fixed panel keeps all scores on one scale.
+1. **Only one or two activity tracks, from different labs.** A tissue often has ATAC-seq or H3K27ac, rarely both plus DNase. PACE accepts ATAC, DNase or H3K27ac alone, or one accessibility assay plus H3K27ac. Activity is the geometric mean of the tracks (the signal itself for one track). Scores are shares within a gene, so a constant factor of a track, such as library size, cancels and tracks from different labs need no common scale. A region without a measurement is NA, not 0.
 
-2. **Little or no Hi-C.** Public Hi-C is often shallow, 10–25 kb, or from another tissue.
-   *PACE:* contact comes from the sample's Hi-C (A); otherwise from a distance decay $d^{-\gamma}$ with $\gamma$ fitted on Hi-C of the same species (B); otherwise from $1/d$ (C).
-   *Why:* contact between two loci falls with their linear distance in every tissue, so distance alone carries most of the missing information.
+2. **Hi-C that is shallow, 10–25 kb, from another tissue, or absent.** At 10–25 kb an element and the TSS often fall in the same bin, and many bins are masked. PACE replaces same-bin contact with the neighbouring bins, adds a distance-decay term to masked bins and empty pixels, and reads any `.cool`/`.mcool` resolution. Without Hi-C of the sample, the decay exponent $\gamma$ is fitted on Hi-C of the same species (B), or contact is taken as $1/d$ (C).
 
-3. **Uncertain TSSs.** Annotations list many predicted transcripts per gene, and which TSS is used is unknown.
-   *PACE:* transcripts that start at the same position are merged into one TSS. Each TSS is weighted by its share of the gene's promoter activity, $\pi_t = A_t / \sum A$, where $A_t$ is the activity of the 500 bp cell containing it. The gene's contact is the weighted mean over its TSSs. `--tss-weights equal` gives equal weights.
-   *Why:* the promoter that is open and marked in this tissue is the one in use, so it should dominate; an unused predicted TSS should not.
+3. **Several predicted TSSs per gene.** Ensembl and NCBI annotations of these species list many transcripts per gene, with TSSs kilobases apart and no information on which is used. At 10–25 kb they fall in different Hi-C bins, so choosing one TSS changes the contact of every element. PACE collapses transcripts to distinct TSS positions, takes the contact of each, and averages them with weights equal to each TSS's share of the gene's promoter activity (the activity of the 500 bp cell that contains it). `--tss-weights equal` gives equal weights.
 
-4. **Few animals.** One or two animals per tissue cannot give a between-animal variance.
-   *PACE:* averages technical replicates, then biological replicates, then animals.
-   *Why:* one animal sequenced twice is not two animals.
-
-5. **Fragmented assemblies.** Unplaced scaffolds are often missing from peaks, tracks or Hi-C.
-   *PACE:* marks them unmeasured instead of stopping, and scores chromosome by chromosome in parallel.
-   *Why:* the run completes and the missing regions are visible, not silently dropped.
+4. **One or two animals per tissue.** There is no between-animal variance to estimate. PACE averages technical replicates, then biological replicates, then animals, so one animal sequenced twice is not counted as two. Animals scored on the same candidate set can be compared with `pace compare`.
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
