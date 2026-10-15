@@ -4,15 +4,17 @@
 
 PACE ranks the candidate regulatory elements of every gene in a tissue. It is built on the Activity-by-Contact (ABC) model: the score of an element is its share of the gene's activity-weighted contact. It is designed for the data that pig, cattle, sheep, goat, chicken and other domestic-animal projects actually have, and works for any species with a reference genome, a gene annotation and measured chromatin data.
 
-ABC was developed on human cell lines that have matched DNase/ATAC and H3K27ac, 5 kb Hi-C and one curated TSS per gene. Pig, cattle, sheep, goat and chicken projects usually have something different, and PACE changes the following:
+PACE keeps the ABC score and changes how its inputs are obtained, for the data that domestic-animal projects actually have:
 
-1. **Only one or two activity tracks, from different labs.** A tissue often has ATAC-seq or H3K27ac, rarely both plus DNase. PACE accepts ATAC, DNase or H3K27ac alone, or one accessibility assay plus H3K27ac. Activity is the geometric mean of the tracks (the signal itself for one track). Scores are shares within a gene, so a constant factor of a track, such as library size, cancels and tracks from different labs need no common scale. A region without a measurement is NA, not 0.
-
-2. **Hi-C that is shallow, 10–25 kb, from another tissue, or absent.** At 10–25 kb an element and the TSS often fall in the same bin, and many bins are masked. PACE replaces same-bin contact with the neighbouring bins, adds a distance-decay term to masked bins and empty pixels, and reads any `.cool`/`.mcool` resolution. Without Hi-C of the sample, the decay exponent $\gamma$ is fitted on Hi-C of the same species (B), or contact is taken as $1/d$ (C).
-
-3. **Several predicted TSSs per gene.** Ensembl and NCBI annotations of these species list many transcripts per gene, with TSSs kilobases apart and no information on which is used. At 10–25 kb they fall in different Hi-C bins, so choosing one TSS changes the contact of every element. PACE collapses transcripts to distinct TSS positions, takes the contact of each, and averages them with weights equal to each TSS's share of the gene's promoter activity (the activity of the 500 bp cell that contains it). `--tss-weights equal` gives equal weights.
-
-4. **One or two animals per tissue.** There is no between-animal variance to estimate. PACE averages technical replicates, then biological replicates, then animals, so one animal sequenced twice is not counted as two. Animals scored on the same candidate set can be compared with `pace compare`.
+| Problem | PACE's solution |
+|---|---|
+| Only one or two activity assays | Activity is the geometric mean of the tracks you have: ATAC, DNase or H3K27ac alone, or accessibility + H3K27ac |
+| Low-depth Hi-C | Per-pair shrinkage (`pace fuse`): a pair with few reads is pulled toward the distance prior, a pair with many reads keeps its measured contact |
+| Low-resolution Hi-C (10–25 kb) | An element in the same bin as the TSS takes the neighbouring bins' contact; masked bins take the distance prior |
+| No Hi-C of the tissue | The distance-decay exponent $\gamma$ is fitted on Hi-C of the same species from any tissue (Case B) |
+| No Hi-C at all | Contact $= 1/d$ (Case C) |
+| Several predicted TSSs per gene | Contact is averaged over the gene's TSSs, weighted by each TSS's promoter activity |
+| One or two animals per tissue | Replicates are averaged within an animal before animals are averaged, so one animal sequenced twice is not two animals |
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
