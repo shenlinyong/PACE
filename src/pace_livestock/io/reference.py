@@ -4,6 +4,9 @@ from pathlib import Path
 
 from ..errors import PaceError
 
+# Ambiguity codes occur in public assemblies; they never match a motif or a CpG.
+IUPAC = set(b"ACGTNRYKMSWBDHV")
+
 
 class Reference:
     """Read regular uncompressed FASTA by byte offsets without loading the genome."""
@@ -30,8 +33,10 @@ class Reference:
                     offset, length, bases, width, short = self.handle.tell(), 0, 0, 0, False
                 else:
                     sequence = line.rstrip(b"\r\n")
-                    if chrom is None or not sequence or set(sequence.upper()) - set(b"ACGTN"):
-                        raise PaceError("Reference must be uncompressed FASTA containing A/C/G/T/N")
+                    if chrom is None or not sequence or set(sequence.upper()) - IUPAC:
+                        raise PaceError(
+                            "Reference must be uncompressed FASTA of nucleotide (IUPAC) letters"
+                        )
                     if not bases:
                         bases, width, offset = len(sequence), len(line), position
                     elif (

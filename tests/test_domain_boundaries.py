@@ -152,3 +152,11 @@ def test_builtin_motif_scan_without_ctcf_peaks(tmp_path, left, right, boundaries
     rows = motif_genome_boundaries(tmp_path / "genome.fa")
     assert len(rows) == boundaries
     assert all(r["evidence_type"] == "ctcf_motif" for r in rows)
+
+
+def test_reference_accepts_iupac_ambiguity_codes(tmp_path):
+    from pace_livestock.io.reference import Reference
+
+    (tmp_path / "g.fa").write_text(">c\nACGTRYKMNacgt\n")
+    with Reference(tmp_path / "g.fa") as reference:
+        assert reference.fetch("c", 0, 13) == "ACGTRYKMNACGT"
