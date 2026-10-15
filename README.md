@@ -4,17 +4,27 @@
 
 PACE ranks the candidate regulatory elements of every gene in a tissue. It is built on the Activity-by-Contact (ABC) model: the score of an element is its share of the gene's activity-weighted contact. It is designed for the data that pig, cattle, sheep, goat, chicken and other domestic-animal projects actually have, and works for any species with a reference genome, a gene annotation and measured chromatin data.
 
-Unlike human, mouse or other model organisms, domestic animals usually lack complete, experimentally validated annotation and matched multi-omics data. PACE is built around five consequences of this. Each item below names the problem, the method PACE uses and what it means biologically.
+Unlike human and mouse, domestic animals lack complete regulatory annotation and matched multi-omics data. PACE keeps the ABC score and adapts it to five common gaps. For each: the problem, what PACE does, and why it is reasonable.
 
-1. **No standard set of assays.** Few tissues have ATAC-seq, DNase-seq and H3K27ac from the same animal. Activity is the geometric mean of whichever assays you provide (one or two); one assay alone is allowed. The same assays are used for every element of a run, so all scores are on one scale. Biologically, an element counts as active when it is accessible and, if H3K27ac is available, also carries the active-enhancer mark; a missing measurement stays missing and is not guessed.
+1. **Few assays.** Few tissues have both ATAC-seq (or DNase-seq) and H3K27ac from the same animal.
+   *PACE:* uses one or two assays; activity is their geometric mean (the signal itself when there is one assay), with the same assays for every element of a run. A missing measurement stays NA and is never guessed.
+   *Why:* accessibility shows that an element can be bound by regulators, and H3K27ac, when available, shows that it is active. A single fixed panel keeps all scores on one scale.
 
-2. **Little or no Hi-C.** Public livestock Hi-C is often shallow, 10–25 kb, or from another tissue. Contact between an element and a TSS is taken from the sample's own Hi-C (A); otherwise from the distance dependence of contact, $\propto d^{-\gamma}$, with $\gamma$ fitted on Hi-C of the same species (B), or $\propto 1/d$ (C). The decay of contact with linear distance is a general property of chromatin folding and is largely shared between tissues, so it carries the information that is missing when the map is.
+2. **Little or no Hi-C.** Public Hi-C is often shallow, 10–25 kb, or from another tissue.
+   *PACE:* contact comes from the sample's Hi-C (A); otherwise from a distance decay $d^{-\gamma}$ with $\gamma$ fitted on Hi-C of the same species (B); otherwise from $1/d$ (C).
+   *Why:* contact between two loci falls with their linear distance in every tissue, so distance alone carries most of the missing information.
 
-3. **TSSs are predicted, not validated.** Human genes have CAGE-supported promoters; in domestic animals a gene often has many predicted transcripts with alternative TSSs and no information on which one is used. PACE merges transcripts that start at the same position into one TSS, and weights each TSS by the activity of the 500 bp cell around it (ATAC/H3K27ac signal), $\pi_t = A_t/\sum A$. The contact of an element with a gene is then the usage-weighted mean of its contacts with the gene's TSSs, so the promoter that is actually open and marked in this tissue counts most and an unused predicted TSS counts little, whatever the number of transcript models listed. Use `--tss-weights equal` for equal weights.
+3. **Uncertain TSSs.** Annotations list many predicted transcripts per gene, and which TSS is used is unknown.
+   *PACE:* transcripts that start at the same position are merged into one TSS. Each TSS is weighted by its share of the gene's promoter activity, $\pi_t = A_t / \sum A$, where $A_t$ is the activity of the 500 bp cell containing it. The gene's contact is the weighted mean over its TSSs. `--tss-weights equal` gives equal weights.
+   *Why:* the promoter that is open and marked in this tissue is the one in use, so it should dominate; an unused predicted TSS should not.
 
-4. **One or a few animals per tissue.** There are too few animals to estimate between-animal variance. Technical replicates are averaged first, then biological replicates, then animals, so one animal sequenced twice is not counted as two animals.
+4. **Few animals.** One or two animals per tissue cannot give a between-animal variance.
+   *PACE:* averages technical replicates, then biological replicates, then animals.
+   *Why:* one animal sequenced twice is not two animals.
 
-5. **Fragmented assemblies.** Domestic-animal assemblies often contain many unplaced scaffolds, absent from peaks, tracks or Hi-C. Such chromosomes are marked unmeasured instead of stopping the run, and the genome is scored chromosome by chromosome in parallel.
+5. **Fragmented assemblies.** Unplaced scaffolds are often missing from peaks, tracks or Hi-C.
+   *PACE:* marks them unmeasured instead of stopping, and scores chromosome by chromosome in parallel.
+   *Why:* the run completes and the missing regions are visible, not silently dropped.
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
