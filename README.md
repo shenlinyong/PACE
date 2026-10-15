@@ -1,18 +1,20 @@
 # PACE
 
-**Enhancer–gene prediction from chromatin activity and 3D contact, for any species.**
+**Enhancer–gene prediction for domestic animals, from chromatin activity and 3D contact.**
 
-PACE ranks the candidate regulatory elements of every gene in a tissue. It is built on the Activity-by-Contact (ABC) model, and the score of an element is its share of the gene's activity-weighted contact. It works for any species that has a reference genome, a gene annotation and measured chromatin data; pig, cattle, sheep, goat and chicken are among the species it has been used on.
+PACE ranks the candidate regulatory elements of every gene in a tissue. It is built on the Activity-by-Contact (ABC) model: the score of an element is its share of the gene's activity-weighted contact. It is designed for the data that pig, cattle, sheep, goat, chicken and other domestic-animal projects actually have, and works for any species with a reference genome, a gene annotation and measured chromatin data.
 
-PACE is optimized for three situations that are common outside the best-studied model organisms:
+Domestic-animal data differ from the human data that ABC was built on in five ways. PACE addresses each one ([details](#how-pace-differs-from-abc)):
 
-1. **Incomplete epigenomic panels.** ATAC-seq, DNase-seq or H3K27ac alone, or one accessibility assay plus H3K27ac, is enough. Missing measurements are never imputed.
-2. **Sparse, low-resolution or missing Hi-C.** Shallow or 10–25 kb maps are completed with a distance-decay law fitted on the same map, on Hi-C of the same species, or by distance alone as in ABC.
-3. **Genes with several TSSs and few animals.** Transcripts sharing a TSS count once, multiple TSSs are weighted by their promoter usage (activity), and replicates are averaged within each animal, so one or a few animals per tissue are enough.
+1. **Incomplete epigenomic panels.** ATAC-seq, DNase-seq or H3K27ac alone, or one accessibility assay plus H3K27ac, is enough. A missing measurement is never replaced by a guess.
+2. **Sparse, low-resolution or missing Hi-C.** Contact comes from the sample's Hi-C, from a distance decay fitted on Hi-C of the same species, or from distance alone.
+3. **Genes with many transcripts and uncertain TSSs.** Transcripts sharing a TSS count once, and multiple TSSs are weighted by promoter usage (activity).
+4. **One or a few animals per tissue.** Replicates are averaged within each animal first, so one animal sequenced twice never counts as two animals.
+5. **Large genomes and many contigs.** Scoring runs by chromosome and in parallel; chromosomes missing from a track are marked unmeasured instead of stopping the run.
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
-There are three ways to run it, depending on the Hi-C you have: Hi-C of the sample (A), Hi-C of the same species (B), or none (C). See [Which case am I?](#which-case-am-i-three-data-situations). The example below is case A.
+There are three ways to run it, depending on the Hi-C you have: Hi-C of the same species and tissue (A), Hi-C of the same species from another tissue (B), or none (C). See [Which case am I?](#which-case-am-i-three-data-situations). The example below is case A.
 
 ```bash
 git clone https://github.com/shenlinyong/PACE.git && cd PACE
@@ -571,22 +573,17 @@ main formula; see [equations and calibration](docs/ADVANCED.md#experimental-targ
 
 ## How PACE differs from ABC
 
-The activity–contact normalization follows ABC. The implementations also depend
-on candidate selection, contact processing and promoter definitions:
+The score is the same as in ABC: an element's activity times its contact with the gene, divided by the sum over all candidates of that gene. With identical activity, contact, one TSS and a complete candidate set, PACE and ABC give the same normalized share. The differences below come from the five features of domestic-animal data.
 
-| Component | PACE implementation | Comparison requirement |
-|---|---|---|
-| Activity | Fixed single/two-assay panel; measured zero and NA are distinct | Match assays, windows and normalization |
-| Candidates | Unique grid cells overlapping peaks and required promoters | Align candidates before comparing rankings or thresholds |
-| TSSs | Weighted distinct TSSs, optional gene-wide filtering | Keep annotations and TSS definitions fixed |
-| Replicates | Technical, biological and donor means in that order | Match the biological quantity being estimated |
-| Sparse contact | Recorded correction, prior fitting and explicit transfer | Match contact scale and evaluate transfer independently |
-| Missing denominator | Primary score withheld; conditional score and bounds separate | Report coverage alongside predictive accuracy |
-| Additional omics | Annotations or a separately evaluated classifier | Evaluate each model output independently |
+| Problem in domestic-animal data | How PACE handles it |
+|---|---|
+| **1. Incomplete epigenomic panel.** Few tissues have the full ENCODE-style set of assays. | The panel is ATAC, DNase or H3K27ac alone, or one accessibility assay plus H3K27ac, and it is the same for every element of a run. Activity is the geometric mean of the assays. A measured zero (activity 0) and a missing value (NA) are kept apart. If a gene has a candidate that cannot be measured, its total is unknown, so the gene's score is withheld; `--partial-policy conditional` scores the measured subset instead. Regions absent from a bigWig can be read as zero with `--missing-as-zero`. |
+| **2. Sparse, low-resolution or missing Hi-C.** Maps are shallow, 10–25 kb, from another tissue, or absent. | Any `.cool`/`.mcool` resolution is accepted. Masked bins are filled with the distance decay fitted on the same map, and the unreliable self-contact of an element and TSS in one bin is replaced by neighbouring contacts. Without Hi-C of the sample, γ is fitted on Hi-C of the same species (Case B), or contact is estimated from distance alone (Case C). Every contact is marked with its source in `resolved_contacts.tsv`. |
+| **3. Many transcripts, uncertain TSSs.** Annotations list many predicted transcripts per gene. | Transcripts that share a TSS are counted once. Each TSS is weighted by its promoter usage, the activity of the cell that contains it, so a gene is not weighted by how many transcript models are listed. `--gene-types` keeps only the biotypes you choose, GTF files with only exon lines are accepted, and `--minimum-tss-weight` can drop weak TSSs. |
+| **4. One or a few animals.** Replicates and animals are rarely balanced. | Technical replicates, then biological replicates, then animals are averaged in that order. Several animals scored on the same catalog and the same prior can be compared directly with `pace compare`. |
+| **5. Large genomes, many contigs.** Assemblies have unplaced scaffolds that peaks, tracks and Hi-C do not share. | Candidates are a fixed grid of cells that overlap your peaks and all TSSs, scored per chromosome with `-t` threads. Chromosomes missing from a bigWig or Hi-C file are marked unmeasured, and `--skip-unlisted-chroms` drops contigs absent from the chromosome sizes. |
 
-With identical activity, contact, one TSS and a complete candidate set, the default
-normalization agrees with the ABC-style formula. That algebraic agreement does not
-imply identical rankings from different preprocessing pipelines. See [comparison methods](docs/ADVANCED.md#comparisons-and-benchmarks).
+Because the denominator is the sum over the candidate set, scores from different runs are comparable only when the candidates, assays, normalization and TSS definitions are the same. See [comparison methods](docs/ADVANCED.md#comparisons-and-benchmarks).
 
 ## Troubleshooting
 
