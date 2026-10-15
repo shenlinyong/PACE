@@ -276,13 +276,20 @@ def fit_boundary_prior(
 
 
 def map_boundaries(args, balanced):
-    """Boundaries for the fit: CTCF peaks with --ctcf, otherwise the Hi-C map itself."""
-    if args.ctcf:
-        from ..boundary_prior import ctcf_boundaries
+    """Boundaries for the fit, in order of preference.
 
+    CTCF ChIP/CUT&Tag peaks (--ctcf, oriented by the motif in each peak); otherwise the
+    built-in CTCF motif scanned over the genome (--genome alone); otherwise the
+    insulation score of the Hi-C map itself.
+    """
+    from ..boundary_prior import ctcf_boundaries, motif_genome_boundaries
+
+    if args.ctcf:
         if not args.genome:
             raise PaceError("--ctcf needs --genome (FASTA) to orient the CTCF motifs")
         return ctcf_boundaries(args.ctcf, args.genome), "ctcf_chip_motif"
+    if args.genome:
+        return motif_genome_boundaries(args.genome), "ctcf_motif"
     from .insulation import insulation_boundaries
 
     return (

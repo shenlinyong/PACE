@@ -49,6 +49,11 @@ def check_predict(args):
         raise PaceError("Use ATAC or DNase as the accessibility assay, not both")
     if not (args.hic or args.prior or args.abc_prior):
         raise PaceError("No contact information. " + CONTACT_HELP)
+    if (args.ctcf or args.genome) and not args.hic:
+        raise PaceError(
+            "--ctcf and --genome set the domain boundaries fitted on --hic; for --prior, "
+            "give them to 'pace fit-prior'"
+        )
     if args.abc_prior and (args.hic or args.prior):
         raise PaceError("--distance-only replaces Hi-C and fitted priors; do not combine them")
     if args.strict_contacts and not args.hic:
@@ -182,8 +187,8 @@ def predict(args):
                         normalization_id="cooler_weight" if balanced else "none",
                         model_id="same_map_distance_prior",
                         no_boundaries=args.no_boundaries,
-                        ctcf=None,
-                        genome=None,
+                        ctcf=args.ctcf,
+                        genome=args.genome,
                         insulation_window=500_000,
                         synthetic=False,
                         species=args.species,

@@ -296,6 +296,7 @@ def predict_parser(command):
         action="store_true",
         help="With --hic: fit the distance decay without the domain-boundary term",
     )
+    add_boundary_sources(contact)
     contact.add_argument(
         "--strict-contacts",
         action="store_true",
@@ -333,6 +334,21 @@ def predict_parser(command):
         choices=["usage", "equal", "provided"],
         default="usage",
         help="Weights of the distinct TSSs of a gene: promoter activity share (default), equal, or promoters.tsv",
+    )
+
+
+def add_boundary_sources(group):
+    group.add_argument(
+        "--ctcf",
+        metavar="BED",
+        help="CTCF ChIP-seq/CUT&Tag peaks (BED or narrowPeak): domain boundaries from the "
+        "oriented CTCF motif in each peak; needs --genome",
+    )
+    group.add_argument(
+        "--genome",
+        metavar="FASTA",
+        help="Uncompressed reference FASTA. Without --ctcf, boundaries come from a genome-wide "
+        "scan of the built-in CTCF motif (JASPAR MA0139.1). Without either, from Hi-C insulation",
     )
 
 
@@ -521,13 +537,7 @@ def prior_parsers(command):
         help="Normalization label; default matches 'pace contacts': cooler_weight or none",
     )
     p.add_argument("--model-id", default="fitted_contact_prior")
-    p.add_argument(
-        "--ctcf",
-        metavar="BED",
-        help="CTCF ChIP/CUT&Tag peaks of the target tissue: domain boundaries from oriented "
-        "CTCF motifs (needs --genome). Default: boundaries from the insulation of this Hi-C map",
-    )
-    p.add_argument("--genome", metavar="FASTA", help="Uncompressed reference FASTA, for --ctcf")
+    add_boundary_sources(p)
     p.add_argument(
         "--insulation-window",
         type=int,

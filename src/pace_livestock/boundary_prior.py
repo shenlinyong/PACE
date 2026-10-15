@@ -151,7 +151,7 @@ def scan_motifs(fasta, pwm_rows, *, threshold, chunk_size=1_000_000):
                                 end=start + int(i) + length,
                                 strand=strand,
                                 score=float(score[i]),
-                                strength=float(score[i] / maximum),
+                                strength=min(1.0, float(score[i] / maximum)),
                             )
                         )
     return rows
@@ -186,7 +186,7 @@ def ctcf_sites(peaks, fasta, *, min_score_fraction=0.6):
             strength = (
                 min(1.0, peak["signal"] / scale)
                 if scale > 0 and peak.get("signal") is not None
-                else best / maximum
+                else min(1.0, best / maximum)
             )
             sites.append(
                 dict(
@@ -234,6 +234,36 @@ def ctcf_boundaries(peaks_path, fasta, *, max_gap_bp=1_000_000):
     rows = motif_boundaries(sites, max_gap_bp=max_gap_bp)
     for row in rows:
         row["evidence_type"] = "ctcf_chip_motif"
+    return unique_positions(rows)
+
+
+def pwm_threshold(log_pwm, pvalue, *, resolution=100):
+    """Smallest log2-odds score reached by a random uniform sequence with probability <= pvalue."""
+    scores = np.rint(np.asarray(log_pwm) * resolution).astype(int)
+    dist, offset = np.ones(1), 0
+    for row in scores:
+        lo, hi = int(row.min()), int(row.max())
+        new = np.zeros(len(dist) + hi - lo)
+        for value in row:
+            new[value - lo : value - lo + len(dist)] += 0.25 * dist
+        dist, offset = new, offset + lo
+    tail = np.cumsum(dist[::-1])[::-1]
+    index = int(np.argmax(tail <= pvalue)) if np.any(tail <= pvalue) else len(dist) - 1
+    return (index + offset) / resolution
+
+
+def motif_genome_boundaries(fasta, *, pvalue=1e-5, max_gap_bp=1_000_000):
+    """Boundaries from a genome-wide scan of the built-in CTCF motif, without ChIP data.
+
+    Sites with p <= pvalue on either strand are paired as in ctcf_boundaries; a site's
+    strength is its relative motif score.
+    """
+    rows_pwm = ctcf_pwm_rows()
+    threshold = pwm_threshold(_log_pwm(rows_pwm), pvalue)
+    sites = scan_motifs(fasta, rows_pwm, threshold=threshold)
+    rows = motif_boundaries(sites, max_gap_bp=max_gap_bp)
+    for row in rows:
+        row["evidence_type"] = "ctcf_motif"
     return unique_positions(rows)
 
 

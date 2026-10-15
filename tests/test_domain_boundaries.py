@@ -129,3 +129,26 @@ def test_fitted_boundary_prior_is_applied_when_scoring(domains_cool, tmp_path):
     within = contact_prior("chr1", 1_000_000, 1_400_000, prior, index)
     across = contact_prior("chr1", 1_300_000, 1_700_000, prior, index)
     assert across / within == pytest.approx(math.exp(-prior["beta"]), rel=0.05)
+
+
+def test_motif_threshold_matches_the_random_sequence_tail():
+    from pace_livestock.boundary_prior import _log_pwm, ctcf_pwm_rows, pwm_threshold
+
+    log_pwm = _log_pwm(ctcf_pwm_rows())
+    rng = np.random.default_rng(0)
+    seqs = rng.integers(0, 4, size=(200_000, len(log_pwm)))
+    scores = log_pwm[np.arange(len(log_pwm)), seqs].sum(axis=1)
+    threshold = pwm_threshold(log_pwm, 1e-3)
+    assert np.mean(scores >= threshold) == pytest.approx(1e-3, rel=0.3)
+
+
+@pytest.mark.parametrize("left,right,boundaries", [("-", "+", 1), ("+", "-", 0)])
+def test_builtin_motif_scan_without_ctcf_peaks(tmp_path, left, right, boundaries):
+    from pace_livestock.boundary_prior import motif_genome_boundaries
+
+    filler = "AT" * 500
+    sequence = filler + motif(left) + filler + motif(right) + filler
+    (tmp_path / "genome.fa").write_text(">c\n" + sequence + "\n")
+    rows = motif_genome_boundaries(tmp_path / "genome.fa")
+    assert len(rows) == boundaries
+    assert all(r["evidence_type"] == "ctcf_motif" for r in rows)
