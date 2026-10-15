@@ -72,26 +72,12 @@ For every candidate element–gene pair within 5 Mb, PACE computes one score. Re
 
 **The biological idea.** An enhancer can only regulate a gene if two things are true at the same time: the enhancer is switched on in this tissue (**activity**), and the folded chromosome brings it close to the gene's promoter (**contact**). Their product is the enhancer's regulatory *support* for the gene. A gene is usually surrounded by dozens to hundreds of candidate elements, so PACE asks: *of all the support this gene receives, what share comes from this element?* That share is the score, so the scores of all candidates of one gene add up to 1. A score of 0.3 means the element provides 30% of the modelled activity-weighted contact the gene receives; it is a ranking of likely regulators, not a proportion of expression.
 
-What each part of the equation means biologically, and which data problem it addresses:
+The terms:
 
-**$A_\star(E)$, activity of element E: is this element switched on in the tissue?**
-Open chromatin (ATAC-seq or DNase-seq) shows that transcription factors can reach the element; H3K27ac marks elements that are actively enhancing. With both, PACE takes the geometric mean, $\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}=\sqrt{\text{ATAC}\times\text{H3K27ac}}$, so an element must be both open and acetylated to score high; if either is zero the activity is zero. Here $x_m(E)$ is the signal of assay $m$ at the element, averaged over replicates, and $\mathcal M$ is the set of assays used.
-*Problem addressed:* few tissues outside the best-studied species have the full ENCODE-style panel. PACE works with ATAC, DNase or H3K27ac alone, or one accessibility assay plus H3K27ac, and uses the same panel for every element of a run so that genes are never scored on mixed scales. Because every gene's score is a share, sequencing depth and library normalization cancel out; data from different labs need no common scale. Replicates are averaged within each animal first, so one animal sequenced twice never counts as two animals.
-
-**$\overline C(E,G)$, contact of element E with gene G: does the 3D genome bring them together?**
-DNA loops bring distant enhancers next to promoters; the closer and more frequent the contact, the more likely regulation is. Many genes are annotated with several transcription start sites, and an enhancer may touch one promoter more than another. PACE therefore averages the contact with each distinct start site $t$ of the gene, $\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)$, where $\mathcal T(G)$ are the gene's distinct TSSs and $\pi(t\mid G)$ is how much each counts. By default it is the TSS's share of the gene's promoter activity, the activity $A_\star$ of the cell that contains the TSS divided by the sum over the gene's TSSs, so the TSSs that are used most weigh most (weights sum to 1).
-*Problem addressed:* domestic-animal annotations list many predicted transcripts per gene without evidence for which TSS is used. Transcripts that start at the same position are merged into one TSS, and TSSs are weighted by the activity of the cell that contains them, so the promoter that is open and marked in this tissue dominates the gene's contact, rather than the TSS that happens to have the most transcript models.
-
-**$\widetilde C(E,t)$, contact of element E with one start site t: how is contact measured when Hi-C is scarce?**
-This is the part that most often limits studies of non-model species, and PACE offers three routes (cases A, B, C in the [quick start](#which-case-am-i-three-data-situations)):
-- **Hi-C of the same species and tissue (A):** the measured contact frequency. Shallow or 10–25 kb maps leave bins masked or near-empty; PACE fills masked bins and adds a small pseudocount from the distance decay fitted on the same map, and replaces the unreliable self-contact of an element and TSS in the same bin by the neighbouring contacts.
-- **Hi-C of the same species from another tissue (B):** contact frequency falls with genomic distance roughly as a power law, $\widetilde C \propto d^{-\gamma}$. PACE fits $\gamma$ on that Hi-C (another tissue, animal or public dataset) and uses it for samples without Hi-C.
-- **No Hi-C (C):** contact is estimated from the distance between element and TSS only, $\widetilde C = 1/\max(d,5\,\mathrm{kb})$.
-Sparse maps can also be combined with the fitted decay per pair (shrinkage), trusting observed counts where coverage is high and the distance expectation where it is low.
-
-**$\sum_{e\in\mathcal E(G)}$, the denominator: which elements compete for this gene?**
-$\mathcal E(G)$ is every candidate element within the search radius (default 5 Mb) of the gene's start sites, including the gene's own promoter and promoters of neighbouring genes. The denominator is the gene's total support. An element's score therefore depends on its neighbours: a gene with one strong enhancer gives it a high share, a gene with many active enhancers shares the credit.
-*Problem addressed:* missing measurements are common in incomplete datasets. If any candidate of a gene cannot be measured, the total is unknown and PACE withholds that gene's score rather than inflating the others; measured zero and "not measured" (NA) are kept apart.
+- **Activity $A_\star(E)$** — is the element active in this tissue? The geometric mean of the assays used, $\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}$, e.g. $\sqrt{\text{ATAC}\times\text{H3K27ac}}$: an element must be both accessible and acetylated to score high. $x_m(E)$ is the replicate-averaged signal of assay $m$. Because the score is a share within a gene, a constant scale factor of a track (library size, normalization) cancels.
+- **Contact $\overline C(E,G)$** — does chromatin folding bring the element to the gene? The usage-weighted mean of its contacts with the gene's distinct TSSs, $\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)$, with $\pi(t\mid G)$ the TSS's share of the gene's promoter activity.
+- **TSS contact $\widetilde C(E,t)$** — measured Hi-C with a distance term (Case A), the distance–boundary prior $P(d)\,e^{-\beta\min(S,1)}$ fitted on Hi-C of the species (Case B), or $1/\max(d,5\,\mathrm{kb})$ (Case C); see [Which case am I?](#which-case-am-i-three-data-situations).
+- **Denominator** — the summed support of all candidates $\mathcal E(G)$ within 5 Mb of the gene's TSSs, including promoters. A gene with one strong enhancer gives it a large share; a gene with many shares the credit. If any candidate is unmeasured the total is unknown, and the score is withheld.
 
 Worked example: ATAC = 4 and H3K27ac = 9 give activity $A_\star(E)=\sqrt{4\times 9}=6$. The gene has two start sites weighted 3/4 and 1/4, with contacts 2 and 6, so $\overline C(E,G)=\tfrac34\times2+\tfrac14\times6=3$ and the element's support is $6\times3=18$. If the gene's total support from all candidates is 60, $\mathrm{PACE}(E,G)=18/60=0.3$: this element supplies 30% of the gene's modelled regulatory input.
 
@@ -631,20 +617,19 @@ At $\eta>0$ every candidate gene of an element needs a contact value; if one is 
 
 ## PACE and ABC
 
-PACE uses the ABC score: an element's activity times its contact with the gene, divided by the sum over all candidates of that gene. With identical activity, contact, one TSS and a complete candidate set, the two give the same normalized share. Several practical features are also shared with ABC: a run needs only an accessibility assay, contact can be estimated from distance when there is no Hi-C, the diagonal and low-coverage Hi-C bins are corrected, and a small distance-based term is added to measured contact.
-
-What PACE changes:
+The score is the ABC score: with identical activity, contact, one TSS and a complete candidate set, PACE and ABC give the same value. They differ in how the inputs are obtained:
 
 | | ABC | PACE |
 |---|---|---|
-| TSSs of a gene | One TSS per gene in the gene file | All distinct TSSs of the gene, each weighted by the activity of the cell that contains it |
-| Candidate elements | Windows centred on the strongest peaks | A fixed grid of cells overlapping your peaks and all TSSs, so every run on the same catalog has the same candidates |
-| Contact without Hi-C | Fixed power-law constants from human Hi-C | Distance only (Case C), or $\gamma$ fitted on Hi-C of the same species (Case B) |
-| Hi-C resolution | 5 kb | Any `.cool`/`.mcool` resolution, for example 10–25 kb |
+| TSSs of a gene | One TSS per gene | All distinct TSSs, weighted by promoter activity |
+| Candidate elements | Windows centred on the strongest peaks | A fixed 500 bp grid over your peaks and all TSSs, identical across runs on one catalog |
+| Hi-C resolution | 5 kb | Any `.cool`/`.mcool` resolution |
+| Low-depth Hi-C | Distance-based pseudocount | Also per-pair Gamma–Poisson shrinkage toward the distance prior (`pace fuse`) |
+| Domain boundaries | Not modelled | CTCF boundaries, effect $\beta$ fitted on Hi-C (`--ctcf --genome`) |
+| Contact without the sample's Hi-C | Fixed power law fitted on human Hi-C | $\gamma$ (and $\beta$) fitted on Hi-C of the same species (Case B), or $1/d$ (Case C) |
+| Missing contact | Set to zero | Kept as NA; the gene's score is withheld and a conditional share is reported |
 
-PACE also keeps a measured zero and a missing value (NA) apart, and records why each value is NA (`reason`). A gene's score is given when all of its candidates could be scored; otherwise the score is withheld and a conditional share and support bounds are reported (see [Zero and NA](#the-formula-in-full)). Replicates are averaged in the order technical, biological, animal, and several animals can be compared with `pace compare` on a shared catalog. Chromosomes missing from a bigWig or Hi-C file are marked unmeasured, and `--skip-unlisted-chroms` drops contigs absent from the chromosome sizes.
-
-Scores from different runs are comparable only when the candidates, assays, normalization and TSS definitions are the same. See [comparison methods](docs/ADVANCED.md#comparisons-and-benchmarks).
+Scores from different runs are comparable only when candidates, assays, normalization and TSS definitions are the same; see [comparison methods](docs/ADVANCED.md#comparisons-and-benchmarks).
 
 ## Troubleshooting
 
