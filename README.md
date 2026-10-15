@@ -1,10 +1,14 @@
 # PACE
 
-**Enhancer–gene prediction for livestock and poultry.**
+**Enhancer–gene prediction from chromatin activity and 3D contact, for any species.**
 
-PACE ranks candidate regulatory elements for each gene in a tissue using measured activity and contact evidence. It is built on the Activity-by-Contact (ABC) model and adapted to the data that livestock labs actually have: incomplete epigenomic panels, sparse or low-resolution Hi-C, rough transcript annotation, and only one or a few animals per tissue.
+PACE ranks the candidate regulatory elements of every gene in a tissue. It is built on the Activity-by-Contact (ABC) model, and the score of an element is its share of the gene's activity-weighted contact. It works for any species that has a reference genome, a gene annotation and measured chromatin data; pig, cattle, sheep, goat and chicken are among the species it has been used on.
 
-The input formats are species-independent and require a matching reference, annotation and experimental activity data. Pig, cattle, sheep, goat and chicken are the main use cases.
+PACE is optimized for three situations that are common outside the best-studied model organisms:
+
+1. **Incomplete epigenomic panels.** ATAC-seq, DNase-seq or H3K27ac alone, or one accessibility assay plus H3K27ac, is enough. Missing measurements are never imputed.
+2. **Sparse, low-resolution or missing Hi-C.** Shallow or 10–25 kb maps are completed with a distance-decay law fitted on the same map, on Hi-C of the same species, or on the human ABC reference.
+3. **Genes with several TSSs and few animals.** Transcripts sharing a TSS count once, multiple TSSs are weighted by their promoter usage (activity), and replicates are averaged within each animal, so one or a few animals per tissue are enough.
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
@@ -59,18 +63,18 @@ For every candidate element–gene pair within 5 Mb, PACE computes one score. Re
 
 **The biological idea.** An enhancer can only regulate a gene if two things are true at the same time: the enhancer is switched on in this tissue (**activity**), and the folded chromosome brings it close to the gene's promoter (**contact**). Their product is the enhancer's regulatory *support* for the gene. A gene is usually surrounded by dozens to hundreds of candidate elements, so PACE asks: *of all the support this gene receives, what share comes from this element?* That share is the score, so the scores of all candidates of one gene add up to 1. A score of 0.3 means the element provides 30% of the modelled activity-weighted contact the gene receives; it is a ranking of likely regulators, not a proportion of expression.
 
-What each part of the equation means biologically, and which livestock data problem it addresses:
+What each part of the equation means biologically, and which data problem it addresses:
 
 **$A_\star(E)$, activity of element E: is this element switched on in the tissue?**
 Open chromatin (ATAC-seq or DNase-seq) shows that transcription factors can reach the element; H3K27ac marks elements that are actively enhancing. With both, PACE takes the geometric mean, $\left[\prod_{m\in\mathcal M}x_m(E)\right]^{1/|\mathcal M|}=\sqrt{\text{ATAC}\times\text{H3K27ac}}$, so an element must be both open and acetylated to score high; if either is zero the activity is zero. Here $x_m(E)$ is the signal of assay $m$ at the element, averaged over replicates, and $\mathcal M$ is the set of assays used.
-*Livestock problem addressed:* few pig, cattle or chicken tissues have the full ENCODE-style panel. PACE works with ATAC, DNase or H3K27ac alone, or one accessibility assay plus H3K27ac, and uses the same panel for every element of a run so that genes are never scored on mixed scales. Because every gene's score is a share, sequencing depth and library normalization cancel out; data from different labs need no common scale. Replicates are averaged within each animal first, so one animal sequenced twice never counts as two animals.
+*Problem addressed:* few tissues outside the best-studied species have the full ENCODE-style panel. PACE works with ATAC, DNase or H3K27ac alone, or one accessibility assay plus H3K27ac, and uses the same panel for every element of a run so that genes are never scored on mixed scales. Because every gene's score is a share, sequencing depth and library normalization cancel out; data from different labs need no common scale. Replicates are averaged within each animal first, so one animal sequenced twice never counts as two animals.
 
 **$\overline C(E,G)$, contact of element E with gene G: does the 3D genome bring them together?**
-DNA loops bring distant enhancers next to promoters; the closer and more frequent the contact, the more likely regulation is. Many livestock genes are annotated with several transcription start sites, and an enhancer may touch one promoter more than another. PACE therefore averages the contact with each distinct start site $t$ of the gene, $\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)$, where $\mathcal T(G)$ are the gene's distinct TSSs and $\pi(t\mid G)$ is how much each counts. By default it is the TSS's share of the gene's promoter activity, the activity $A_\star$ of the cell that contains the TSS divided by the sum over the gene's TSSs, so the TSSs that are used most weigh most (weights sum to 1).
-*Livestock problem addressed:* livestock annotations often contain many predicted transcripts with uncertain start sites. Transcripts that share a TSS are counted once, and TSSs are weighted by how active their promoter is, so a gene is not weighted by how many transcript models the annotation happens to list.
+DNA loops bring distant enhancers next to promoters; the closer and more frequent the contact, the more likely regulation is. Many genes are annotated with several transcription start sites, and an enhancer may touch one promoter more than another. PACE therefore averages the contact with each distinct start site $t$ of the gene, $\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)$, where $\mathcal T(G)$ are the gene's distinct TSSs and $\pi(t\mid G)$ is how much each counts. By default it is the TSS's share of the gene's promoter activity, the activity $A_\star$ of the cell that contains the TSS divided by the sum over the gene's TSSs, so the TSSs that are used most weigh most (weights sum to 1).
+*Problem addressed:* annotations often contain many predicted transcripts with uncertain start sites. Transcripts that share a TSS are counted once, and TSSs are weighted by how active their promoter is, so a gene is not weighted by how many transcript models the annotation happens to list.
 
 **$\widetilde C(E,t)$, contact of element E with one start site t: how is contact measured when Hi-C is scarce?**
-This is the part that most often limits livestock studies, and PACE offers three routes (cases A, B, C in the [quick start](#which-case-am-i-three-data-situations)):
+This is the part that most often limits studies of non-model species, and PACE offers three routes (cases A, B, C in the [quick start](#which-case-am-i-three-data-situations)):
 - **Hi-C of the sample (A):** the measured contact frequency. Shallow or 10–25 kb maps leave bins masked or near-empty; PACE fills masked bins and adds a small pseudocount from the distance decay fitted on the same map, and replaces the unreliable self-contact of an element and TSS in the same bin by the neighbouring contacts.
 - **Hi-C of the same species only (B):** contact frequency falls with genomic distance roughly as a power law, $\widetilde C \propto d^{-\gamma}$. PACE fits $\gamma$ on any Hi-C of the species (another tissue, animal or public dataset) and uses it for samples without Hi-C.
 - **No Hi-C for the species (C):** the human ABC power law ($\gamma\approx1.02$), labelled as unvalidated in the outputs.
@@ -78,7 +82,7 @@ Sparse maps can also be combined with the fitted decay per pair (shrinkage), tru
 
 **$\sum_{e\in\mathcal E(G)}$, the denominator: which elements compete for this gene?**
 $\mathcal E(G)$ is every candidate element within the search radius (default 5 Mb) of the gene's start sites, including the gene's own promoter and promoters of neighbouring genes. The denominator is the gene's total support. An element's score therefore depends on its neighbours: a gene with one strong enhancer gives it a high share, a gene with many active enhancers shares the credit.
-*Livestock problem addressed:* missing measurements are common in incomplete datasets. If any candidate of a gene cannot be measured, the total is unknown and PACE withholds that gene's score rather than inflating the others; measured zero and "not measured" (NA) are kept apart.
+*Problem addressed:* missing measurements are common in incomplete datasets. If any candidate of a gene cannot be measured, the total is unknown and PACE withholds that gene's score rather than inflating the others; measured zero and "not measured" (NA) are kept apart.
 
 Worked example: ATAC = 4 and H3K27ac = 9 give activity $A_\star(E)=\sqrt{4\times 9}=6$. The gene has two start sites weighted 3/4 and 1/4, with contacts 2 and 6, so $\overline C(E,G)=\tfrac34\times2+\tfrac14\times6=3$ and the element's support is $6\times3=18$. If the gene's total support from all candidates is 60, $\mathrm{PACE}(E,G)=18/60=0.3$: this element supplies 30% of the gene's modelled regulatory input.
 
@@ -86,7 +90,7 @@ Worked example: ATAC = 4 and H3K27ac = 9 give activity $A_\star(E)=\sqrt{4\times
 
 **Good fit**
 
-- You have ATAC-seq, DNase-seq or H3K27ac ChIP-seq (or CUT&Tag) from a livestock tissue.
+- You have ATAC-seq, DNase-seq or H3K27ac ChIP-seq (or CUT&Tag) from any tissue of your species.
 - You want to connect GWAS hits, eQTLs or selection signals to target genes.
 - You have one or a few animals, not dozens.
 - Your Hi-C is 10–25 kb resolution, shallow, from another tissue, or missing entirely.
@@ -358,7 +362,7 @@ pace run -d prepared/catalog --activity prepared/all_activity.tsv \
 
 ## No Hi-C? Low-resolution Hi-C?
 
-Hi-C is the data type livestock projects most often lack. PACE has three contact modes (`pace run --contact-mode`):
+Hi-C is the data type most often missing. PACE has three contact modes (`pace run --contact-mode`):
 
 | Mode | Uses | When to use |
 | --- | --- | --- |
@@ -382,7 +386,7 @@ pace predict ... --prior pig_prior        # or: pace run ... --contact-prior pig
 
 The lower distance defaults to the matrix resolution. A prior from a different tissue requires `--allow-cross-context-prior`; source and target contexts are retained and the transfer is labelled unvalidated. The species, assembly, target level and measurement definitions must match. Tissue transfer requires evaluation; it is not assumed equivalent to target-tissue Hi-C.
 
-Without any usable Hi-C, `--abc-prior` (`pace run --prior-preset abc_human --contact-mode prior_only`) uses the human ABC reference gamma=1.024238616787792 on a relative scale. It is not a fitted livestock parameter. See [the model](docs/ADVANCED.md#fitting-and-transferring-a-prior).
+Without any usable Hi-C, `--abc-prior` (`pace run --prior-preset abc_human --contact-mode prior_only`) uses the human ABC reference gamma=1.024238616787792 on a relative scale. It is not fitted to your species. See [the model](docs/ADVANCED.md#fitting-and-transferring-a-prior).
 
 For `shrinkage`, either give a fixed weight with `--contact-reliability 0.5 --reliability-source <how it was chosen>`, or use `pace fuse`, which estimates a weight per pair from raw counts and the prior (`pace contacts` exports the counts and conversion factors). See [boundary priors and weak calibration](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
 
@@ -452,7 +456,7 @@ print(top[["element_id", "gene_id", "pace_score", "A_used", "Cbar"]].head(20))
 - **Check coverage before scores.** `normalization_status` tells you whether every planned candidate for the gene could be scored (`complete`) or only some (`partial`). With `partial_policy: withhold` (default), partial genes get no score, because dividing by an incomplete total would inflate the remaining candidates.
 - **NA is not zero.** NA means the value could not be computed. Zero means the assay measured zero signal; it does not prove the absence of biological activity or contact. Never replace NA with 0.
 - **A score of 1 is not automatically a strong enhancer.** If only one candidate has any support, it gets 1 by definition.
-- **Choose your own threshold.** Published ABC cutoffs depend on the assay panel, candidate definition and human perturbation benchmark. Calibrate a livestock threshold on independent functional labels where available; eQTL colocalisation provides complementary association evidence, not interchangeable causal labels. Filter after scoring, never before, so the gene totals stay the same.
+- **Choose your own threshold.** Published ABC cutoffs depend on the assay panel, candidate definition and human perturbation benchmark. Calibrate a threshold for your species on independent functional labels where available; eQTL colocalisation provides complementary association evidence, not interchangeable causal labels. Filter after scoring, never before, so the gene totals stay the same.
 - **A score is not a probability.** It ranks candidates for follow-up.
 
 ## Comparing animals, tissues or treatments
@@ -618,8 +622,8 @@ Yes. That is the default (`--target-level individual`). You just can't say anyth
 **Out of memory**
 Use chunked scoring (default in `predict`, `--by-chromosome` in `run`), fewer `--threads`, or a smaller `--radius`.
 
-**My species isn't pig, cattle or chicken**
-The readers accept species-independent formats. Use matching measured activity, annotation and reference data; a compatible contact prior is needed when contact is unavailable. Performance must be assessed for your species and tissue.
+**Which species can I use?**
+Any. The readers accept species-independent formats. Use matching measured activity, annotation and reference data; a compatible contact prior is needed when contact is unavailable. Performance must be assessed for your species and tissue.
 
 Still stuck? Open an [issue](https://github.com/shenlinyong/PACE/issues) and include the output of `pace --version`, the command you ran, and `qc_report.json`.
 

@@ -11,10 +11,10 @@ repository-code: https://github.com/shenlinyong/PACE
 url: https://github.com/shenlinyong/PACE
 license: MIT
 abstract: >-
-  Enhancer-gene regulatory support from measured livestock activity and contact
+  Enhancer-gene prediction from measured chromatin activity and 3D contact
   data, with multiple promoters, explicit missing-data handling, distance priors
   and comparisons on common candidate sets.
 keywords:
   - enhancer-gene regulation
-  - livestock genomics
+  - genomics
   - research software
