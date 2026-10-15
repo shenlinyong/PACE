@@ -50,7 +50,6 @@ Other data and helpers:
   normalize-activity   Counts per million per bp from raw window counts
   promoter-weights     TSS weights from promoter signal (CAGE, ATAC, H3K4me3)
   init           Write empty input-table templates for a new project
-  demo           Run the bundled synthetic example
 
 Quick start - choose A, B or C by the Hi-C you have
 (peaks, a GTF and at least one ATAC/DNase/H3K27ac bigWig are always required):
@@ -74,7 +73,6 @@ Quick start - choose A, B or C by the Hi-C you have
          --species pig --assembly Sscrofa11.1 --tissue liver -o C_out
 
   No parameter values need to be set by hand in A, B or C.
-  Test the installation first:  pace demo -o demo_out
 
 Run 'pace COMMAND --help' for the options of a command.
 """
@@ -327,9 +325,9 @@ def predict_parser(command):
     )
     score.add_argument(
         "--tss-weights",
-        choices=["equal", "provided"],
-        default="equal",
-        help="Weights of the distinct TSSs of a gene",
+        choices=["usage", "equal", "provided"],
+        default="usage",
+        help="Weights of the distinct TSSs of a gene: promoter activity share (default), equal, or promoters.tsv",
     )
 
 
@@ -762,10 +760,6 @@ def helper_parsers(command):
     p.add_argument("--prior-preset", choices=["abc_human"])
     add_out(p)
 
-    p = command("demo", "Run the bundled synthetic example (tests the installation)")
-    p.add_argument("--regime", choices=["measured"], default="measured", help=argparse.SUPPRESS)
-    add_out(p)
-
 
 RUN_EPILOGS = {
     "run": """\
@@ -892,10 +886,6 @@ def dispatch(args):
         mapping = {**asset_options(args), **options(args, "data", "bin_edges", "d_ref", "d_min")}
         fit_contact_command(legacy_or(args, mapping), args.out)
         return {"output": args.out, "command": command, "status": "complete"}
-    if command == "demo":
-        from .demo import demo
-
-        return demo(args.regime, args.out)
     if command in RUN_COMMANDS:
         return run_command(args)
     if command in ("compare", "stability"):

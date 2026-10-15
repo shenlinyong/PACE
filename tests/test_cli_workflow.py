@@ -319,55 +319,6 @@ def test_help_lists_commands_and_hides_yaml(capsys):
     assert "--config" not in capsys.readouterr().out
 
 
-def script_commands(path):
-    """pace commands of an example script, with its shell variables expanded."""
-    import shlex
-
-    variables, commands, pending = {}, [], ""
-    for raw in path.read_text().splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or line.startswith("set "):
-            continue
-        if line.endswith("\\"):
-            pending += line[:-1] + " "
-            continue
-        line, pending = pending + line, ""
-        name, sep, value = line.partition("=")
-        if sep and name.isidentifier() and name.isupper():
-            variables[name] = shlex.split(value)[0]
-            continue
-        for key, value in variables.items():
-            line = line.replace(f"${key}", value)
-        words = shlex.split(line)
-        assert words[0] == "pace", line
-        commands.append(words[1:])
-    return commands
-
-
-@pytest.mark.parametrize("example", ["contact", "measured"])
-def test_example_scripts_use_only_flags(tmp_path, example, capsys):
-    import os
-    import shutil
-    from pathlib import Path
-
-    source = Path(__file__).resolve().parents[1] / "examples" / example
-    root = tmp_path / example
-    shutil.copytree(source, root)
-    commands = script_commands(root / "run.sh")
-    assert commands and not any("--config" in c for c in commands)
-    cwd = os.getcwd()
-    os.chdir(root)
-    try:
-        for argv in commands:
-            assert main(argv) == 0, (argv, capsys.readouterr().err)
-    finally:
-        os.chdir(cwd)
-    if example == "contact":
-        calibration = json.loads((root / "calibrated/eta_calibration.json").read_text())
-        assert calibration["status"] == "weak_fitted"
-        assert not calibration["functional_validation"]
-
-
 def test_real_world_annotation_quirks(inputs, tmp_path, capsys):
     """Exon-only GTF, '.' peak names, overhanging peaks and a contig absent from tracks."""
     gtf = tmp_path / "exon_only.gtf"

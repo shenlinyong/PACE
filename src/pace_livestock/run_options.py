@@ -191,8 +191,8 @@ def add_run_options(
     model.add_argument("--partial-policy", choices=["withhold", "conditional"])
     model.add_argument(
         "--tss-weights",
-        choices=["provided", "equal"],
-        help="TSS weights: the pi column of promoters.tsv, or equal per distinct TSS",
+        choices=["provided", "equal", "usage"],
+        help="TSS weights: the pi column of promoters.tsv, equal per TSS, or promoter activity share",
     )
     model.add_argument(
         "--min-callable-fraction",

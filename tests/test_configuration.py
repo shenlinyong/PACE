@@ -5,9 +5,9 @@ import copy
 
 import pytest
 import yaml
+from fixture import create_example
 
 from pace_livestock.config import load_config
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.io.tables import read_table, write_table
 from pace_livestock.pipeline import compute

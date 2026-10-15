@@ -5,14 +5,15 @@ import json
 import math
 
 import pytest
+from fixture import create_example
 
 from pace_livestock.cli import main
 from pace_livestock.config import load_config
 from pace_livestock.core import activity, score
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.evaluation.compare import compare_runs
 from pace_livestock.evidence.assets import load_asset
+from pace_livestock.evidence.promoters import usage_weights
 from pace_livestock.io.tables import read_table, write_table
 from pace_livestock.pipeline import compute, run
 
@@ -257,3 +258,30 @@ def test_coarse_cooler_prior_default_starts_at_its_resolution(tmp_path):
     manifest = json.loads((out / "manifest.json").read_text())
     assert manifest["fit_range"][0] == manifest["d_min"] == 25000
     assert manifest["gamma"] == pytest.approx(1, abs=0.12)
+
+
+def test_usage_weights_follow_promoter_activity():
+    cfg = {"catalog": {"width_bp": 500, "offset_bp": 0}, "activity": {"pseudocounts": {}}}
+    resolved = [
+        {"element_id": f"chr1:{start}-{start + 500}", "assay": assay, "resolved_value": value}
+        for start, value in ((0, 4), (500, 2), (1000, 0), (1500, math.nan))
+        for assay in ("ATAC", "H3K27ac")
+    ]
+
+    def tss(promoter_id, gene, pos):
+        return {"promoter_id": promoter_id, "gene_id": gene, "chrom": "chr1", "tss0": pos}
+
+    promoters = [
+        tss("a", "G1", 100),
+        tss("b", "G1", 700),  # activity 4 and 2
+        tss("c", "G2", 1100),
+        tss("d", "G2", 1200),  # all zero
+        tss("e", "G3", 100),
+        tss("f", "G3", 1600),  # one unmeasured
+        tss("g", "G4", 100),
+        tss("h", "G4", 9000),  # no activity unit
+    ]
+    usage_weights({"promoters": promoters}, resolved, cfg)
+    pi = {p["promoter_id"]: p["pi"] for p in promoters}
+    assert pi["a"] == pytest.approx(2 / 3) and pi["b"] == pytest.approx(1 / 3)
+    assert [pi[k] for k in "cdefgh"] == [0.5] * 6

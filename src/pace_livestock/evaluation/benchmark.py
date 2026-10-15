@@ -62,8 +62,6 @@ def benchmark_command(path, out):
         paths=["run_config", "labels", "region_membership"],
     )
     run_cfg = load_config(cfg["run_config"])
-    if run_cfg["promoters"]["weights"] != "provided":
-        raise PaceError("Benchmark baselines require explicitly provided promoter weights")
     labels = read_table(
         cfg["labels"],
         required=[

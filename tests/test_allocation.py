@@ -6,10 +6,10 @@ import math
 import numpy as np
 import pytest
 import yaml
+from fixture import create_example
 
 from pace_livestock.config import load_config
 from pace_livestock.core import score
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.evaluation.benchmark import benchmark_command
 from pace_livestock.io.tables import write_table

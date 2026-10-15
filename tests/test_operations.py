@@ -4,9 +4,9 @@ import math
 
 import pytest
 import yaml
+from fixture import create_example
 
 from pace_livestock.cli import main
-from pace_livestock.demo import create_example
 from pace_livestock.evaluation.benchmark import benchmark_command
 from pace_livestock.io.tables import read_table, write_table
 from pace_livestock.operations import fit_contact_command, prepare_command

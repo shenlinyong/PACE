@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from fixture import create_example
 
 from pace_livestock.config import load_config
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.evaluation.compare import compare_runs, load_run
 from pace_livestock.evidence.assets import load_asset

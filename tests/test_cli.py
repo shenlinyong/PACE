@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from fixture import create_example
 
 from pace_livestock.config import load_config
-from pace_livestock.demo import create_example
 from pace_livestock.io.tables import read_table
 from pace_livestock.pipeline import compute
 

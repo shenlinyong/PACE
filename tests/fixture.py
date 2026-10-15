@@ -1,12 +1,11 @@
-"""Deterministic offline fixture with measured activity and contact tables."""
+"""Small hand-checkable input tables shared by the tests."""
 
 from pathlib import Path
 
 import yaml
 
-from .io.tables import write_table
-from .provenance import output_directory
-from .schemas import SCHEMAS
+from pace_livestock.io.tables import write_table
+from pace_livestock.schemas import SCHEMAS
 
 
 def create_example(destination, regime="measured"):
@@ -74,6 +73,7 @@ def create_example(destination, regime="measured"):
             k: f"{k}.tsv" for k in ("units", "promoters", "candidates", "sources", "evidence")
         },
         "catalog": {"include_promoter_units": False},
+        "promoters": {"weights": "provided"},
         "activity": {"panel": ["ATAC", "H3K27ac"]},
         "contact": {"scale": "toy_contact", "mode": "observed"},
         "allocation": {"eta": "auto"},
@@ -130,20 +130,3 @@ def create_example(destination, regime="measured"):
         cfg["inputs"][name] = f"{name}.tsv"
     (dest / "config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
     return dest / "config.yaml"
-
-
-def demo(regime, out):
-    from .pipeline import run
-
-    final = Path(out).resolve()
-    with output_directory(final) as dest:
-        config = create_example(dest / "inputs", regime)
-        result = run(config, dest / "results")
-        # The demo transaction moves the persistent inputs and outputs together.
-        for file in (dest / "results").iterdir():
-            if file.suffix in (".json", ".yaml", ".md"):
-                file.write_text(
-                    file.read_text(encoding="utf-8").replace(str(dest), str(final)),
-                    encoding="utf-8",
-                )
-    return {"regime": regime, "n_candidates": len(result["scores"]), "output": str(final)}

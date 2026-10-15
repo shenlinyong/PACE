@@ -1,16 +1,15 @@
 """Measured-only scope, experimental imports and honest evaluation reports."""
 
 import copy
-import json
 import math
 from pathlib import Path
 
 import pytest
-from test_canonical_learning import learning_fixture
+from fixture import create_example
+from test_learning import learning_fixture
 
 from pace_livestock.cli import main
 from pace_livestock.config import load_config
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.evidence.resolve import resolve_contacts
 from pace_livestock.io.tables import read_table, write_table
@@ -181,7 +180,3 @@ def test_retired_modules_and_dependencies_are_absent():
     assert not list((root / "src/pace_livestock/sequence").glob("*.py"))
     metadata = (root / "pyproject.toml").read_text()
     assert all(package not in metadata for package in ("torch", "safetensors", "pysam"))
-    assert (
-        json.loads(json.dumps(load_config(root / "examples/measured/config.yaml")))["regime"]
-        == "measured"
-    )

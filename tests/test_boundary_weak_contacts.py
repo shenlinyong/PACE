@@ -7,6 +7,7 @@ import math
 import numpy as np
 import pytest
 import yaml
+from fixture import create_example
 
 from pace_livestock.boundary_prior import (
     BoundaryIndex,
@@ -22,7 +23,6 @@ from pace_livestock.boundary_prior import (
 from pace_livestock.cli import main
 from pace_livestock.config import load_config
 from pace_livestock.core import score
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.evidence.assets import load_asset
 from pace_livestock.evidence.contact import distance_prior
@@ -675,23 +675,3 @@ def test_benchmark_keeps_frozen_contact_and_varies_eta(configured, tmp_path):
         metrics["PACE_eta1"]["average_precision"] == metrics["PACE_eqtl_weak"]["average_precision"]
     )
     assert metrics["PACE_eta0"]["average_precision"] < metrics["PACE_eta1"]["average_precision"]
-
-
-def test_published_contact_workflow(tmp_path):
-    import shutil
-    from pathlib import Path
-
-    example = Path(__file__).resolve().parents[1] / "examples/contact"
-    root = tmp_path / "demo"
-    shutil.copytree(example, root)
-    for command, config, output in [
-        ("boundaries", "boundaries.yaml", "boundary_asset"),
-        ("prior", "prior.yaml", "prior_asset"),
-        ("fit-hic", "fit-hic.yaml", "fitted_prior"),
-        ("fuse", "fuse.yaml", "fused"),
-        ("fit-labels", "fit-labels.yaml", "weak_fit"),
-        ("run", "calibrated.yaml", "calibrated"),
-    ]:
-        assert main([command, "--config", str(root / config), "--out", str(root / output)]) == 0
-    manifest = json.loads((root / "calibrated/eta_calibration.json").read_text())
-    assert manifest["status"] == "weak_fitted" and not manifest["functional_validation"]

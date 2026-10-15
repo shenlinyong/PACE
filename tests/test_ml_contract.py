@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from fixture import create_example
 
 from pace_livestock.config import load_config
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.evaluation.benchmark import predict_ml_command
 from pace_livestock.io.tables import read_table, write_table
@@ -322,10 +322,10 @@ def test_calibration_cannot_change_the_classifier_evidence_domain(tmp_path):
         train_classifier(path, tmp_path / "model")
 
 
-def test_published_training_example_and_both_inference_paths(tmp_path):
-    """The shipped example is matched to the manifest consumed by both public paths."""
+def test_training_config_and_both_inference_paths(tmp_path):
+    """The training config is matched to the manifest consumed by both inference paths."""
     repo = Path(__file__).resolve().parents[1]
-    example = repo / "examples/training/learning.yaml"
+    example = repo / "tests/data/training/learning.yaml"
     config_path = create_example(tmp_path / "inputs", "measured")
     cfg = load_config(config_path)
     samples = read_table(cfg["inputs"]["samples"])

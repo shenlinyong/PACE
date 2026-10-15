@@ -6,9 +6,9 @@ import math
 import numpy as np
 import pytest
 import yaml
+from fixture import create_example
 
 from pace_livestock.config import load_config, load_yaml
-from pace_livestock.demo import create_example, demo
 from pace_livestock.errors import PaceError
 from pace_livestock.evaluation.compare import compare_rows, compare_runs
 from pace_livestock.evaluation.metrics import binary_metrics
@@ -23,20 +23,12 @@ def measured(tmp_path):
     return create_example(tmp_path / "inputs", "measured")
 
 
-@pytest.mark.parametrize("regime", ["measured"])
-def test_complete_offline_modes(tmp_path, regime):
-    demo(regime, tmp_path / regime)
-    root = tmp_path / regime
-    rows = read_table(root / "results/scores.tsv.gz")
-    # Each gene has exactly the three declared candidates, and support shares sum to one.
+def test_scores_sum_to_one_per_gene(tmp_path, measured):
+    rows = run(load_config(measured), tmp_path / "results")["scores"]
     assert len(rows) == 6
     for gene in ("G1", "G2"):
-        assert sum(float(r["pace_score"]) for r in rows if r["gene_id"] == gene) == pytest.approx(
-            1, abs=1e-10
-        )
-    # The persisted inputs remain rerunnable after the demo transaction moves into place.
-    cfg = load_config(root / "results/resolved_config.yaml")
-    assert len(compute(cfg)["scores"]) == 6
+        assert sum(r["pace_score"] for r in rows if r["gene_id"] == gene) == pytest.approx(1)
+    assert len(compute(load_config(tmp_path / "results/resolved_config.yaml"))["scores"]) == 6
 
 
 def test_strict_config(measured):

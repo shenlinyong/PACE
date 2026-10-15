@@ -1,4 +1,0 @@
-element_id	chrom	start	end	anchor0	element_roles	canonical_catalog_id
-E1	chrToy	5000	5500	5249	enhancer	toy_grid
-E2	chrToy	5500	6000	5749	enhancer	toy_grid
-E3	chrToy	6000	6500	6249	enhancer	toy_grid

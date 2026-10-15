@@ -4,8 +4,7 @@ The [README](../README.md) covers installation, input preparation and ordinary
 scoring. This guide covers optional evidence, calibration, independent validation
 and every setting with its default. Every command takes command-line options
 (`pace COMMAND --help`); no configuration file is needed. Examples with biological filenames are templates:
-replace their paths and context before running them. Bundled training data are
-synthetic.
+replace their paths and context before running them.
 
 - [Evidence preparation](#evidence-preparation)
 - [Sparse activity and alternative TSSs](#sparse-activity-and-alternative-tsss)
@@ -94,7 +93,7 @@ pace prepare-promoter-weights --promoters prepared/catalog/promoters.tsv \
   --normalization-id H3K4me3_CPM_TSS500 --out prepared/promoter_weights
 ```
 
-Use the resulting promoters.tsv in the run. Weights are fixed before enhancer scoring. An unavailable TSS signal errors. All-zero genes error unless `--zero-policy equal` is explicitly chosen. ATAC, DNase and CAGE are also supported; these measurements are promoter-activity proxies and require their own biological validation.
+Use the resulting promoters.tsv in the run with `--tss-weights provided`. Weights are fixed before enhancer scoring. An unavailable TSS signal errors. All-zero genes error unless `--zero-policy equal` is explicitly chosen. ATAC, DNase and CAGE are also supported; these measurements are promoter-activity proxies and require their own biological validation.
 
 ### Imported evidence and extra output fields
 
@@ -136,12 +135,12 @@ primary score and stay NA when inference is unavailable.
 
 ## Sparse activity and alternative TSSs
 
-These options are off by default. Add only the options needed for the analysis:
+TSS weights are the promoter activity share unless set otherwise; the filters below are off by default. Add only the options needed for the analysis:
 
 ```bash
 pace run ... --panel ATAC H3K27ac \
   --activity-pseudocount H3K27ac 0.1 \
-  --tss-weights provided --minimum-tss-weight 0.01 \
+  --minimum-tss-weight 0.01 \
   --missing-tss-policy drop_missing --minimum-retained-tss-weight 0.9
 ```
 
@@ -546,8 +545,7 @@ on independent functional experiments in the intended population and tissue.
 | `group_id` | Prespecified independent locus/experimental group; no group may cross splits |
 | `assay_id`, `source_id` | Nonempty experimental assay and source identifiers |
 
-See the [synthetic table](../examples/training/eta_labels.tsv). This is a dedicated
-calibration table, distinct from the region-level benchmark schema.
+This is a dedicated calibration table, distinct from the region-level benchmark schema.
 Convert a region label only when its canonical element mapping is unambiguous.
 RNA abundance and association/QTL annotations do not constitute functional labels.
 Negative status must reflect adequate assay power, not merely a nonsignificant test.
@@ -643,8 +641,6 @@ For a non-synthetic model the full feature definition is required: pass the
 
 The definition includes activity panels/scales, contact resolution and normalization,
 candidate definitions, target/estimand and auxiliary feature preprocessing.
-[The bundled training fixture](../examples/training/learning.yaml) demonstrates a
-complete synthetic definition.
 
 Prepare one-to-one label mappings before assembling this table. Required columns:
 `element_id,gene_id,assayed_region_id,mapping_count,group_id,split,label_status,effect_direction,
@@ -813,9 +809,7 @@ is log(2). This independently checks an interior solution, not just the two endp
 
 ## Validation
 
-Software verification checks calculations and input handling. The tests use
-synthetic data and small genomic file fixtures; they do not establish predictive
-accuracy for a species or tissue. See [CONTRIBUTING](../CONTRIBUTING.md) for test,
+The tests check calculations and input handling on small hand-made inputs. See [CONTRIBUTING](../CONTRIBUTING.md) for test,
 lint and packaging commands, and inspect the
 [CI run for the exact commit](https://github.com/shenlinyong/PACE/actions/workflows/ci.yml).
 Optional IO tests can be skipped when their dependencies are absent.
@@ -830,10 +824,7 @@ Optional IO tests can be skipped when their dependencies are absent.
 | Comparison | Common denominators; underflow-safe reloads; partial results remain conditional |
 | Multiomics | Experimental annotations, measurement definitions, CpG coverage and RNA status |
 | Classifier | Grouped splits, inference scope, separate score and probability evaluation |
-| Packaging | Supported Python versions, wheel outside checkout, measured demo, Conda and Docker |
-| Documentation | README equation, current defaults, working links and executable interfaces |
-
-This is a study protocol, not a report of completed biological experiments. No performance increase is asserted by the software release.
+| Packaging | Supported Python versions, wheel outside checkout, Conda and Docker |
 
 ### Primary question
 
@@ -873,11 +864,11 @@ For score intervals, use complete high-quality supports to check containment aft
 
 Use species- and tissue-matched FarmGTEx/eQTL resources as orthogonal association evidence. Match or stratify control pairs by enhancer–gene distance, allele frequency, LD, gene expression, variant and candidate density, and assay accessibility. Prefer fine-mapped/colocalized signals where available; do not treat each correlated SNP as an independent regulatory event. eQTL association is not a direct enhancer perturbation label.
 
-Use available independent chicken, pig and cattle perturbations or targeted experiments as final functional evidence. Keep the target of each conclusion precise: human sparse-data robustness, livestock association enrichment, or livestock functional-link accuracy. Public gene annotations and a more elaborate QC system alone do not establish improved accuracy in livestock.
+Use available independent chicken, pig and cattle perturbations or targeted experiments as final functional evidence. Keep the target of each conclusion precise: human sparse-data robustness, livestock association enrichment, or livestock functional-link accuracy.
 
 ## Limitations
 
-PACE is research software for relative regulatory support from measured activity and specified contact evidence. Software tests check calculations and input handling; they do not establish predictive accuracy for a livestock species, tissue, breed or experimental condition.
+PACE is research software for relative regulatory support from measured activity and specified contact evidence.
 
 | Capability | Boundary |
 |---|---|
@@ -1117,16 +1108,14 @@ Functional-label calibrators continue to use `--eta-model`; the two cannot
 be combined. Weak calibration is unavailable in the `validated` execution
 profile. `benchmark` keeps `PACE_eqtl_weak` separate from fixed-eta ablations.
 
-The four-chromosome [offline example](../examples/contact/run.sh) exercises
-all five commands. It verifies the implementation only. Evaluate real livestock
+Evaluate real livestock
 data with distance/LD-aware controls and independent functional evidence before
 claiming an improvement. Cross-tissue prior transfer remains explicit;
 automatic tissue-hierarchical contact learning is not implemented.
 
 ## Complete configuration defaults
 
-These defaults match `pace_livestock.config.DEFAULTS`; the documentation check
-compares the complete mapping during tests. The same structure is written to
+These defaults match `pace_livestock.config.DEFAULTS`. The same structure is written to
 `resolved_config.yaml` in every result folder; `null` means not provided. Ordinary runs need only the settings shown in the
 [README command reference](../README.md#command-reference).
 

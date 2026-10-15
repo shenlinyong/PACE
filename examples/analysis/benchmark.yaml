@@ -1,5 +1,0 @@
-labels: labels.tsv
-region_membership: membership.tsv
-run_config: ../measured/config.yaml
-stratify:
-- gene_id

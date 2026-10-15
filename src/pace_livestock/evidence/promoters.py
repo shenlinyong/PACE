@@ -3,6 +3,42 @@
 import math
 from collections import defaultdict
 
+from ..catalog import canonical_cell_bounds
+from ..core import activity
+
+
+def usage_weights(tables, resolved_a, cfg):
+    """Set each TSS weight to its share of the gene's promoter activity.
+
+    A TSS is measured by the activity of the grid cell that contains it. Genes with an
+    unmeasured, absent or all-zero promoter cell fall back to equal weights.
+    """
+    width, offset = cfg["catalog"]["width_bp"], cfg["catalog"]["offset_bp"]
+    values = defaultdict(list)
+    for r in resolved_a:
+        values[r["element_id"]].append(r)
+    by_gene = defaultdict(list)
+    for p in tables["promoters"]:
+        by_gene[p["gene_id"]].append(p)
+    for group in by_gene.values():
+        usage = []
+        for p in group:
+            start, end = canonical_cell_bounds(p["tss0"], width=width, offset=offset)
+            rows = values.get(f"{p['chrom']}:{start}-{end}", [])
+            usage.append(
+                activity(
+                    [r["resolved_value"] for r in rows],
+                    [cfg["activity"]["pseudocounts"].get(r["assay"], 0.0) for r in rows],
+                )
+                if rows
+                else math.nan
+            )
+        total = math.fsum(usage)
+        measured = math.isfinite(total) and total > 0
+        for p, u in zip(group, usage, strict=True):
+            p["pi"] = u / total if measured else 1 / len(group)
+            p["pi_source"] = "promoter_activity" if measured else "equal_physical_tss"
+
 
 def resolve_promoter_weights(tables, contacts, cfg):
     """Apply explicit TSS filters without changing weights separately for each element.

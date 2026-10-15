@@ -223,7 +223,9 @@ def validate_tables(t: dict, cfg: dict) -> None:
     if cfg["promoters"]["weights"] == "equal":
         for row in t["promoters"]:
             row["pi"], row["pi_source"] = 1 / len(gene_coords[row["gene_id"]]), "equal_physical_tss"
-    elif any(not math.isclose(x, 1, abs_tol=1e-10) for x in pi_sums.values()):
+    elif cfg["promoters"]["weights"] == "provided" and any(
+        not math.isclose(x, 1, abs_tol=1e-10) for x in pi_sums.values()
+    ):
         raise PaceError(
             "Promoter pi values must sum to one per gene before any missing-data filtering"
         )

@@ -6,11 +6,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from fixture import create_example
 
 from pace_livestock.cli import main
 from pace_livestock.config import load_config
 from pace_livestock.core import score
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.evidence.resolve import resolve_contacts
 from pace_livestock.io.tables import read_table, write_table

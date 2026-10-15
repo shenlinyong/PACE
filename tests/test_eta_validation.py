@@ -4,9 +4,9 @@ import copy
 import json
 
 import pytest
+from fixture import create_example
 
 from pace_livestock.config import load_config
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.learning.allocation import (
     _independent_components,

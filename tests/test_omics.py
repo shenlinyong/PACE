@@ -4,9 +4,9 @@ import math
 
 import pytest
 import yaml
+from fixture import create_example
 
 from pace_livestock.config import load_config
-from pace_livestock.demo import create_example
 from pace_livestock.errors import PaceError
 from pace_livestock.io.bed_gtf import read_bed
 from pace_livestock.io.intervals import interval_features

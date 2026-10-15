@@ -26,7 +26,7 @@ pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \
 1. [How it works](#how-it-works)
 2. [Is PACE right for your data?](#is-pace-right-for-your-data)
 3. [Installation](#installation)
-4. [Test run](#test-run)
+4. [Tests](#tests)
 5. [Quick start: one command](#quick-start-one-command)
 6. [Step by step](#step-by-step)
 7. [Several animals](#several-animals)
@@ -66,8 +66,8 @@ Open chromatin (ATAC-seq or DNase-seq) shows that transcription factors can reac
 *Livestock problem addressed:* few pig, cattle or chicken tissues have the full ENCODE-style panel. PACE works with ATAC, DNase or H3K27ac alone, or one accessibility assay plus H3K27ac, and uses the same panel for every element of a run so that genes are never scored on mixed scales. Because every gene's score is a share, sequencing depth and library normalization cancel out; data from different labs need no common scale. Replicates are averaged within each animal first, so one animal sequenced twice never counts as two animals.
 
 **$\overline C(E,G)$, contact of element E with gene G: does the 3D genome bring them together?**
-DNA loops bring distant enhancers next to promoters; the closer and more frequent the contact, the more likely regulation is. Many livestock genes are annotated with several transcription start sites, and an enhancer may touch one promoter more than another. PACE therefore averages the contact with each distinct start site $t$ of the gene, $\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)$, where $\mathcal T(G)$ are the gene's distinct TSSs and $\pi(t\mid G)$ is how much each counts (equal by default, summing to 1).
-*Livestock problem addressed:* livestock annotations often contain many predicted transcripts with uncertain start sites. Transcripts that share a TSS are counted once, so a gene is not weighted by how many transcript models the annotation happens to list.
+DNA loops bring distant enhancers next to promoters; the closer and more frequent the contact, the more likely regulation is. Many livestock genes are annotated with several transcription start sites, and an enhancer may touch one promoter more than another. PACE therefore averages the contact with each distinct start site $t$ of the gene, $\overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)$, where $\mathcal T(G)$ are the gene's distinct TSSs and $\pi(t\mid G)$ is how much each counts. By default it is the TSS's share of the gene's promoter activity, the activity $A_\star$ of the cell that contains the TSS divided by the sum over the gene's TSSs, so the TSSs that are used most weigh most (weights sum to 1).
+*Livestock problem addressed:* livestock annotations often contain many predicted transcripts with uncertain start sites. Transcripts that share a TSS are counted once, and TSSs are weighted by how active their promoter is, so a gene is not weighted by how many transcript models the annotation happens to list.
 
 **$\widetilde C(E,t)$, contact of element E with one start site t: how is contact measured when Hi-C is scarce?**
 This is the part that most often limits livestock studies, and PACE offers three routes (cases A, B, C in the [quick start](#which-case-am-i-three-data-situations)):
@@ -121,14 +121,15 @@ source .venv/bin/activate
 pip install '.[io,ml]'
 ```
 
-The extras are optional. `io` adds pyBigWig, cooler and pandas, which you need to read bigWig and Hi-C files. `ml` adds scikit-learn and scipy for the optional classifier. `pip install .` alone is enough for the demo.
+The extras are optional. `io` adds pyBigWig, cooler and pandas, which you need to read bigWig and Hi-C files. `ml` adds scikit-learn and scipy for the optional classifier.
 
 **Docker**
 
 ```bash
 docker build -t pace:local .
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work pace:local \
-  demo -o results/docker_demo
+  predict -b peaks.bed -g genes.gtf --atac atac.bw --abc-prior \
+  --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig_liver
 ```
 
 Any path you pass to the container must be inside the mounted directory.
@@ -150,19 +151,10 @@ pace --version
 git rev-parse HEAD
 ```
 
-## Test run
+## Tests
 
 ```bash
-pace demo -o results/demo
-```
-
-If `results/demo/results/scores.tsv.gz` appears, the installation works. The demo data are synthetic. They test the software, not biology.
-
-The example folders contain small scripts that use only command-line options:
-
-```bash
-cd examples/measured && bash run.sh      # score prepared tables
-cd ../contact && bash run.sh             # boundary priors, sparse Hi-C and eQTL tuning
+pip install -e '.[dev]' && pytest
 ```
 
 `pace validate` checks inputs and computes a scoring preview without writing a result directory. By default `-o/--out` must be a new folder. `--force` replaces a recognized PACE result only after keeping the old one as a sibling backup.
@@ -401,13 +393,13 @@ Two settings matter most with low-resolution Hi-C:
 - Near-diagonal pairs (default `prior_or_neighbor`). Elements in the same Hi-C bin as the TSS would otherwise get the diagonal value, which mostly reflects bin self-contact. PACE uses the prior if one is given, or else the recorded maximum of valid neighbouring contacts. If neither is available, contact remains NA.
 - `--pseudocount auto` (default). Adds a distance-based term to finite off-diagonal measurements only when a compatible fitted prior is available. Without one, observations are unchanged. Missing values are not converted to measured zeros.
 
-**Boundary-aware priors and eQTL tuning.** Optional commands add a CTCF-boundary attenuation to the prior (`pace boundaries`, `pace prior`, `pace fit-hic`), per-pair Gamma–Poisson shrinkage (`pace fuse`) and chromosome-held-out tuning of gamma, beta and eta on eQTL fine-mapping (`pace fit-labels`, then `pace run --weak-model`). `examples/contact/run.sh` runs all of them on synthetic tables. These components have software tests, not an established livestock accuracy gain. PIP mass is association evidence, not a CRISPR response or a calibrated link probability. Equations, input formats and limitations are in [Advanced use](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
+**Boundary-aware priors and eQTL tuning.** Optional commands add a CTCF-boundary attenuation to the prior (`pace boundaries`, `pace prior`, `pace fit-hic`), per-pair Gamma–Poisson shrinkage (`pace fuse`) and chromosome-held-out tuning of gamma, beta and eta on eQTL fine-mapping (`pace fit-labels`, then `pace run --weak-model`). These components have software tests, not an established livestock accuracy gain. PIP mass is association evidence, not a CRISPR response or a calibrated link probability. Equations, input formats and limitations are in [Advanced use](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
 
 ## Whole genomes: memory and threads
 
 Everything in the default model is computed within a chromosome, so PACE can score whole chromosomes separately and concatenate them without changing any score. `pace predict` does this by default; add `--by-chromosome` to `pace run`. `-t/--threads N` scores N chromosome chunks in parallel.
 
-Measured on synthetic data at livestock density (60 peaks and 8 genes per Mb, 5 Mb radius): about 1.05 million element–gene pairs per 120 Mb took 2.5 minutes with 4 threads and 1.6 GB of memory per thread. A whole livestock genome has roughly 20 million pairs: expect tens of minutes with 4–8 threads, and memory set by the largest chromosome (roughly 6 GB per million pairs of that chromosome). Lower `--radius` reduces both.
+Memory is set by the largest chromosome and grows with the number of element–gene pairs; a lower `--radius` reduces both.
 
 ## Reading the results
 
@@ -520,7 +512,7 @@ Uncovered CpGs are reported as missing, not as unmethylated.
 | `compare`, `stability`, `benchmark` | Downstream evaluation | `--left --right`, `--replicates`, `--run --labels --membership` |
 | `fit-eta`, `train`, `predict-ml` | Functional-label models | see `--help` |
 | `features`, `methylation`, `expression` | Annotation tables | see `--help` |
-| `pairs`, `normalize-activity`, `promoter-weights`, `init`, `demo` | Helpers | see `--help` |
+| `pairs`, `normalize-activity`, `promoter-weights`, `init` | Helpers | see `--help` |
 
 Main `pace run` settings:
 
@@ -569,7 +561,7 @@ The default model is exactly the boxed equation in [How it works](#how-it-works)
 
 **TSS contact $\widetilde C(E,t)$.** This is where the contact options act: measured observations, the near-diagonal correction for element and TSS in the same Hi-C bin, the optional distance-based pseudocount, prior-only contact, or explicit shrinkage. A missing contact for a required TSS gives NA by default.
 
-**TSS weights $\pi(t\mid G)$.** Equal per distinct TSS by default (`--tss-weights equal`). `--minimum-tss-weight` and `--missing-tss-policy drop_missing` select one shared TSS set per gene and renormalize its weights. At least `--minimum-retained-tss-weight` (default 0.9) of the original weight must remain; otherwise the gene stays unscoreable. Filtered scores describe only the selected TSS definition. Both options are off by default; see [worked settings](docs/ADVANCED.md#sparse-activity-and-alternative-tsss).
+**TSS weights $\pi(t\mid G)$.** Promoter activity share by default (`--tss-weights usage`); a gene whose promoter cells are unmeasured or all zero gets equal weights. `--tss-weights equal` gives every distinct TSS the same weight and `--tss-weights provided` uses the `pi` column of `promoters.tsv` (see `pace promoter-weights` for CAGE, ATAC or H3K4me3 signal). `--minimum-tss-weight` and `--missing-tss-policy drop_missing` select one shared TSS set per gene and renormalize its weights. At least `--minimum-retained-tss-weight` (default 0.9) of the original weight must remain; otherwise the gene stays unscoreable. Filtered scores describe only the selected TSS definition. Both options are off by default; see [worked settings](docs/ADVANCED.md#sparse-activity-and-alternative-tsss).
 
 **Experimental extension.** The optional allocation term multiplies support by $B(E,G)^\eta$, where $B(E,G)$ is the share of element E's contact that goes to gene G among all genes it is a candidate for. `--eta auto` (the default) uses zero without
 eligible independent functional evidence. This extension is separate from the
@@ -592,8 +584,7 @@ on candidate selection, contact processing and promoter definitions:
 
 With identical activity, contact, one TSS and a complete candidate set, the default
 normalization agrees with the ABC-style formula. That algebraic agreement does not
-imply identical rankings from different preprocessing pipelines. Software tests do
-not establish superiority over ABC. See [comparison methods](docs/ADVANCED.md#comparisons-and-benchmarks).
+imply identical rankings from different preprocessing pipelines. See [comparison methods](docs/ADVANCED.md#comparisons-and-benchmarks).
 
 ## Troubleshooting
 

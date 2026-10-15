@@ -1,3 +1,0 @@
-gene_id	promoter_id	chrom	tss0	strand	pi	pi_source
-G1	P1	chrToy	10000	+	1	synthetic_equal
-G2	P2	chrToy	14000	+	1	synthetic_equal

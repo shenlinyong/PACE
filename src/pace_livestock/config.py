@@ -77,7 +77,7 @@ DEFAULTS = {
     },
     "scoring": {"partial_policy": "withhold"},
     "promoters": {
-        "weights": "provided",
+        "weights": "usage",
         "minimum_weight": 0.0,
         "missing_policy": "strict",
         "minimum_retained_weight": 0.9,
@@ -195,7 +195,7 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         ),
         ("contact", "pseudocount", {"auto", "none", "powerlaw"}),
         ("scoring", "partial_policy", {"withhold", "conditional"}),
-        ("promoters", "weights", {"provided", "equal"}),
+        ("promoters", "weights", {"provided", "equal", "usage"}),
         ("promoters", "missing_policy", {"strict", "drop_missing"}),
         ("multiomics", "mode", {"annotate", "ml"}),
         ("output", "format", {"tsv_gz"}),

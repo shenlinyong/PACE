@@ -12,7 +12,7 @@ from .config import load_config
 from .core import activity, score, tss_contact
 from .errors import PaceError
 from .evidence.assets import builtin_contact_prior, capabilities, load_asset
-from .evidence.promoters import resolve_promoter_weights
+from .evidence.promoters import resolve_promoter_weights, usage_weights
 from .evidence.resolve import contact_measurement_contract, resolve_activity, resolve_contacts
 from .io.tables import write_table
 from .provenance import digest, environment, file_hash, output_directory, software_hash, write_json
@@ -72,6 +72,8 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
                 "source_context_id", prior_metadata.get("context_id")
             )
             row["prior_transfer_status"] = prior_metadata.get("transfer_status", "matched_context")
+    if cfg["promoters"]["weights"] == "usage":
+        usage_weights(tables, resolved_a, cfg)
     tables["promoters"], promoter_summary = resolve_promoter_weights(tables, resolved_c, cfg)
     for row in resolved_a:
         row["activity_pseudocount"] = cfg["activity"]["pseudocounts"].get(row["assay"], 0.0)

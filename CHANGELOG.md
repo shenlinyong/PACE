@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0
+
+- Genes with several TSSs weight them by usage: each TSS counts in proportion to the activity of the grid cell that contains it (`--tss-weights usage`, the new default). Genes whose promoter cells are unmeasured or all zero use equal weights. `equal` and `provided` remain available.
+- Removed the bundled demo (`pace demo`), the generated example folders and the scripts that produced them.
+
 ## 0.8.2
 
 - Resolved contacts record the content hash of the prior used (`prior_sha256`). Importing contacts resolved with a different prior, including one changed under the same model name, is rejected, and imported `prior_value`s are recomputed and checked (prior-only, fixed-weight shrinkage and regularized rows).
@@ -13,7 +18,7 @@
 - Enforce contact measurement and resolved activity scale consistency across chromosome chunks.
 - Honor fitted bin-center coordinates when applying contact priors in every contact mode, and record the coordinate policy.
 - Reject fractional binary evaluation labels before integer conversion.
-- Add six regression cases and a scoped source-review report in `docs/REVIEW_2026-09-24.md`.
+- Add six regression cases.
 - Chromosomes missing from a bigWig or Hi-C file (chrM, unplaced contigs) are marked unmeasured instead of aborting the run; a complete chromosome-name mismatch is reported with both naming styles.
 - GTF files without `transcript` lines (gffread, UCSC) are read from their exon lines.
 - BED peaks named `.` or with repeated names keep distinct region IDs; peaks extending past a chromosome end are clipped and counted.
