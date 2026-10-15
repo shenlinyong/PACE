@@ -54,22 +54,21 @@ Other data and helpers:
 Quick start - choose A, B or C by the Hi-C you have
 (peaks, a GTF and at least one ATAC/DNase/H3K27ac bigWig are always required):
 
-  A. Hi-C from this sample (best)
+  A. Hi-C of the same species and tissue (best)
      pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
          --hic sample.mcool --hic-resolution 10000 \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o A_out
 
-  B. No Hi-C for this sample, but any Hi-C of the same species and assembly
-     (another tissue, animal or public dataset): fit gamma once, then reuse it
+  B. Hi-C of the same species and assembly from another tissue, animal or
+     public dataset: fit gamma once, then reuse it
      pace fit-prior --cooler other.mcool::/resolutions/10000 \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o pig_prior
      pace predict -b peaks.bed -g genes.gtf --atac atac.bw \\
          --prior pig_prior \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o B_out
 
-  C. No Hi-C for this species at all: human ABC power law (gamma = 1.02),
-     labelled "unvalidated" in the outputs
-     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --abc-prior \\
+  C. No Hi-C at all: contact estimated from distance only
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --distance-only \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o C_out
 
   No parameter values need to be set by hand in A, B or C.
@@ -207,15 +206,15 @@ def add_context(p, *, required=True, target_level=True):
 PREDICT_EPILOG = """\
 Pick ONE contact source according to your data:
 
-  A. --hic FILE    Hi-C of this sample (.cool/.mcool), best choice.
+  A. --hic FILE    Hi-C of the same species and tissue (.cool/.mcool), best choice.
                    The distance power law of the same map is fitted
                    automatically and fills masked Hi-C bins.
      pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
          --hic pig1.mcool --hic-resolution 10000 \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
 
-  B. --prior DIR   No Hi-C for this sample, but Hi-C of the same species and
-                   assembly exists (other tissue/animal/public data).
+  B. --prior DIR   Hi-C of the same species and assembly from another
+                   tissue, animal or public dataset.
                    Fit its gamma once with 'pace fit-prior', then reuse it.
      pace fit-prior --cooler other.mcool::/resolutions/10000 \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o pig_prior
@@ -224,10 +223,9 @@ Pick ONE contact source according to your data:
      (prior from another tissue: fit with that tissue's name, then score with
       'pace run --allow-cross-context-prior'; see the README)
 
-  C. --abc-prior   No Hi-C for this species at all. Uses the human ABC power
-                   law (gamma = 1.02); outputs are labelled
-                   unvalidated_for_target_context.
-     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --abc-prior \\
+  C. --distance-only   No Hi-C at all. Contact is estimated from the distance
+                   between element and TSS only.
+     pace predict -b peaks.bed -g genes.gtf --atac atac.bw --distance-only \\
          --species pig --assembly Sscrofa11.1 --tissue liver -o pig1_liver
 
 No parameter values need to be set by hand in any of the three.
@@ -279,9 +277,11 @@ def predict_parser(command):
         "--prior", metavar="DIR", help="Contact prior from 'pace fit-prior' (no Hi-C needed)"
     )
     contact.add_argument(
+        "--distance-only",
         "--abc-prior",
+        dest="abc_prior",
         action="store_true",
-        help="Use the human ABC distance power law (unvalidated in livestock)",
+        help="No Hi-C: estimate contact from the element-TSS distance only",
     )
     contact.add_argument(
         "--hic-resolution", type=int, metavar="BP", help="Hi-C bin size, e.g. 5000 or 10000"

@@ -162,7 +162,7 @@ def test_predict_one_step_with_hic(inputs, tmp_path, capsys):
 def test_predict_needs_contact_choice(inputs, tmp_path, capsys):
     base = ["predict", "-b", inputs / "peaks.bed", "-g", inputs / "genes.gtf"]
     code = call(*base, "--atac", inputs / "atac.bw", *context(), "-o", tmp_path / "x")
-    assert code == 2 and "--abc-prior" in capsys.readouterr().err
+    assert code == 2 and "--distance-only" in capsys.readouterr().err
     assert not (tmp_path / "x").exists()
     code = call(*base, "--hic", inputs / "hic.cool", *context(), "-o", tmp_path / "y")
     assert code == 2 and "at least one activity bigWig" in capsys.readouterr().err

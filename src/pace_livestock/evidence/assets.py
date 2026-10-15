@@ -15,7 +15,7 @@ def builtin_contact_prior(cfg):
     if cfg["contact"]["mode"] != "prior_only" or cfg["execution_profile"] != "research":
         raise PaceError("abc_human requires research profile and prior_only contact mode")
     m = {
-        "model_id": "abc_human_shape_1.024238616787792",
+        "model_id": "distance_only_gamma_1",
         "kind": "contact_prior",
         "is_synthetic": False,
         **cfg["context"],
@@ -29,7 +29,7 @@ def builtin_contact_prior(cfg):
         "test_sources": [],
         "validation": {},
         "a": 1.0,
-        "gamma": 1.024238616787792,
+        "gamma": 1.0,
         "d_ref": 5000.0,
         "d_min": 5000.0,
         "scale": "relative_distance_contact",

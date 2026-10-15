@@ -13,7 +13,7 @@ from .provenance import output_directory
 CONTACT_HELP = (
     "Choose how contact is measured: --hic FILE (Hi-C .cool/.mcool), --prior DIR (a prior "
     "fitted with 'pace fit-prior' on Hi-C from the same species and assembly), or "
-    "--abc-prior (the human ABC distance power law, an unvalidated baseline)"
+    "--distance-only (contact from the element-TSS distance alone)"
 )
 
 
@@ -50,7 +50,7 @@ def check_predict(args):
     if not (args.hic or args.prior or args.abc_prior):
         raise PaceError("No contact information. " + CONTACT_HELP)
     if args.abc_prior and (args.hic or args.prior):
-        raise PaceError("--abc-prior replaces Hi-C and fitted priors; do not combine them")
+        raise PaceError("--distance-only replaces Hi-C and fitted priors; do not combine them")
     if args.strict_contacts and not args.hic:
         raise PaceError("--strict-contacts applies to --hic input only")
     for _, path in tracks:

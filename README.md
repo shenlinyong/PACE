@@ -75,9 +75,9 @@ DNA loops bring distant enhancers next to promoters; the closer and more frequen
 
 **$\widetilde C(E,t)$, contact of element E with one start site t: how is contact measured when Hi-C is scarce?**
 This is the part that most often limits studies of non-model species, and PACE offers three routes (cases A, B, C in the [quick start](#which-case-am-i-three-data-situations)):
-- **Hi-C of the sample (A):** the measured contact frequency. Shallow or 10–25 kb maps leave bins masked or near-empty; PACE fills masked bins and adds a small pseudocount from the distance decay fitted on the same map, and replaces the unreliable self-contact of an element and TSS in the same bin by the neighbouring contacts.
-- **Hi-C of the same species only (B):** contact frequency falls with genomic distance roughly as a power law, $\widetilde C \propto d^{-\gamma}$. PACE fits $\gamma$ on any Hi-C of the species (another tissue, animal or public dataset) and uses it for samples without Hi-C.
-- **No Hi-C at all (C):** contact is estimated from genomic distance alone, as in the ABC model, and labelled as unvalidated in the outputs.
+- **Hi-C of the same species and tissue (A):** the measured contact frequency. Shallow or 10–25 kb maps leave bins masked or near-empty; PACE fills masked bins and adds a small pseudocount from the distance decay fitted on the same map, and replaces the unreliable self-contact of an element and TSS in the same bin by the neighbouring contacts.
+- **Hi-C of the same species from another tissue (B):** contact frequency falls with genomic distance roughly as a power law, $\widetilde C \propto d^{-\gamma}$. PACE fits $\gamma$ on that Hi-C (another tissue, animal or public dataset) and uses it for samples without Hi-C.
+- **No Hi-C (C):** contact is estimated from the distance between element and TSS only, $\widetilde C = 1/\max(d,5\,\mathrm{kb})$.
 Sparse maps can also be combined with the fitted decay per pair (shrinkage), trusting observed counts where coverage is high and the distance expectation where it is low.
 
 **$\sum_{e\in\mathcal E(G)}$, the denominator: which elements compete for this gene?**
@@ -132,7 +132,7 @@ The extras are optional. `io` adds pyBigWig, cooler and pandas, which you need t
 ```bash
 docker build -t pace:local .
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work pace:local \
-  predict -b peaks.bed -g genes.gtf --atac atac.bw --abc-prior \
+  predict -b peaks.bed -g genes.gtf --atac atac.bw --distance-only \
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig_liver
 ```
 
@@ -180,29 +180,29 @@ Every file must use the **same genome assembly and the same chromosome names** (
 
 ### Which case am I? Three data situations
 
-All three cases use the **same PACE formula**. They differ only in how the contact between an element and a TSS, $\widetilde C(E,t)$, is obtained:
+Choose by the Hi-C you have. All three cases use the **same PACE formula**; they differ only in how the contact between an element and a TSS, $\widetilde C(E,t)$, is obtained:
 
 ```math
 \mathrm{PACE}(E,G)=\frac{A_\star(E)\,\overline C(E,G)}{\sum_{e\in\mathcal E(G)}A_\star(e)\,\overline C(e,G)},\qquad
 \overline C(E,G)=\sum_{t\in\mathcal T(G)}\pi(t\mid G)\,\widetilde C(E,t)
 ```
 
-Cases B and C use a distance-decay law, and Case A uses it as a small supplement:
-
-```math
-P(d)=a\left(\frac{\max(d,\,d_{\min})}{d_{\mathrm{ref}}}\right)^{-\gamma}
-```
-
-$d$ is the distance between the element and the TSS, and $\gamma$ is how fast contact decays with distance (larger $\gamma$ favours nearby elements). The amplitude $a$ cancels in the score, so only $\gamma$ matters. No parameter has to be set by hand in any case.
-
-| | A. Hi-C of this sample | B. Hi-C of the same species | C. No Hi-C for the species |
+| | A. Same species, same tissue | B. Same species, another tissue | C. No Hi-C |
 |---|---|---|---|
-| Contact $\widetilde C(E,t)$ | Measured Hi-C contact + small pseudocount | $P(d)$ | $P(d)$ |
-| Source of $\gamma$ | Fitted automatically on this Hi-C map | Fitted on Hi-C of the same species | None: distance only (built-in ABC setting) |
-| Key option | `--hic` | `--prior` | `--abc-prior` |
+| Hi-C used | Hi-C of the sample itself | Hi-C of the same species and assembly (another tissue, animal or public data) | None |
+| Contact $\widetilde C(E,t)$ | Measured contact + small distance term | Distance decay $P(d)$ with $\gamma$ fitted on that Hi-C | Distance only: $1/\max(d,\,5\,\mathrm{kb})$ |
+| Option | `--hic` | `--prior` | `--distance-only` |
 | Preference | First choice | Second choice | Third choice |
 
-#### Case A: Hi-C of this sample
+Here $d$ is the distance between the element and the TSS. Cases A and B use the distance decay
+
+```math
+P(d)=a\left(\frac{\max(d,\,5\,\mathrm{kb})}{d_{\mathrm{ref}}}\right)^{-\gamma}
+```
+
+where $\gamma$ is how fast contact falls with distance (larger $\gamma$ favours nearby elements). The amplitude $a$ cancels in the score, so only $\gamma$ matters. No parameter has to be set by hand in any case.
+
+#### Case A: Hi-C of the same species and tissue
 
 **When:** the animal and tissue you score have their own Hi-C.
 
@@ -213,10 +213,8 @@ $d$ is the distance between the element and the TSS, and $\gamma$ is how fast co
 ```
 
 - **Measured Hi-C contact:** the balanced contact frequency between the Hi-C bin of the element and the bin of the TSS.
-- **$P(\max(d, 5\,\mathrm{kb}))$:** a small distance-based pseudocount, as in ABC, so that sparse zero pixels do not erase distal elements.
-- **Special bins:** in masked (unbalanceable) bins the contact is $P(d)$; when the element and the TSS share one bin, the neighbouring contacts are used. Each such pair is labelled in `resolved_contacts.tsv`; `--strict-contacts` leaves them NA instead.
-
-**Source of $\gamma$:** fitted automatically on the same Hi-C map.
+- **$P(\max(d,5\,\mathrm{kb}))$:** a small distance-based term, so that sparse zero pixels do not erase distal elements. $\gamma$ is fitted automatically on the same map.
+- **Special bins:** in masked (unbalanceable) bins the contact is $P(d)$; when the element and the TSS share one bin, the neighbouring contacts are used. Each such pair is marked in `resolved_contacts.tsv`; `--strict-contacts` leaves them NA instead.
 
 ```bash
 pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27ac.bw \
@@ -226,19 +224,19 @@ pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27a
 
 `--hic-resolution` chooses the bin size inside an `.mcool` file; a single-resolution `.cool` needs none.
 
-**Strength:** uses the measured 3D contacts of the sample itself, including chromatin loops that bring distal enhancers to promoters. This is the most accurate case.
+**Strength:** uses the measured 3D contacts of the sample itself, including loops that bring distal enhancers to promoters. This is the most accurate case.
 
-#### Case B: no Hi-C for this sample, Hi-C of the same species available
+#### Case B: Hi-C of the same species from another tissue
 
-**When:** your samples have no Hi-C, but any Hi-C of the same species and genome assembly exists: another tissue, another animal or a public dataset.
+**When:** your sample has no Hi-C, but Hi-C of the same species and genome assembly exists: another tissue, another animal or a public dataset.
 
 **Contact:**
 
 ```math
-\widetilde C(E,t)=P(d),\quad\gamma\ \text{fitted on the species' own Hi-C}
+\widetilde C(E,t)=P(d),\quad\gamma\ \text{fitted on the Hi-C of the same species}
 ```
 
-**Source of $\gamma$:** fitted once with `pace fit-prior`:
+**Fitting $\gamma$ once with `pace fit-prior`:**
 
 1. Group all valid bin pairs by genomic distance into 30 logarithmic distance classes, from one bin to 5 Mb.
 2. In each class, average the contact: sum of contacts ÷ number of valid bin pairs. Pixels absent from the sparse matrix count as zeros, so distal contact is not overestimated.
@@ -252,31 +250,31 @@ pace fit-prior --cooler public_pig_liver.mcool::/resolutions/10000 \
 # Step 2: score your samples
 pace predict -b peaks.bed -g genes.gtf --atac pig2_ATAC.bw \
   --prior priors/pig_liver \
-  --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig2
+  --species pig --assembly Sscrofa11.1 --tissue muscle -o results/pig2
 ```
 
-The fitted $\gamma$ is in `priors/pig_liver/manifest.json`; `distance_bins.tsv` lists the observed and fitted mean contact of every distance class for a plot. Species and assembly must match. A prior fitted on another tissue is used by adding `--allow-cross-context-prior` to `pace run` (see [Transfer between tissues](docs/ADVANCED.md#transfer-between-tissues)).
+The fitted $\gamma$ is in `priors/pig_liver/manifest.json`; `distance_bins.tsv` lists the observed and fitted mean contact of every distance class for a plot. Species and assembly must match. When the prior comes from a different tissue than the sample, add `--allow-cross-context-prior` to `pace run` (see [Transfer between tissues](docs/ADVANCED.md#transfer-between-tissues)).
 
 **Strength:** the distance decay comes from real Hi-C of your own species, and one fitted prior serves every sample of that species. Using one shared prior also keeps several animals directly comparable.
 
-#### Case C: no Hi-C for the species
+#### Case C: no Hi-C
 
-**When:** no Hi-C of the species is available.
+**When:** no Hi-C is available for the species, or you do not want to use one.
 
-**Contact:** estimated from the distance between element and TSS only, as in the ABC model (Fulco et al. 2019):
+**Contact:** estimated from the distance between element and TSS only:
 
 ```math
-\widetilde C(E,t)=P(d)
+\widetilde C(E,t)=\frac{1}{\max(d,\,5\,\mathrm{kb})}
 ```
 
-No Hi-C and no parameter has to be supplied; the distance-decay setting is built in.
+Nearer elements contribute more, in inverse proportion to distance. There is nothing to fit and no parameter to supply.
 
 ```bash
-pace predict -b peaks.bed -g genes.gtf --atac pig3_ATAC.bw --abc-prior \
+pace predict -b peaks.bed -g genes.gtf --atac pig3_ATAC.bw --distance-only \
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig3
 ```
 
-**Strength:** works immediately with activity data alone. In the ABC study, a distance-only estimate predicted human CRISPR results almost as well as K562 Hi-C (AUPRC 0.64 versus 0.65), and the ABC documentation recommends it for non-human species; it has not been validated in your species. The outputs record the transfer (`unvalidated_for_target_context`) so it can be reported in the methods; move to Case B when Hi-C of the species becomes available.
+**Strength:** works immediately with activity data alone. When Hi-C of the species becomes available, move to Case B or A.
 
 Several bigWigs for one assay (`--atac a.bw b.bw`) are averaged as replicates of the same animal. Supported activity panels: ATAC, DNase or H3K27ac alone, ATAC + H3K27ac, or DNase + H3K27ac. Evaluate the chosen panel on independent data; adding a low-quality assay does not guarantee better rankings.
 
@@ -384,9 +382,9 @@ pace fit-prior --cooler pig_liver.mcool::/resolutions/10000 \
 pace predict ... --prior pig_prior        # or: pace run ... --contact-prior pig_prior --contact-mode prior_only
 ```
 
-The lower distance defaults to the matrix resolution. A prior from a different tissue requires `--allow-cross-context-prior`; source and target contexts are retained and the transfer is labelled unvalidated. The species, assembly, target level and measurement definitions must match. Tissue transfer requires evaluation; it is not assumed equivalent to target-tissue Hi-C.
+The lower distance defaults to the matrix resolution. A prior from a different tissue requires `--allow-cross-context-prior`; source and target contexts are retained and the transfer is recorded in the outputs. The species, assembly, target level and measurement definitions must match. Tissue transfer requires evaluation; it is not assumed equivalent to target-tissue Hi-C.
 
-Without any usable Hi-C, `--abc-prior` (`pace run --prior-preset abc_human --contact-mode prior_only`) uses the human ABC reference gamma=1.024238616787792 on a relative scale. It is not fitted to your species. See [the model](docs/ADVANCED.md#fitting-and-transferring-a-prior).
+Without Hi-C, `--distance-only` (`pace run --prior-preset abc_human --contact-mode prior_only`) estimates contact from distance alone, $1/\max(d,5\,\mathrm{kb})$. See [the model](docs/ADVANCED.md#fitting-and-transferring-a-prior).
 
 For `shrinkage`, either give a fixed weight with `--contact-reliability 0.5 --reliability-source <how it was chosen>`, or use `pace fuse`, which estimates a weight per pair from raw counts and the prior (`pace contacts` exports the counts and conversion factors). See [boundary priors and weak calibration](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
 
@@ -503,7 +501,7 @@ Uncovered CpGs are reported as missing, not as unmethylated.
 
 | Command | Purpose | Key options |
 |---|---|---|
-| `predict` | Peaks + GTF + bigWig (+ Hi-C) to scores in one step | `-b -g --atac/--dnase/--h3k27ac --hic/--prior/--abc-prior -o` |
+| `predict` | Peaks + GTF + bigWig (+ Hi-C) to scores in one step | `-b -g --atac/--dnase/--h3k27ac --hic/--prior/--distance-only -o` |
 | `catalog` | Candidate elements, TSSs and pairs | `-b -g -c -w -r --gene-types -o` |
 | `activity` | Signal per element from a bigWig | `-i -a -d -s -o` |
 | `contacts` | Element–TSS contacts from cool/mcool | `-i -r -d --no-balance -o` |

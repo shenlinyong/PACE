@@ -230,7 +230,7 @@ Outputs retain `observed_value`, `prior_value`, `pseudocount_value`, evidence ty
 
 A different tissue normally fails the context check. `--allow-cross-context-prior` permits a prior from the same species and assembly, with the same target level. Its original context is retained, the target context is recorded, and the transfer is marked unvalidated. It cannot be used in the `validated` profile. Renaming a scale or tissue does not calibrate a prior; assess transferred decay on target data when possible.
 
-The optional human baseline (`pace predict --abc-prior`, or `pace run --prior-preset abc_human --contact-mode prior_only`) requires the research profile. It uses the [ABC reference configuration](https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/main/config/config.yaml) gamma=1.024238616787792, with a=1 and d_ref=d_min=5000 on a relative scale. This amplitude cancels in prior-only scores. It is a transferred human baseline, not a fitted livestock parameter, and cannot be mixed with measured contact tables. Measured activity is still required.
+The distance-only estimate (`pace predict --distance-only`, or `pace run --prior-preset abc_human --contact-mode prior_only`) requires the research profile. It sets gamma=1, a=1 and d_ref=d_min=5000, so contact is 1/max(d, 5 kb) on a relative scale. The amplitude cancels in prior-only scores. It cannot be mixed with measured contact tables. Measured activity is still required.
 
 ### Fit from a contact map
 
