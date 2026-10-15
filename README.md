@@ -6,14 +6,18 @@ PACE ranks the candidate regulatory elements of every gene in a tissue. It is bu
 
 **Recommended input:** ATAC-seq or DNase-seq plus H3K27ac ChIP-seq (or CUT&Tag) from the tissue. Activity is their geometric mean, so an element must be both accessible and acetylated to score high. A single assay also works.
 
-PACE keeps the ABC score and adapts it to four differences between human and domestic-animal data:
+PACE keeps the ABC score and changes how its terms are estimated where domestic-animal data differ from human data:
 
-| Domestic-animal data | PACE |
-|---|---|
-| **Hi-C is scarce and coarse.** Human cell lines have kilobase-resolution maps; most livestock tissues have 10–40 kb maps, low depth, or no Hi-C at all. | Low depth: per-pair shrinkage toward the distance prior, weighted by read count (`pace fuse`). Coarse bins: same-bin pairs take neighbouring contacts and masked bins take the distance prior. Hi-C only from another tissue: $\gamma$ fitted on it (Case B). No Hi-C: contact $=1/d$ (Case C). |
-| **TSS annotation is incomplete.** Many genes have several TSSs or alternative promoters, and many predicted TSSs are not used. ABC uses one TSS per gene. | All distinct TSSs of a gene are kept. Contact is averaged over them, weighted by each TSS's promoter activity in the tissue, so used promoters dominate and unused predicted TSSs get little weight. |
-| **No standard enhancer catalogue.** There is no equivalent of the human cCRE set, and peak calling differs between studies. Transposon-derived enhancers are common, especially in chicken and pig. | Candidates are built from your own ATAC/DNase or H3K27ac peaks on a fixed 500 bp grid, so no external catalogue is needed and all runs on one catalog share the same candidates. Elements from transposons are kept like any other candidate; `pace features` can mark their overlap with a repeat annotation. |
-| **TAD and CTCF patterns differ from human.** | Domain-boundary soft constraint: contact across a boundary is reduced by $e^{-\beta s}$. CTCF ChIP-seq/CUT&Tag peaks plus the genome FASTA give the boundary positions (`--ctcf peaks.bed --genome genome.fa`; the built-in CTCF motif in each peak gives its orientation); Hi-C gives $\beta$ (Cases A and B). |
+**1. Sparse Hi-C.** Most livestock Hi-C is shallow and binned at 10–40 kb, and many tissues have none.
+- *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = r\,C_{\mathrm{obs}} + (1-r)\,P(d)$ with $r = \frac{P(d)/f}{P(d)/f+\kappa}$, so pairs supported by few reads are drawn toward the distance expectation (`pace fuse`).
+- *Coarse bins:* an element in the TSS's own bin takes the maximum of the neighbouring bins instead of the diagonal, which is dominated by self-ligation; masked bins take $P(d)$ fitted on the same map.
+- *No Hi-C of the tissue:* $P(d)$ is fitted on Hi-C of the same species (Case B). *No Hi-C:* $\widetilde C = 1/\max(d,\,5\,\mathrm{kb})$ (Case C).
+
+**2. Alternative TSSs.** Annotations list several predicted TSSs per gene, many of them unused in a given tissue; ABC uses one TSS per gene. PACE averages contact over the gene's distinct TSSs, $\overline C(E,G) = \sum_t \pi_t\,\widetilde C(E,t)$, weighting each by its share of promoter activity, $\pi_t = A_t / \sum_{t'} A_{t'}$. The promoter in use dominates, whatever the number of transcript models.
+
+**3. Domain boundaries.** Contact drops across CTCF-anchored domain boundaries, whose positions must be located in the species and tissue analysed. $P(d)$ is multiplied by $e^{-\beta\min(S,1)}$, where $S$ is the strength of the boundaries between element and TSS. A boundary lies between a reverse and the next forward CTCF site; sites are CTCF ChIP-seq or CUT&Tag peaks oriented by the built-in CTCF motif (`--ctcf peaks.bed --genome genome.fa`). $\beta$ is fitted on the Hi-C (Cases A and B) by comparing pairs at the same distance.
+
+**4. One or a few animals.** Technical replicates, then biological replicates, then animals are averaged in turn, so repeated sequencing of one animal is not counted as several animals.
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
