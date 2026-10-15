@@ -292,6 +292,11 @@ def predict_parser(command):
         help="Use raw Hi-C counts; the cooler has no balancing weights",
     )
     contact.add_argument(
+        "--no-boundaries",
+        action="store_true",
+        help="With --hic: fit the distance decay without the domain-boundary term",
+    )
+    contact.add_argument(
         "--strict-contacts",
         action="store_true",
         help="With --hic: leave pairs in masked Hi-C bins NA instead of using the "
@@ -516,6 +521,25 @@ def prior_parsers(command):
         help="Normalization label; default matches 'pace contacts': cooler_weight or none",
     )
     p.add_argument("--model-id", default="fitted_contact_prior")
+    p.add_argument(
+        "--ctcf",
+        metavar="BED",
+        help="CTCF ChIP/CUT&Tag peaks of the target tissue: domain boundaries from oriented "
+        "CTCF motifs (needs --genome). Default: boundaries from the insulation of this Hi-C map",
+    )
+    p.add_argument("--genome", metavar="FASTA", help="Uncompressed reference FASTA, for --ctcf")
+    p.add_argument(
+        "--insulation-window",
+        type=int,
+        default=500_000,
+        metavar="BP",
+        help="Window of the Hi-C insulation score used to call domain boundaries",
+    )
+    p.add_argument(
+        "--no-boundaries",
+        action="store_true",
+        help="Fit the distance decay only, without the domain-boundary term",
+    )
     p.add_argument(
         "--synthetic", action="store_true", help="Label a toy cooler asset for demonstration only"
     )

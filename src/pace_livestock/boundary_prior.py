@@ -74,7 +74,54 @@ def contact_prior(chrom, left, right, prior, boundaries=None):
         return base
     if boundaries is None:
         boundaries = load_boundaries(prior)
-    return base * math.exp(-beta * boundaries.strength(chrom, left, right))
+    crossed = boundaries.strength(chrom, left, right)
+    if prior.get("boundary_cap") is not None:
+        crossed = min(crossed, number(prior["boundary_cap"], "boundary_cap", minimum=0))
+    return base * math.exp(-beta * crossed)
+
+
+# JASPAR MA0139.1 (CTCF, vertebrates; CC BY 4.0). On the + strand this is the forward
+# motif: CTCF loop anchors pair a forward site on the left with a reverse site on the right.
+CTCF_PFM = {
+    "A": [87, 167, 281, 56, 8, 744, 40, 107, 851, 5, 333, 54, 12, 56, 104, 372, 82, 117, 402],
+    "C": [291, 145, 49, 800, 903, 13, 528, 433, 11, 0, 3, 12, 0, 8, 733, 13, 482, 322, 181],
+    "G": [76, 414, 449, 21, 0, 65, 334, 48, 32, 903, 566, 504, 890, 775, 5, 507, 307, 73, 266],
+    "T": [459, 187, 134, 36, 2, 91, 11, 324, 18, 3, 9, 341, 8, 71, 67, 17, 37, 396, 59],
+}
+
+
+def ctcf_pwm_rows():
+    return [{b: CTCF_PFM[b][i] for b in "ACGT"} for i in range(len(CTCF_PFM["A"]))]
+
+
+def _log_pwm(pwm_rows):
+    matrix = np.array([[number(r.get(b), f"PWM.{b}", minimum=0) for b in "ACGT"] for r in pwm_rows])
+    if matrix.ndim != 2 or len(matrix) < 2 or np.any(matrix.sum(axis=1) <= 0):
+        raise PaceError("PWM needs at least two nonempty A/C/G/T positions")
+    matrix = (matrix + 0.01) / (matrix.sum(axis=1, keepdims=True) + 0.04)
+    return np.log2(matrix / 0.25)
+
+
+_LUT = np.full(256, 4, dtype=np.int8)
+for _i, _base in enumerate(b"ACGT"):
+    _LUT[_base] = _i
+
+
+def _scores(reference, chrom, start, stop, log_pwm):
+    """Both-strand log2-odds of every motif start in [start, stop); invalid starts are -inf."""
+    length = len(log_pwm)
+    seq = _LUT[np.frombuffer(reference.fetch(chrom, start, stop + length - 1).encode(), np.uint8)]
+    valid = np.ones(stop - start, dtype=bool)
+    for offset in range(length):
+        valid &= seq[offset : offset + stop - start] < 4
+    result = {}
+    for strand, weights in (("+", log_pwm), ("-", log_pwm[::-1, ::-1])):
+        score = np.zeros(stop - start)
+        padded = np.column_stack([weights, np.zeros(length)])
+        for offset in range(length):
+            score += padded[offset, seq[offset : offset + stop - start]]
+        result[strand] = np.where(valid, score, -np.inf)
+    return result
 
 
 def scan_motifs(fasta, pwm_rows, *, threshold, chunk_size=1_000_000):
@@ -85,38 +132,18 @@ def scan_motifs(fasta, pwm_rows, *, threshold, chunk_size=1_000_000):
     """
     threshold = number(threshold, "motif threshold")
     chunk_size = integer(chunk_size, "chunk_size", minimum=1)
-    matrix = np.array([[number(r.get(b), f"PWM.{b}", minimum=0) for b in "ACGT"] for r in pwm_rows])
-    if matrix.ndim != 2 or len(matrix) < 2 or np.any(matrix.sum(axis=1) <= 0):
-        raise PaceError("PWM needs at least two nonempty A/C/G/T positions")
-    matrix = (matrix + 0.01) / (matrix.sum(axis=1, keepdims=True) + 0.04)
-    log_pwm = np.log2(matrix / 0.25)
+    log_pwm = _log_pwm(pwm_rows)
     maximum = float(log_pwm.max(axis=1).sum())
     if maximum <= 0 or threshold < 0 or threshold > maximum:
         raise PaceError("Motif threshold must be between zero and the maximum log2 odds")
-    length = len(matrix)
-    lut = np.full(256, 4, dtype=np.int8)
-    for i, base in enumerate(b"ACGT"):
-        lut[base] = i
-    matrices = (("+", log_pwm), ("-", log_pwm[::-1, ::-1]))
+    length = len(log_pwm)
     rows = []
     with Reference(fasta) as reference:
         for chrom, size in reference.sizes.items():
             for start in range(0, max(0, size - length + 1), chunk_size):
                 stop = min(start + chunk_size, size - length + 1)
-                seq = lut[
-                    np.frombuffer(
-                        reference.fetch(chrom, start, stop + length - 1).encode(), dtype=np.uint8
-                    )
-                ]
-                valid = np.ones(stop - start, dtype=bool)
-                for offset in range(length):
-                    valid &= seq[offset : offset + stop - start] < 4
-                for strand, weights in matrices:
-                    score = np.zeros(stop - start)
-                    padded = np.column_stack([weights, np.zeros(length)])
-                    for offset in range(length):
-                        score += padded[offset, seq[offset : offset + stop - start]]
-                    for i in np.flatnonzero(valid & (score >= threshold)):
+                for strand, score in _scores(reference, chrom, start, stop, log_pwm).items():
+                    for i in np.flatnonzero(score >= threshold):
                         rows.append(
                             dict(
                                 chrom=chrom,
@@ -128,6 +155,95 @@ def scan_motifs(fasta, pwm_rows, *, threshold, chunk_size=1_000_000):
                             )
                         )
     return rows
+
+
+def ctcf_sites(peaks, fasta, *, min_score_fraction=0.6):
+    """Strongest CTCF motif in each ChIP peak, oriented by strand.
+
+    Site strength is the peak signal scaled by its 95th percentile (capped at 1), or the
+    relative motif score when the peaks carry no signal. Peaks without a motif are dropped.
+    """
+    log_pwm = _log_pwm(ctcf_pwm_rows())
+    maximum = float(log_pwm.max(axis=1).sum())
+    length = len(log_pwm)
+    signals = [p["signal"] for p in peaks if p.get("signal") is not None]
+    scale = float(np.quantile(signals, 0.95)) if signals else 0.0
+    sites = []
+    with Reference(fasta) as reference:
+        for peak in peaks:
+            chrom, start = peak["chrom"], int(peak["start"])
+            if chrom not in reference.sizes:
+                continue
+            stop = min(int(peak["end"]), reference.sizes[chrom]) - length + 1
+            if stop <= start:
+                continue
+            scores = _scores(reference, chrom, start, stop, log_pwm)
+            strand = max(scores, key=lambda k: scores[k].max())
+            i = int(np.argmax(scores[strand]))
+            best = float(scores[strand][i])
+            if best < min_score_fraction * maximum:
+                continue
+            strength = (
+                min(1.0, peak["signal"] / scale)
+                if scale > 0 and peak.get("signal") is not None
+                else best / maximum
+            )
+            sites.append(
+                dict(
+                    chrom=chrom,
+                    start=start + i,
+                    end=start + i + length,
+                    strand=strand,
+                    strength=max(strength, 0.0),
+                )
+            )
+    return sites
+
+
+def read_ctcf_peaks(path):
+    """BED or narrowPeak; signal from column 7 (narrowPeak) or column 5 when numeric."""
+    from .io.bed_gtf import text_open
+
+    peaks = []
+    with text_open(path) as handle:
+        for n, line in enumerate(handle, 1):
+            if not line.strip() or line.startswith(("#", "track", "browser")):
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 3:
+                raise PaceError(f"{path}:{n}: CTCF peaks need chrom, start and end")
+            signal = None
+            for column in (6, 4):
+                if len(fields) > column:
+                    try:
+                        signal = float(fields[column])
+                        break
+                    except ValueError:
+                        pass
+            start = integer(fields[1], "CTCF peak start")
+            end = integer(fields[2], "CTCF peak end")
+            if end <= start:
+                raise PaceError(f"{path}:{n}: CTCF peak end must exceed start")
+            peaks.append(dict(chrom=fields[0], start=start, end=end, signal=signal))
+    return peaks
+
+
+def ctcf_boundaries(peaks_path, fasta, *, max_gap_bp=1_000_000):
+    """Domain boundaries between adjacent reverse (-) and forward (+) CTCF sites."""
+    sites = ctcf_sites(read_ctcf_peaks(peaks_path), fasta)
+    rows = motif_boundaries(sites, max_gap_bp=max_gap_bp)
+    for row in rows:
+        row["evidence_type"] = "ctcf_chip_motif"
+    return unique_positions(rows)
+
+
+def unique_positions(rows):
+    best = {}
+    for row in rows:
+        key = row["chrom"], row["position0"]
+        if key not in best or row["strength"] > best[key]["strength"]:
+            best[key] = row
+    return [best[k] for k in sorted(best)]
 
 
 def motif_boundaries(motifs, *, chip=None, max_gap_bp=1_000_000):

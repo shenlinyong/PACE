@@ -389,3 +389,34 @@ def test_name_mismatch_is_reported_clearly(inputs, tmp_path, capsys):
     capsys.readouterr()
     code = call("activity", "-i", inputs / "atac.bw", "-a", "ATAC", "-d", cat, "-o", tmp_path / "a")
     assert code == 2 and "same chromosome names" in capsys.readouterr().err
+
+
+def test_predict_with_a_prior_from_another_tissue(inputs, tmp_path, capsys):
+    """Case B: a prior fitted on liver Hi-C scores a muscle sample."""
+    assert call("fit-prior", "--cooler", inputs / "hic.cool", *context(), "-o", tmp_path / "p") == 0
+    out = tmp_path / "muscle"
+    code = call(
+        "predict",
+        "-b",
+        inputs / "peaks.bed",
+        "-g",
+        inputs / "genes.gtf",
+        "-c",
+        inputs / "genome.fa.fai",
+        "--atac",
+        inputs / "atac.bw",
+        "--prior",
+        tmp_path / "p",
+        "--species",
+        "pig",
+        "--assembly",
+        "toy",
+        "--tissue",
+        "muscle",
+        "-o",
+        out,
+    )
+    assert code == 0, capsys.readouterr().err
+    manifest = json.loads((out / "run_manifest.json").read_text())
+    prior = manifest["asset_manifests"]["contact_prior"]
+    assert (prior["source_context_id"], prior["target_context_id"]) == ("liver", "muscle")

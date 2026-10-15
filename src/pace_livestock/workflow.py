@@ -167,7 +167,7 @@ def predict(args):
             )
             contacts = str(prepared / "hic" / "observed_contacts.tsv")
             if not args.prior:
-                log("    fitting the distance-decay power law of this Hi-C map")
+                log("    fitting the distance decay and domain boundaries of this Hi-C map")
                 fit_cooler_command(
                     SimpleNamespace(
                         cooler=cooler_uri(args.hic, resolution),
@@ -181,6 +181,10 @@ def predict(args):
                         scale="balanced_contact" if balanced else "raw_contact",
                         normalization_id="cooler_weight" if balanced else "none",
                         model_id="same_map_distance_prior",
+                        no_boundaries=args.no_boundaries,
+                        ctcf=None,
+                        genome=None,
+                        insulation_window=500_000,
                         synthetic=False,
                         species=args.species,
                         assembly=args.assembly,
@@ -198,6 +202,8 @@ def predict(args):
             # Masked (unbalanced) bins and missing pixels take the fitted expectation,
             # as ABC does; every such pair is labelled contact_prior in the outputs.
             contact["allow_prior_fallback"] = bool(contacts) and not args.strict_contacts
+            # Case B: the prior is fitted on Hi-C of another tissue of the same species.
+            contact["allow_cross_context_prior"] = bool(args.prior)
         if args.abc_prior:
             contact["prior_preset"] = "abc_human"
         cfg = load_config(

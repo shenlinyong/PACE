@@ -112,6 +112,185 @@ def cooler_distance_bins(
     return all_rows, resolution
 
 
+S_STEP = 0.25
+S_CLASSES = 41
+
+
+def _strength_class(s):
+    return np.where(s <= 0, 0, np.minimum(S_CLASSES - 1, 1 + (s / S_STEP).astype(int)))
+
+
+def cooler_boundary_cells(
+    uri,
+    boundaries,
+    *,
+    balanced=True,
+    min_distance=None,
+    max_distance=5_000_000,
+    n_bins=30,
+    test_chromosomes=(),
+    chunksize=1_000_000,
+):
+    """Valid bin pairs and contact sums by distance class and crossed boundary strength.
+
+    The strength crossed by bins i < j is the summed strength of boundaries strictly
+    between their centres, as the prior applies it. Unstored pixels count as zeros.
+    """
+    import cooler
+
+    c = cooler.Cooler(str(uri))
+    resolution = int(c.binsize)
+    min_distance = resolution if min_distance is None else min_distance
+    bins = c.bins()[:]
+    weights = bins["weight"].to_numpy(float) if balanced else np.ones(len(bins))
+    valid = np.isfinite(weights) & (weights > 0)
+    edges = np.geomspace(min_distance, max_distance, n_bins + 1)
+    edges[0], edges[-1] = min_distance, max_distance
+    by_chrom = {}
+    for row in boundaries:
+        by_chrom.setdefault(row["chrom"], []).append(
+            (int(row["position0"]), float(row["strength"]))
+        )
+    below, upto = np.zeros(len(bins)), np.zeros(len(bins))
+    chrom_codes = np.empty(len(bins), dtype=int)
+    train = np.zeros(len(c.chromnames), dtype=bool)
+    shape = (n_bins, S_CLASSES)
+    n_pairs, contact, log_d, crossed = (np.zeros(shape) for _ in range(4))
+    for code, chrom in enumerate(c.chromnames):
+        first, last = c.extent(chrom)
+        chrom_codes[first:last] = code
+        train[code] = chrom not in test_chromosomes
+        points = sorted(by_chrom.get(chrom, []))
+        positions = np.array([p for p, _ in points], dtype=float)
+        cumulative = np.r_[0.0, np.cumsum([s for _, s in points])]
+        centres = bins["start"].to_numpy(float)[first:last] + resolution // 2
+        below[first:last] = cumulative[np.searchsorted(positions, centres, side="left")]
+        upto[first:last] = cumulative[np.searchsorted(positions, centres, side="right")]
+        if not train[code]:
+            continue
+        ok = valid[first:last]
+        n = last - first
+        for step in range(max(1, int(np.ceil(min_distance / resolution))), n):
+            d = step * resolution
+            if d >= max_distance:
+                break
+            k = np.searchsorted(edges, d, side="right") - 1
+            if k < 0 or k >= n_bins:
+                continue
+            both = ok[:-step] & ok[step:]
+            s = below[first + step : last] - upto[first : last - step]
+            m = _strength_class(s)
+            n_pairs[k] += np.bincount(m[both], minlength=S_CLASSES)
+            crossed[k] += np.bincount(m[both], weights=s[both], minlength=S_CLASSES)
+            log_d[k] += np.bincount(m[both], minlength=S_CLASSES) * np.log(d)
+    for start in range(0, int(c.info["nnz"]), chunksize):
+        pixels = c.pixels()[start : start + chunksize]
+        i = pixels["bin1_id"].to_numpy(int)
+        j = pixels["bin2_id"].to_numpy(int)
+        values = pixels["count"].to_numpy(float)
+        keep = (chrom_codes[i] == chrom_codes[j]) & valid[i] & valid[j] & train[chrom_codes[i]]
+        k = np.searchsorted(edges, (j - i) * resolution, side="right") - 1
+        keep &= (k >= 0) & (k < n_bins) & ((j - i) * resolution < max_distance)
+        i, j, k, values = (
+            i[keep],
+            j[keep],
+            k[keep],
+            values[keep] * weights[i[keep]] * weights[j[keep]],
+        )
+        m = _strength_class(below[j] - upto[i])
+        np.add.at(contact, (k, m), values)
+    cells = []
+    for k in range(n_bins):
+        for m in range(S_CLASSES):
+            if n_pairs[k, m]:
+                cells.append(
+                    dict(
+                        distance_class=k,
+                        strength_class=m,
+                        n_pairs=int(n_pairs[k, m]),
+                        contact_sum=float(contact[k, m]),
+                        geometric_distance=float(np.exp(log_d[k, m] / n_pairs[k, m])),
+                        mean_strength=float(crossed[k, m] / n_pairs[k, m]),
+                    )
+                )
+    return cells, resolution
+
+
+BOUNDARY_CAP = 1.0
+BETA_MAX_DISTANCE = 1_000_000
+
+
+def fit_boundary_prior(
+    cells, *, d_ref, d_min, cap=BOUNDARY_CAP, beta_max_distance=BETA_MAX_DISTANCE
+):
+    """Fit C(d, S) = a (d/d_ref)^-gamma exp(-beta min(S, cap)).
+
+    beta is the log-contact drop per unit of crossed boundary strength between pairs at
+    the same distance (one free level per distance class), using pairs within
+    beta_max_distance, where enhancer-promoter links lie and the boundary effect is not
+    yet saturated. gamma and a then come from the boundary-corrected distance levels.
+    """
+    used = [r for r in cells if r["contact_sum"] > 0]
+    for r in used:
+        r["capped_strength"] = min(r["mean_strength"], cap)
+    near = [r for r in used if r["geometric_distance"] <= beta_max_distance]
+    classes = sorted({r["distance_class"] for r in near})
+    beta, status = 0.0, "no_boundary_variation"
+    if near and np.ptp([r["capped_strength"] for r in near]) > 0:
+        index = {k: i for i, k in enumerate(classes)}
+        design = np.zeros((len(near), len(classes) + 1))
+        for t, r in enumerate(near):
+            design[t, index[r["distance_class"]]] = 1.0
+            design[t, -1] = -r["capped_strength"]
+        y = np.log([r["contact_sum"] / r["n_pairs"] for r in near])
+        w = np.sqrt([r["n_pairs"] for r in near])
+        beta = float(np.linalg.lstsq(design * w[:, None], y * w, rcond=None)[0][-1])
+        status = "fitted" if beta > 0 else "no_boundary_effect"
+        beta = max(beta, 0.0)
+    levels = {}
+    for r in used:
+        level = levels.setdefault(r["distance_class"], [0.0, 0.0, 0.0, 0])
+        level[0] += r["contact_sum"]
+        level[1] += r["n_pairs"] * math.exp(-beta * r["capped_strength"])
+        level[2] += r["n_pairs"] * math.log(r["geometric_distance"])
+        level[3] += r["n_pairs"]
+    x = np.array([v[2] / v[3] - math.log(d_ref) for v in levels.values()])
+    y = np.log([v[0] / v[1] for v in levels.values()])
+    w = np.sqrt([v[3] for v in levels.values()])
+    if len(x) < 2:
+        raise PaceError("Contact prior fit needs at least two nonzero distance classes")
+    coef = np.linalg.lstsq(np.column_stack([np.ones(len(x)), x]) * w[:, None], y * w, rcond=None)[0]
+    a, gamma = math.exp(coef[0]), -float(coef[1])
+    if gamma <= 0 or not math.isfinite(a):
+        raise PaceError("Fitted data do not follow a positive decreasing power-law prior")
+    return {
+        "a": a,
+        "gamma": gamma,
+        "beta": beta,
+        "beta_status": status,
+        "boundary_cap": cap,
+        "beta_fit_max_distance": beta_max_distance,
+        "d_ref": d_ref,
+        "d_min": d_min,
+    }
+
+
+def map_boundaries(args, balanced):
+    """Boundaries for the fit: CTCF peaks with --ctcf, otherwise the Hi-C map itself."""
+    if args.ctcf:
+        from ..boundary_prior import ctcf_boundaries
+
+        if not args.genome:
+            raise PaceError("--ctcf needs --genome (FASTA) to orient the CTCF motifs")
+        return ctcf_boundaries(args.ctcf, args.genome), "ctcf_chip_motif"
+    from .insulation import insulation_boundaries
+
+    return (
+        insulation_boundaries(args.cooler, balanced=balanced, window_bp=args.insulation_window),
+        "hic_insulation",
+    )
+
+
 def fit_cooler_command(args):
     rows, resolution = cooler_distance_bins(
         args.cooler,
@@ -151,9 +330,23 @@ def fit_cooler_command(args):
             else "empty",
         )
         pooled.append(row)
-    fitted = fit_binned_prior(
-        pooled, d_ref=args.reference_distance, d_min=max(resolution, args.minimum_distance)
-    )
+    d_min = max(resolution, args.minimum_distance)
+    fitted = fit_binned_prior(pooled, d_ref=args.reference_distance, d_min=d_min)
+    boundaries, boundary_source, cells = [], None, []
+    if not getattr(args, "no_boundaries", True):
+        boundaries, boundary_source = map_boundaries(args, args.balanced)
+    if boundaries:
+        cells, _ = cooler_boundary_cells(
+            args.cooler,
+            boundaries,
+            balanced=args.balanced,
+            min_distance=args.min_distance,
+            max_distance=args.max_distance,
+            n_bins=args.distance_bins,
+            test_chromosomes=args.test_chromosomes,
+        )
+        joint = fit_boundary_prior(cells, d_ref=args.reference_distance, d_min=d_min)
+        fitted.update(joint)
     source_file = Path(args.cooler.split("::", 1)[0]).resolve()
     source = {
         "sha256": file_hash(source_file),
@@ -188,6 +381,8 @@ def fit_cooler_command(args):
         # Distances were measured between bins, so the prior is applied at bin centres.
         "fitting_coordinate_policy": "bin_centers",
     }
+    if boundaries:
+        manifest.update(boundary_table="boundaries.tsv", boundary_source=boundary_source)
     for row in rows:
         row["predicted"] = (
             distance_prior(row["geometric_distance"], manifest)
@@ -195,6 +390,11 @@ def fit_cooler_command(args):
             else None
         )
     with output_directory(args.out) as dest:
+        if boundaries:
+            fields = ["chrom", "position0", "strength", "evidence_type"]
+            write_table(dest / "boundaries.tsv", [{f: r[f] for f in fields} for r in boundaries])
+            write_table(dest / "boundary_cells.tsv", cells)
+            manifest["boundary_sha256"] = file_hash(dest / "boundaries.tsv")
         write_json(dest / "manifest.json", manifest)
         write_table(dest / "distance_bins.tsv", rows)
         write_json(
@@ -213,6 +413,8 @@ def fit_cooler_command(args):
     return {
         "output": args.out,
         "gamma": manifest["gamma"],
+        "beta": manifest.get("beta", 0.0),
+        "boundaries": len(boundaries),
         "a": manifest["a"],
         "resolution": resolution,
     }

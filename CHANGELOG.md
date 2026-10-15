@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.0
+
+- Domain-boundary soft constraint, on by default whenever Hi-C is used. `pace fit-prior` (and `pace predict --hic`) call boundaries from the insulation score of the map, or from oriented CTCF motifs in CTCF peaks with `--ctcf peaks.bed --genome genome.fa`, and fit `P(d,S) = a (d/d_ref)^-gamma exp(-beta min(S,1))`. `--no-boundaries` fits the distance decay only. Case C (no Hi-C) stays distance only.
+- `pace predict --prior` accepts a prior fitted on another tissue of the same species (Case B); the transfer is recorded in the outputs.
+
 ## 0.9.0
 
 - Genes with several TSSs weight them by usage: each TSS counts in proportion to the activity of the grid cell that contains it (`--tss-weights usage`, the new default). Genes whose promoter cells are unmeasured or all zero use equal weights. `equal` and `provided` remain available.

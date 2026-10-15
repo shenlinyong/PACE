@@ -243,6 +243,14 @@ pace fit-prior --cooler data/animal1.mcool::/resolutions/5000 \
 
 Use chromosome names actually present in the file. `--test-chromosomes` is optional; omitting it reports that no holdout was performed. It is not correct to rename a liver fit as a brain-validated asset. The default lower fitting distance is the matrix resolution, the upper distance is 5 Mb, and the fit uses 30 logarithmic bins. An explicit `--min-distance` cannot be smaller than the resolution. `--no-balanced` uses raw counts and requires matching raw-count preparation. The command only accepts fixed-bin, symmetric-upper coolers.
 
+Domain boundaries are fitted by default. Without `--ctcf` they are called from the insulation score of the same map (`--insulation-window`, default 500 kb; a boundary is a local minimum at least 0.1 log2 units below both flanks). With `--ctcf peaks.bed --genome genome.fa` they come from the strongest CTCF motif (JASPAR MA0139.1) in each peak: a boundary lies midway between a reverse site and the next forward site within 1 Mb, with the smaller of the two site strengths (peak signal scaled by its 95th percentile). The prior is then
+
+```math
+P(d,S)=a\left(\frac{\max(d,d_{\min})}{d_{\mathrm{ref}}}\right)^{-\gamma}e^{-\beta\min(S,1)},
+```
+
+where $S$ is the summed boundary strength strictly between the two bin centres. $\beta$ is estimated from pairs up to 1 Mb with one free level per distance class, so it compares pairs at the same distance; $\gamma$ is then fitted on the boundary-corrected distance levels. A nonpositive $\beta$ is set to 0 (`beta_status: no_boundary_effect`), and a map without boundary calls gives a distance-only prior. `boundaries.tsv` and `boundary_cells.tsv` (pairs and contact by distance and boundary class) are written next to the manifest. `--no-boundaries` fits the distance decay only.
+
 The output includes `manifest.json`, `distance_bins.tsv`, and `fit_report.json`. All callable bin opportunities enter distance means, including zeros absent from sparse storage; invalid balancing weights are excluded. Fitting is streamed over sparse pixels. The optional chromosome holdout assesses decay fit, not enhancer function or generalization across tissues.
 
 Use the same scale/normalization/balancing/resolution when preparing contact observations. For observations extracted from this map:

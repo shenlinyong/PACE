@@ -13,7 +13,7 @@ PACE keeps the ABC score and adapts it to four differences between human and dom
 | **Hi-C is scarce and coarse.** Human cell lines have kilobase-resolution maps; most livestock tissues have 10–40 kb maps, low depth, or no Hi-C at all. | Low depth: per-pair shrinkage toward the distance prior, weighted by read count (`pace fuse`). Coarse bins: same-bin pairs take neighbouring contacts and masked bins take the distance prior. Hi-C only from another tissue: $\gamma$ fitted on it (Case B). No Hi-C: contact $=1/d$ (Case C). |
 | **TSS annotation is incomplete.** Many genes have several TSSs or alternative promoters, and many predicted TSSs are not used. ABC uses one TSS per gene. | All distinct TSSs of a gene are kept. Contact is averaged over them, weighted by each TSS's promoter activity in the tissue, so used promoters dominate and unused predicted TSSs get little weight. |
 | **No standard enhancer catalogue.** There is no equivalent of the human cCRE set, and peak calling differs between studies. Transposon-derived enhancers are common, especially in chicken and pig. | Candidates are built from your own ATAC/DNase or H3K27ac peaks on a fixed 500 bp grid, so no external catalogue is needed and all runs on one catalog share the same candidates. Elements from transposons are kept like any other candidate; `pace features` can mark their overlap with a repeat annotation. |
-| **TAD and CTCF patterns differ from human.** | Optional boundary-aware prior: contact across a CTCF boundary is reduced by $e^{-\beta s}$, with boundaries from CTCF motifs and ChIP peaks (`pace boundaries`) and $\beta$ fitted on Hi-C of the species (`pace fit-hic`). $\beta=0$ (no boundary effect) by default. |
+| **TAD and CTCF patterns differ from human.** | Domain-boundary soft constraint, on by default whenever Hi-C is used (Cases A and B): contact across a boundary is reduced by $e^{-\beta s}$. Boundaries come from the insulation of the Hi-C map, or from oriented CTCF motifs in CTCF ChIP peaks (`--ctcf`); $\beta$ is fitted on the Hi-C. |
 
 Every command is driven by ordinary command-line options, like `bedtools`, `samtools` or `macs3`. No configuration file is needed.
 
@@ -199,13 +199,17 @@ Choose by the Hi-C you have. All three cases use the **same PACE formula**; they
 | Option | `--hic` | `--prior` | `--distance-only` |
 | Preference | First choice | Second choice | Third choice |
 
-Here $d$ is the distance between the element and the TSS. Cases A and B use the distance decay
+Here $d$ is the distance between the element and the TSS. Cases A and B use the distance decay with a domain-boundary term:
 
 ```math
-P(d)=a\left(\frac{\max(d,\,5\,\mathrm{kb})}{d_{\mathrm{ref}}}\right)^{-\gamma}
+P(d)=a\left(\frac{\max(d,\,5\,\mathrm{kb})}{d_{\mathrm{ref}}}\right)^{-\gamma}\,e^{-\beta\,\min(S,\,1)}
 ```
 
-where $\gamma$ is how fast contact falls with distance (larger $\gamma$ favours nearby elements). The amplitude $a$ cancels in the score, so only $\gamma$ matters. No parameter has to be set by hand in any case.
+- $\gamma$: how fast contact falls with distance (larger $\gamma$ favours nearby elements).
+- $S$: the summed strength (0–1 each) of the domain boundaries between the element and the TSS; $S=0$ inside one domain.
+- $\beta$: how much one boundary reduces contact. One full-strength boundary multiplies contact by $e^{-\beta}$. $S$ is capped at 1 because contact drops at the first boundary and does not keep falling with every further one.
+
+The amplitude $a$ cancels in the score. $\gamma$ and $\beta$ are fitted on the Hi-C (below), so no parameter has to be set by hand. Case C has no Hi-C to fit $\beta$ on, so it uses distance only.
 
 #### Case A: Hi-C of the same species and tissue
 
@@ -218,7 +222,7 @@ where $\gamma$ is how fast contact falls with distance (larger $\gamma$ favours 
 ```
 
 - **Measured Hi-C contact:** the balanced contact frequency between the Hi-C bin of the element and the bin of the TSS.
-- **$P(\max(d,5\,\mathrm{kb}))$:** a small distance-based term, so that sparse zero pixels do not erase distal elements. $\gamma$ is fitted automatically on the same map.
+- **$P(\max(d,5\,\mathrm{kb}))$:** a small distance-based term, so that sparse zero pixels do not erase distal elements. $\gamma$, the domain boundaries and $\beta$ are fitted automatically on the same map; `--no-boundaries` fits $\gamma$ only.
 - **Special bins:** in masked (unbalanceable) bins the contact is $P(d)$; when the element and the TSS share one bin, the neighbouring contacts are used. Each such pair is marked in `resolved_contacts.tsv`; `--strict-contacts` leaves them NA instead.
 
 ```bash
@@ -238,14 +242,17 @@ pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27a
 **Contact:**
 
 ```math
-\widetilde C(E,t)=P(d),\quad\gamma\ \text{fitted on the Hi-C of the same species}
+\widetilde C(E,t)=P(d),\quad\gamma,\ \beta\ \text{fitted on the Hi-C of the same species}
 ```
 
-**Fitting $\gamma$ once with `pace fit-prior`:**
+**Fitting once with `pace fit-prior`:**
 
-1. Group all valid bin pairs by genomic distance into 30 logarithmic distance classes, from one bin to 5 Mb.
-2. In each class, average the contact: sum of contacts ÷ number of valid bin pairs. Pixels absent from the sparse matrix count as zeros, so distal contact is not overestimated.
-3. Fit a straight line on the log scale, $\log(\text{mean contact}) = \log a - \gamma\,\log(d/5\,\mathrm{kb})$, weighting each class by its number of bin pairs. The negative slope is $\gamma$.
+1. **Domain boundaries.** By default they are called from the Hi-C map itself: the insulation score (mean contact in a 500 kb square spanning each bin) has a local minimum at a boundary, and its depth gives the strength. With `--ctcf peaks.bed --genome genome.fa`, they come from CTCF ChIP peaks of your target tissue instead: the strongest CTCF motif (JASPAR MA0139.1) in each peak gives its orientation, and a boundary is placed between each reverse site and the next forward site, as CTCF loop anchors face into their domain. Strengths are scaled to 0–1.
+2. **Valid bin pairs** are grouped by distance (30 logarithmic classes, one bin to 5 Mb) and by the boundary strength $S$ between them. Pixels absent from the sparse matrix count as zeros.
+3. **$\beta$** is the drop in log contact per unit of $S$ between pairs at the same distance, using pairs up to 1 Mb.
+4. **$\gamma$** is the slope of the boundary-corrected mean contact against $\log(d/5\,\mathrm{kb})$, weighting each class by its number of pairs.
+
+`--no-boundaries` skips steps 1 and 3 and fits $\gamma$ only.
 
 ```bash
 # Step 1: fit once per species and assembly
@@ -258,7 +265,7 @@ pace predict -b peaks.bed -g genes.gtf --atac pig2_ATAC.bw \
   --species pig --assembly Sscrofa11.1 --tissue muscle -o results/pig2
 ```
 
-The fitted $\gamma$ is in `priors/pig_liver/manifest.json`; `distance_bins.tsv` lists the observed and fitted mean contact of every distance class for a plot. Species and assembly must match. When the prior comes from a different tissue than the sample, add `--allow-cross-context-prior` to `pace run` (see [Transfer between tissues](docs/ADVANCED.md#transfer-between-tissues)).
+The fitted $\gamma$ and $\beta$ are in `priors/pig_liver/manifest.json`, the boundaries in `boundaries.tsv`, and the mean contact of every distance class in `distance_bins.tsv`. Species and assembly must match; the tissue may differ, and the transfer is recorded in the outputs. With `pace run`, add `--allow-cross-context-prior` for a prior from another tissue (see [Transfer between tissues](docs/ADVANCED.md#transfer-between-tissues)).
 
 **Strength:** the distance decay comes from real Hi-C of your own species, and one fitted prior serves every sample of that species. Using one shared prior also keeps several animals directly comparable.
 
@@ -417,7 +424,7 @@ Two settings matter most with low-resolution Hi-C:
 - Near-diagonal pairs (default `prior_or_neighbor`). Elements in the same Hi-C bin as the TSS would otherwise get the diagonal value, which mostly reflects bin self-contact. PACE uses the prior if one is given, or else the recorded maximum of valid neighbouring contacts. If neither is available, contact remains NA.
 - `--pseudocount auto` (default). Adds a distance-based term to finite off-diagonal measurements only when a compatible fitted prior is available. Without one, observations are unchanged. Missing values are not converted to measured zeros.
 
-**Boundary-aware priors and eQTL tuning.** Optional commands add a CTCF-boundary attenuation to the prior (`pace boundaries`, `pace prior`, `pace fit-hic`), per-pair Gamma–Poisson shrinkage (`pace fuse`) and chromosome-held-out tuning of gamma, beta and eta on eQTL fine-mapping (`pace fit-labels`, then `pace run --weak-model`). These components have software tests, not an established livestock accuracy gain. PIP mass is association evidence, not a CRISPR response or a calibrated link probability. Equations, input formats and limitations are in [Advanced use](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
+**Other contact priors.** `pace boundaries`, `pace prior` and `pace fit-hic` build a boundary prior from your own boundary table or from raw Hi-C counts, and `pace fuse` applies per-pair shrinkage. Equations, input formats and limitations are in [Advanced use](docs/ADVANCED.md#boundary-priors-and-weak-calibration).
 
 ## Whole genomes: memory and threads
 
