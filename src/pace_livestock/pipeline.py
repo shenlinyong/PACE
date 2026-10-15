@@ -52,9 +52,7 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
         )
     elif cfg["contact"].get("prior_preset"):
         if tables["observed_contacts"] or tables["resolved_contacts"]:
-            raise PaceError(
-                "Human relative prior cannot be mixed with measured contact tables; omit contact inputs for this explicit baseline"
-            )
+            raise PaceError("Distance-only contact cannot be combined with measured contact tables")
         assets["contact_prior"] = builtin_contact_prior(cfg)
     if contact_prior_override is not None:
         assets["contact_prior"] = contact_prior_override

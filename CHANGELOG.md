@@ -2,8 +2,10 @@
 
 ## 0.10.0
 
-- Domain-boundary soft constraint. CTCF ChIP/CUT&Tag peaks and the genome FASTA give the boundary positions (`--ctcf peaks.bed --genome genome.fa`); the built-in CTCF motif (JASPAR MA0139.1) in each peak gives its orientation. `pace fit-prior` and `pace predict --hic` then fit the boundary effect on the Hi-C: `P(d,S) = a (d/d_ref)^-gamma exp(-beta min(S,1))`. `--no-boundaries` fits the distance decay only. Case C (no Hi-C) stays distance only.
+- Domain-boundary soft constraint. CTCF ChIP/CUT&Tag peaks and the genome FASTA give the boundary positions (`--ctcf peaks.bed --genome genome.fa`); the built-in CTCF motif (JASPAR MA0139.1) in each peak gives its orientation. `pace fit-prior` and `pace predict --hic` then fit the boundary effect on the Hi-C: `P(d,S) = a (max(d, d_min)/5 kb)^-gamma exp(-beta min(S,1))`, with `d_min` the larger of the Hi-C bin size and 5 kb. `--no-boundaries` fits the distance decay only. Case C (no Hi-C) stays distance only.
 - `pace predict --prior` accepts a prior fitted on another tissue of the same species (Case B); the transfer is recorded in the outputs.
+- The distance-only contact of Case C records itself as `distance_only` (gamma 1), no longer as a transferred human prior.
+- Reference FASTA files may contain IUPAC ambiguity codes.
 
 ## 0.9.0
 

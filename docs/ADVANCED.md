@@ -38,10 +38,9 @@ Fill the tables before validation. `--catalog-dir prepared/catalog` imports the
 catalog tables and settings exported by `pace catalog`.
 
 Catalog preparation maps supplied peaks and required promoters onto unique grid
-cells; it does not tile the whole genome. GTF input needs transcript records, with
-positive-strand TSS=start−1 and negative-strand TSS=end−1. Physical TSSs are
-deduplicated, and versioned gene/transcript IDs are preserved. Convert annotations
-without transcript records to `promoters.tsv` first. Chromosome aliases must be
+cells; it does not tile the whole genome. GTF input is read from transcript records, or from exon records when a file has
+none, with positive-strand TSS=start−1 and negative-strand TSS=end−1. Physical TSSs are
+deduplicated, and versioned gene/transcript IDs are preserved. Chromosome aliases must be
 explicit (`alias`, `canonical` columns); no prefix guessing is performed.
 Incomplete terminal grid cells are reported and excluded. Keep the exported
 `run_catalog_config.yaml` settings so reference-boundary exclusions remain
@@ -88,7 +87,7 @@ This command does not infer total library size from a bigWig, renormalize TPM, o
 Prepare `promoter_signal.tsv` with `promoter_id` and a nonnegative `signal` measured over the same specified promoter window. Supply one already aggregated value per physical promoter.
 
 ```bash
-pace prepare-promoter-weights --promoters prepared/catalog/promoters.tsv \
+pace promoter-weights --promoters prepared/catalog/promoters.tsv \
   --signals promoter_signal.tsv --assay H3K4me3 \
   --normalization-id H3K4me3_CPM_TSS500 --out prepared/promoter_weights
 ```
@@ -184,7 +183,7 @@ A_{\star,\epsilon}(E)=
 
 Identical physical TSSs are deduplicated. Distinct TSSs in the same measured bin may reuse the same element/sample contact query without adding replicates. The distance prior may differ at their exact coordinates. By default all positive-weight TSSs are required; missing one gives NA. Zero-weight TSSs do not require contact.
 
-`pace prepare-promoter-weights` calculates proportional weights from measured ATAC, DNase, H3K4me3 or CAGE promoter signals. These weights are proxies for promoter usage. Gene TPM alone cannot determine TSS usage.
+`pace promoter-weights` calculates proportional weights from measured ATAC, DNase, H3K4me3 or CAGE promoter signals. These weights are proxies for promoter usage. Gene TPM alone cannot determine TSS usage.
 
 Optional filtering uses **one retained set per gene for every candidate**:
 
@@ -251,7 +250,7 @@ Boundary positions come from CTCF and their effect from the Hi-C. Give both `--c
 P(d,S)=a\left(\frac{\max(d,d_{\min})}{d_{\mathrm{ref}}}\right)^{-\gamma}e^{-\beta\min(S,1)},
 ```
 
-where $S$ is the summed boundary strength strictly between the two bin centres. $\beta$ is estimated from pairs up to 1 Mb with one free level per distance class, so it compares pairs at the same distance; $\gamma$ is then fitted on the boundary-corrected distance levels. A nonpositive $\beta$ is set to 0 (`beta_status: no_boundary_effect`), and a map without boundary calls gives a distance-only prior. `boundaries.tsv` and `boundary_cells.tsv` (pairs and contact by distance and boundary class) are written next to the manifest. `--no-boundaries` fits the distance decay only.
+where $d_{\mathrm{ref}}$ is `--reference-distance` (5 kb), $d_{\min}$ the larger of the bin size and `--minimum-distance` (5 kb), $S$ is the summed boundary strength strictly between the two bin centres. $\beta$ is estimated from pairs up to 1 Mb with one free level per distance class, so it compares pairs at the same distance; $\gamma$ is then fitted on the boundary-corrected distance levels. A nonpositive $\beta$ is set to 0 (`beta_status: no_boundary_effect`), and a map without boundary calls gives a distance-only prior. `boundaries.tsv` and `boundary_cells.tsv` (pairs and contact by distance and boundary class) are written next to the manifest. `--no-boundaries` fits the distance decay only.
 
 The output includes `manifest.json`, `distance_bins.tsv`, and `fit_report.json`. All callable bin opportunities enter distance means, including zeros absent from sparse storage; invalid balancing weights are excluded. Fitting is streamed over sparse pixels. The optional chromosome holdout assesses decay fit, not enhancer function or generalization across tissues.
 
@@ -309,9 +308,8 @@ pace run -d prepared/catalog --activity prepared/muscle_activity.tsv \
   --allow-cross-context-prior -o results/muscle
 ```
 
-or `pace predict ... --tissue muscle --prior priors/liver` after adding the same
-cross-context permission through `pace run`. Keep the
-prior's source tissue name intact. The output records source and target contexts
+or `pace predict ... --tissue muscle --prior priors/liver`, which accepts a prior
+from another tissue directly. Keep the prior's source tissue name intact. The output records source and target contexts
 and marks the transfer unvalidated; it cannot use the `validated` profile. Measured
 muscle activity remains necessary. If combining a prior with measured target
 contacts, first establish matching normalization, scale, resolution and windows;
@@ -350,14 +348,16 @@ or the promoter definition, and do not estimate it using held-out test outcomes.
 
 ## Additional omics
 
-RNA, auxiliary histone marks, CTCF and DNA methylation are annotations by default.
-They do not change the primary score. Register their samples and sources, and keep
+RNA, auxiliary histone marks, CTCF tracks and DNA methylation added with `--expression`,
+`--features` or `--methylation` are annotations: they do not change the primary score.
+(CTCF peaks given to `pace fit-prior`/`pace predict --hic` with `--ctcf --genome` are
+different: they place the domain boundaries of the contact prior.) Register their samples and sources, and keep
 measurement units, normalization, assay and windows explicit. There is no automatic
-penalty for methylation or multiplier for CTCF binding.
+penalty for methylation.
 
 ### Histone and CTCF tracks
 
-The bigWig adapter can quantify additional marks using the same cells:
+`pace features` records the overlap of each element with peaks of other marks:
 
 ```bash
 pace features -b data/H3K4me1_peaks.bed -d prepared/catalog \
@@ -747,7 +747,7 @@ pace benchmark --run results/measured --labels functional_labels.tsv \
 `--external` is optional and repeatable. Decision thresholds are omitted by default. If a
 threshold has been independently fixed from appropriate training/calibration data, give
 `--threshold METHOD VALUE SOURCE_SPLIT SOURCE_ID`; omit it when no such evidence exists. The benchmark never selects
-a deployment threshold using the test set. Labels use the [standard dictionary](../README.md#input-table-reference)
+a deployment threshold using the test set. Labels use the [standard dictionary](../README.md#reference)
 and preserve every tested positive in the evaluation universe, including absent predictions.
 The current implementation trains/evaluates only unambiguous one-to-one region mappings; ambiguous
 regions are exported rather than copied to several tiles.
@@ -813,9 +813,9 @@ Two equally weighted pairwise margins eta-1/2 and 1/2-eta yield the convex loss
 `[softplus(1/2-eta)+softplus(eta-1/2)]/2`. Its unique minimum is eta=1/2 and its value
 is log(2). This independently checks an interior solution, not just the two endpoints.
 
-[Scoring tests](../tests/test_canonical_core.py) ·
-[Continuous calibration tests](../tests/test_canonical_allocation.py) ·
-[Main formula](../README.md#how-it-works).
+[Scoring tests](../tests/test_core.py) ·
+[Continuous calibration tests](../tests/test_allocation.py) ·
+[Main formula](../README.md#the-model).
 
 ## Validation
 
@@ -910,7 +910,9 @@ C_0(E,t)=a\left(\frac{\max(d(E,t),d_{\min})}{d_{\mathrm{ref}}}\right)^{-\gamma}
 ```
 
 Boundary positions strictly between the two anchors contribute; boundary points
-at either endpoint do not. Beta is nonnegative. At beta=0 the implementation
+at either endpoint do not. Priors fitted by `pace fit-prior` cap the summed strength
+at 1 (`boundary_cap`), because contact drops at the first boundary and not again at
+each further one; priors packaged by `pace prior` use the uncapped sum. Beta is nonnegative. At beta=0 the implementation
 returns the existing distance-prior function exactly. This nests the distance
 shape, without asserting that all ABC preprocessing is identical. The standard
 reference distance is 5,000 bp; fitted assets record their actual reference and
@@ -1128,7 +1130,7 @@ automatic tissue-hierarchical contact learning is not implemented.
 
 These defaults match `pace_livestock.config.DEFAULTS`. The same structure is written to
 `resolved_config.yaml` in every result folder; `null` means not provided. Ordinary runs need only the settings shown in the
-[README command reference](../README.md#command-reference).
+[README command reference](../README.md#reference).
 
 <!-- configuration-defaults:start -->
 ```yaml
@@ -1197,7 +1199,7 @@ contact:
 scoring:
   partial_policy: withhold
 promoters:
-  weights: provided
+  weights: usage
   minimum_weight: 0.0
   missing_policy: strict
   minimum_retained_weight: 0.9

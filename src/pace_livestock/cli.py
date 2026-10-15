@@ -13,7 +13,7 @@ from .provenance import clean, output_policy
 from .run_options import add_run_options, config_from_args
 
 OVERVIEW = """\
-PACE: enhancer-gene prediction for livestock and poultry (Activity-by-Contact family).
+PACE: enhancer-gene prediction for domestic animals from chromatin activity and 3D contact.
 
 One command from peaks, GTF and bigWig files:
   predict        Build candidates, quantify signal, extract Hi-C and score in one step
@@ -27,7 +27,7 @@ Step by step:
   validate       Check prepared tables without writing results
 
 No or sparse Hi-C:
-  fit-prior      Fit a distance-decay contact prior from a .cool/.mcool file
+  fit-prior      Fit the distance-decay (and CTCF boundary) prior from a .cool/.mcool file
   boundaries     Call candidate CTCF boundaries from motifs or a genome FASTA
   prior          Package a contact prior from known parameters
   fit-hic        Fit distance decay, boundary attenuation and dispersion from contacts
@@ -249,7 +249,10 @@ def predict_parser(command):
         help="Candidate regions, e.g. merged MACS peaks (several files are united)",
     )
     inputs.add_argument(
-        "-g", "--gtf", required=True, help="Gene annotation with transcript lines (.gtf[.gz])"
+        "-g",
+        "--gtf",
+        required=True,
+        help="Gene annotation with transcript (or exon) lines (.gtf[.gz])",
     )
     add_out(p, "New output directory (results and prepared tables)")
     activity = p.add_argument_group("activity (at least one assay)")
@@ -405,7 +408,9 @@ def catalog_parser(command):
     p.add_argument(
         "-b", "--peaks", nargs="+", required=True, metavar="BED", help="Candidate region BED(s)"
     )
-    p.add_argument("-g", "--gtf", required=True, help="Gene annotation with transcript lines")
+    p.add_argument(
+        "-g", "--gtf", required=True, help="Gene annotation with transcript (or exon) lines"
+    )
     p.add_argument(
         "--source-id",
         nargs="+",
@@ -506,8 +511,10 @@ def add_asset_options(p, *, measurement=True, measurement_required=True):
 def prior_parsers(command):
     p = command(
         "fit-prior",
-        "Fit a distance-decay contact prior from a .cool/.mcool file (valid zero pixels included)",
+        "Fit the distance-decay contact prior, and with --ctcf/--genome the CTCF boundary "
+        "effect, from a .cool/.mcool file (valid zero pixels included)",
         "example:\n  pace fit-prior --cooler pig_liver.mcool::/resolutions/10000 "
+        "--ctcf liver_CTCF.narrowPeak --genome Sscrofa11.1.fa "
         "--species pig --assembly Sscrofa11.1 --tissue liver -o pig_prior",
     )
     p.add_argument("--cooler", help="cool file or mcool::/resolutions/N URI")
@@ -618,7 +625,9 @@ def prior_parsers(command):
         default="independent_signals",
         help="How PIPs are combined per gene",
     )
-    p.add_argument("--abc-gamma", type=float, help="ABC baseline gamma")
+    p.add_argument(
+        "--abc-gamma", type=float, help="Gamma of the ABC power-law baseline (default: ABC's 1.024)"
+    )
     add_out(p)
     add_legacy_config(p)
 

@@ -9,22 +9,21 @@ TASKS = ("link_prediction",)
 
 
 def builtin_contact_prior(cfg):
-    """Explicit human-derived shape on a relative scale, never a calibrated animal asset."""
+    """Distance-only contact, 1/max(d, 5 kb), on a relative scale (Case C)."""
     if cfg["contact"].get("prior_preset") != "abc_human":
         return None
     if cfg["contact"]["mode"] != "prior_only" or cfg["execution_profile"] != "research":
-        raise PaceError("abc_human requires research profile and prior_only contact mode")
+        raise PaceError("Distance-only contact needs the research profile and prior_only mode")
     m = {
         "model_id": "distance_only_gamma_1",
         "kind": "contact_prior",
         "is_synthetic": False,
         **cfg["context"],
         "target_level": cfg["target_level"],
-        "prior_source": "abc_human_default",
-        "source_species": "Homo sapiens",
-        "transfer_status": "unvalidated_for_target_context",
-        "reference": "https://github.com/broadinstitute/ABC-Enhancer-Gene-Prediction/blob/main/config/config.yaml",
-        "training_sources": ["ABC published human reference gamma"],
+        "prior_source": "distance_only",
+        "transfer_status": "distance_only",
+        "reference": "Fulco et al. 2019, Nat Genet 51:1664 (Contact ~ Distance^-1)",
+        "training_sources": [],
         "calibration_sources": [],
         "test_sources": [],
         "validation": {},
@@ -34,7 +33,7 @@ def builtin_contact_prior(cfg):
         "d_min": 5000.0,
         "scale": "relative_distance_contact",
         "resolution": 5000,
-        "normalization_id": "abc_human_relative_shape",
+        "normalization_id": "distance_only",
         "balancing": "not_applicable",
         "window_id": "bin_pair",
     }
@@ -126,7 +125,7 @@ def capabilities(cfg: dict) -> dict:
         if cfg["contact"].get("prior_preset"):
             m = builtin_contact_prior(cfg)
             assets[kind] = {
-                "weights_status": "transferred_unvalidated",
+                "weights_status": "distance_only",
                 "model_id": m["model_id"],
                 "task_validation_status": {},
             }

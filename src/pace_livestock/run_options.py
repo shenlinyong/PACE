@@ -185,7 +185,7 @@ def add_run_options(
     model.add_argument(
         "--prior-preset",
         choices=["abc_human"],
-        help="Explicit unvalidated human contact-shape baseline; requires prior_only",
+        help="abc_human: contact from distance only, 1/max(d, 5 kb) (as --distance-only); requires prior_only",
     )
     model.add_argument("--pseudocount", choices=["auto", "none", "powerlaw"])
     model.add_argument("--partial-policy", choices=["withhold", "conditional"])

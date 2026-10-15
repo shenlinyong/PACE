@@ -186,7 +186,7 @@ def test_region_aggregation_counts_each_unit_once():
     assert out[0]["n_units"] == 2 and out[0]["pace_score"] == pytest.approx(0.75)
 
 
-def test_human_prior_is_explicit_research_only(tmp_path):
+def test_distance_only_is_research_only(tmp_path):
     overrides = dict(
         context=dict(species="Gallus gallus", assembly="GRCg7w", context_id="liver"),
         contact=dict(mode="prior_only", prior_preset="abc_human"),
@@ -195,7 +195,7 @@ def test_human_prior_is_explicit_research_only(tmp_path):
     assert cfg["contact"]["scale"] == "relative_distance_contact"
     from pace_livestock.evidence.assets import builtin_contact_prior
 
-    assert builtin_contact_prior(cfg)["transfer_status"] == "unvalidated_for_target_context"
+    assert builtin_contact_prior(cfg)["transfer_status"] == "distance_only"
     for profile in ("validated", "demonstration"):
         with pytest.raises(PaceError, match="research"):
             load_config(overrides={**overrides, "execution_profile": profile})
@@ -222,7 +222,7 @@ def test_force_preserves_results_and_failed_replacements(tmp_path):
             pass
 
 
-def test_human_prior_run_exports_transfer_source_and_retains_measured_activity(tmp_path):
+def test_distance_only_run_retains_measured_activity(tmp_path):
     fixture = create_example(tmp_path / "fixture", "measured")
     cfg = load_config(
         fixture,
@@ -235,9 +235,7 @@ def test_human_prior_run_exports_transfer_source_and_retains_measured_activity(t
     # Synthetic input measurements exercise the research code path, not biological accuracy.
     result = compute(cfg)
     prior = result["manifest"]["asset_manifests"]["contact_prior"]
-    assert prior["prior_source"] == "abc_human_default"
-    assert prior["transfer_status"] == "unvalidated_for_target_context"
-    assert prior["source_species"] == "Homo sapiens"
+    assert prior["prior_source"] == "distance_only" and prior["gamma"] == 1.0
     assert all(r["evidence_type"] == "contact_prior" for r in result["resolved_contacts"])
     assert all(math.isfinite(r["pace_score"]) for r in result["scores"])
     observations = read_table(cfg["inputs"]["observed_activity"])

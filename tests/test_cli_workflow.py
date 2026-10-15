@@ -191,7 +191,7 @@ def test_predict_abc_prior_and_gene_types(inputs, tmp_path, capsys):
     genes = {r["gene_id"] for r in read_table(out / "gene_summary.tsv")}
     assert genes and not any(g.endswith("_G0") for g in genes)
     manifest = json.loads((out / "run_manifest.json").read_text())
-    assert manifest["asset_manifests"]["contact_prior"]["transfer_status"].startswith("unvalidated")
+    assert manifest["asset_manifests"]["contact_prior"]["prior_source"] == "distance_only"
 
 
 def test_step_by_step_commands_without_yaml(inputs, tmp_path, capsys):

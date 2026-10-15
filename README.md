@@ -371,8 +371,6 @@ The score is the ABC score: with identical activity, contact, one TSS and a comp
 | | ABC | PACE |
 |---|---|---|
 | TSSs of a gene | One TSS per gene | All distinct TSSs, weighted by promoter activity |
-| Candidate elements | Windows centred on the strongest peaks | A fixed 500 bp grid over your peaks and all TSSs, identical across runs on one catalog |
-| Hi-C resolution | 5 kb | Any `.cool`/`.mcool` resolution |
 | Low-depth Hi-C | Distance-based pseudocount | Also per-pair Gamma–Poisson shrinkage toward the distance prior (`pace fuse`) |
 | Domain boundaries | Not modelled | CTCF boundaries, effect $\beta$ fitted on Hi-C (`--ctcf --genome`) |
 | Contact without the sample's Hi-C | Fixed power law fitted on human Hi-C | $\gamma$ (and $\beta$) fitted on Hi-C of the same species (Case B), or $1/d$ (Case C) |

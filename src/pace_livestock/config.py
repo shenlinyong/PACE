@@ -266,15 +266,15 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         raise PaceError("contact.prior_preset must be null or abc_human")
     if preset and (cfg["contact"]["prior_path"] or cfg["contact"]["mode"] != "prior_only"):
         raise PaceError(
-            "abc_human is an explicit prior_only baseline; do not mix its arbitrary scale with measured contacts"
+            "Distance-only contact (--distance-only) uses prior_only mode and cannot be combined with measured contacts or a fitted prior"
         )
     if preset and cfg["execution_profile"] != "research":
-        raise PaceError("abc_human is an unvalidated transferred prior for research only")
+        raise PaceError("Distance-only contact is available in the research profile only")
     if preset:
         cfg["contact"].update(
             scale="relative_distance_contact",
             resolution=5000,
-            normalization_id="abc_human_relative_shape",
+            normalization_id="distance_only",
             balancing="not_applicable",
             window_id="bin_pair",
         )
