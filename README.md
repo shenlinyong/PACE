@@ -12,18 +12,35 @@ pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \
 
 ## What PACE improves
 
-PACE keeps the ABC score and changes how its terms are estimated where domestic-animal data differ from human data:
+PACE keeps the ABC score and changes how its terms are estimated where domestic-animal data differ from human data.
 
-**1. Sparse Hi-C.** Most livestock Hi-C is shallow and binned at 10–40 kb, and many tissues have none.
+**1. Sparse Hi-C.**
+
+*Problem:* human cell lines have deeply sequenced, kilobase-resolution Hi-C for many cell types; in domestic animals Hi-C exists for few tissues, mostly at 10–40 kb and low depth, and most tissues have none.
+
+*PACE:*
+
 - *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = r\,C_{\mathrm{obs}} + (1-r)\,P(d)$ with $r = \frac{P(d)/f}{P(d)/f+\kappa}$, so pairs supported by few reads are drawn toward the distance expectation (`pace fuse`).
-- *Coarse bins:* an element in the TSS's own bin, whose diagonal value is dominated by self-ligation, takes $P(d)$ fitted on the same map (or, without a fitted prior, the maximum of the neighbouring bins); masked bins also take $P(d)$.
-- *No Hi-C of the tissue:* $P(d)$ is fitted on Hi-C of the same species (Case B). *No Hi-C:* $\widetilde C = 1/\max(d,\,5\,\mathrm{kb})$ (Case C).
+- *Coarse bins:* an element in the TSS's own bin, whose diagonal value is dominated by self-ligation, takes $P(d)$ fitted on the same map; masked bins also take $P(d)$.
+- *Hi-C only from another tissue:* $P(d)$ is fitted on it (Case B). *No Hi-C:* $\widetilde C = 1/\max(d,\,5\,\mathrm{kb})$ (Case C).
 
-**2. Alternative TSSs.** Annotations list several predicted TSSs per gene, many of them unused in a given tissue; ABC uses one TSS per gene. PACE averages contact over the gene's distinct TSSs, $\overline C(E,G) = \sum_t \pi_t\,\widetilde C(E,t)$, weighting each by its share of promoter activity, $\pi_t = A_t / \sum_{t'} A_{t'}$. The promoter in use dominates, whatever the number of transcript models.
+**2. Predicted TSSs and alternative promoters.**
 
-**3. Domain boundaries.** Contact drops across CTCF-anchored domain boundaries, whose positions must be located in the species and tissue analysed. $P(d)$ is multiplied by $e^{-\beta\min(S,1)}$, where $S$ is the strength of the boundaries between element and TSS. A boundary lies between a reverse and the next forward CTCF site; sites are CTCF ChIP-seq or CUT&Tag peaks oriented by the built-in CTCF motif (`--ctcf peaks.bed --genome genome.fa`). $\beta$ is fitted on the Hi-C (Cases A and B) by comparing pairs at the same distance.
+*Problem:* gene annotations of domestic-animal genomes (Ensembl, NCBI RefSeq) are largely computational predictions. Many genes carry several TSSs or alternative promoters, few of them supported by CAGE or other TSS data, so the annotation does not say which promoter a tissue uses. ABC assigns each gene a single TSS; if it is the wrong one, the distance and Hi-C contact of every candidate element are measured from the wrong position.
 
-**4. One or a few animals.** Technical replicates, then biological replicates, then animals are averaged in turn, so repeated sequencing of one animal is not counted as several animals.
+*PACE:* keeps every distinct TSS of a gene (transcripts starting at the same base are merged) and weights each by its promoter activity in the same tissue, $\pi_t = A_t / \sum_{t'} A_{t'}$, where $A_t$ is the ATAC/H3K27ac activity of the 500 bp cell containing the TSS. The element–gene contact is the weighted mean, $\overline C(E,G) = \sum_t \pi_t\,\widetilde C(E,t)$: the promoter that is open and acetylated in this tissue dominates, and predicted but inactive TSSs contribute little.
+
+**3. Domain boundaries.**
+
+*Problem:* enhancer–promoter contact drops across CTCF-anchored domain boundaries, but domestic animals lack the boundary maps available for human cell types, and ABC has no boundary term: with distance-based contact, an element beyond a boundary counts as much as one at the same distance inside the gene's domain.
+
+*PACE:* multiplies $P(d)$ by $e^{-\beta\min(S,1)}$, where $S$ is the strength of the boundaries between element and TSS. Boundaries lie between a reverse and the next forward CTCF site; sites are CTCF ChIP-seq or CUT&Tag peaks of the tissue, oriented by the built-in CTCF motif (`--ctcf peaks.bed --genome genome.fa`). $\beta$ is fitted on the Hi-C (Cases A and B) by comparing pairs at the same distance.
+
+**4. One or a few animals.**
+
+*Problem:* a tissue is usually profiled in one or a few animals, often with several libraries or technical replicates per animal.
+
+*PACE:* averages technical replicates, then biological replicates, then animals, with equal weight per animal, so repeated sequencing of one animal is not counted as several animals.
 
 ---
 
@@ -75,7 +92,7 @@ PACE starts from processed files. All files must use the **same genome assembly 
 - **Activity.** At least one of ATAC, DNase or H3K27ac is required; accessibility (ATAC or DNase) plus H3K27ac is recommended, because their geometric mean requires an element to be both open and acetylated. Make bigWigs with, for example, deepTools `bamCoverage --normalizeUsing CPM`. Several bigWigs of one assay are averaged as replicates of the same animal.
 - **Hi-C.** Give contact frequencies, not observed/expected matrices, p-values or loop calls: these remove the distance dependence PACE models. Convert `.hic` files to `.mcool` (for example with `hic2cool`) and balance them with `cooler balance`.
 - **CTCF.** Both files are needed: the peaks say where CTCF is bound, and the built-in CTCF motif (JASPAR MA0139.1) found in each peak on the genome sequence gives the site's orientation. The peak signal (narrowPeak column 7) is the site strength. Without them, the model has no boundary term.
-- **Not covered.** PACE does not align reads, call peaks or process Hi-C, and does not predict activity from DNA sequence.
+- **Preprocessing.** Read alignment, peak calling and Hi-C processing are done beforehand.
 
 ## Running PACE: choose your case
 
@@ -186,9 +203,9 @@ How to read them:
 
 - **Check coverage first.** Only `complete` genes have a primary score; a share computed from an incomplete total would inflate the remaining candidates.
 - **NA is not zero.** NA means the value could not be computed; zero means a measured zero signal. Never replace NA with 0.
-- **A score of 1** only means that one candidate carries all the gene's support.
-- **Thresholds** from human ABC studies depend on their assays and candidates. Calibrate a cutoff on independent functional data of your species where possible, and filter after scoring so that gene totals are unchanged.
-- **A score is a ranking**, not a probability of regulation; functional validation is still needed.
+- **A score of 1** means that one candidate carries all the gene's support.
+- **Thresholds.** Set a cutoff on functional data of your species where available, and filter after scoring so that gene totals are unchanged.
+- **The score ranks** the candidate elements of each gene.
 
 ## The model
 
@@ -242,7 +259,7 @@ A measured zero and an unmeasured value are kept apart.
 
 ### Optional allocation term (experimental)
 
-An enhancer near several genes may share its effect among them. The optional term multiplies support by $B(E,G)^\eta$, where $B(E,G)=\overline C(E,G)/\sum_{H}\overline C(E,H)$ is the share of the element's contact that goes to gene $G$ among all genes it is a candidate for. $\eta=0$ (default) leaves the score unchanged; $\eta=1$ favours elements whose contact is concentrated on one gene. It depends on gene annotation density and is not an established biological law; compare it with $\eta=0$ on independent functional data. See [equations and calibration](docs/ADVANCED.md#experimental-target-allocation).
+An enhancer near several genes may share its effect among them. The optional term multiplies support by $B(E,G)^\eta$, where $B(E,G)=\overline C(E,G)/\sum_{H}\overline C(E,H)$ is the share of the element's contact that goes to gene $G$ among all genes it is a candidate for. $\eta=0$ (default) leaves the score unchanged; $\eta=1$ favours elements whose contact is concentrated on one gene. $\eta$ can be fitted on functional perturbation data; see [equations and calibration](docs/ADVANCED.md#experimental-target-allocation).
 
 ## Step by step, several animals and comparisons
 
@@ -390,13 +407,13 @@ Scores from different runs are comparable only when candidates, assays, normaliz
 
 **"requires tables for every declared activity assay"** — `--panel` names an assay absent from the activity table; check the `assay` column or omit `--panel`.
 
-**`scale` or `normalization_id` mismatch** — all contact tables and the prior must describe the same measurement. Relabelling does not convert data; reprocess the files the same way.
+**`scale` or `normalization_id` mismatch** — all contact tables and the prior must describe the same measurement. Reprocess the files the same way.
 
 **`Output already exists`** — choose a new `-o` folder, or `--force` to replace it after a backup.
 
 **Out of memory** — fewer `--threads`, a smaller `--radius`, or chunked scoring (default in `predict`, `--by-chromosome` in `run`).
 
-**Only one animal?** — supported (`--target-level individual`); variation between animals cannot be assessed.
+**Only one animal?** — supported (`--target-level individual`).
 
 Still stuck? Open an [issue](https://github.com/shenlinyong/PACE/issues) with `pace --version`, the command and `qc_report.json`.
 

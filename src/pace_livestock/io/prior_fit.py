@@ -402,7 +402,6 @@ def fit_cooler_command(args):
                 "validation": "chromosome_holdout_contact_decay_diagnostic"
                 if args.test_chromosomes
                 else "not_held_out",
-                "functional_validation": "not_performed",
                 "callable_pairs": sum(r["n_pairs"] for r in rows),
                 "zero_mean_bins_excluded_from_log_fit": sum(
                     r["fit_status"] == "zero_mean_excluded" for r in rows

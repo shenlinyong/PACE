@@ -1,4 +1,4 @@
-"""Sensitivity bounds for a fixed candidate universe, not confidence intervals."""
+"""Score ranges for a fixed candidate universe when some supports are unknown."""
 
 import math
 

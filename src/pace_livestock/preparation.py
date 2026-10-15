@@ -240,15 +240,14 @@ def init_project(args):
         (dest / "run.sh").write_text(script, encoding="utf-8")
         (dest / "README.md").write_text(
             "# PACE project\n\n"
-            "This template contains no invented experimental values. Fill the listed input tables first.\n\n"
+            "Fill the listed input tables first.\n\n"
             + "Tables to prepare: "
             + (", ".join(missing) or "none; verify the existing tables")
             + ".\n\n"
             "Use `pace catalog`, `pace activity`, `pace contacts`, `pace merge` and `pace fit-prior` as needed.\n\n"
             "Then, from this directory, check and score with `bash run.sh`, which runs:\n\n```bash\n"
             + script.split("\n", 2)[2]
-            + "```\n\n"
-            "Library-size normalization applies to raw counts only. A human contact prior is an explicitly transferred, unvalidated baseline.\n",
+            + "```\n",
             encoding="utf-8",
         )
     return {

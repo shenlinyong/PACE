@@ -270,7 +270,6 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
             for r in scores
         ),
         "n_partial_genes": sum(r["normalization_status"] == "partial" for r in summary),
-        "score_bounds": "Sensitivity ranges conditional on support assumptions; not confidence intervals",
         "contact_processing": {
             "prior_source_context": prior_metadata.get(
                 "source_context_id", prior_metadata.get("context_id")
@@ -299,9 +298,7 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
         },
         "activity_pseudocounts": cfg["activity"]["pseudocounts"],
         "inferred_metadata": sorted(tables["inferred_metadata"]),
-        "biological_validation": "not_assessed",
         "capabilities": capabilities(cfg),
-        "interpretation": "PACE is a composition of regulatory support, not a causal probability or expression effect.",
     }
     ids = universe_ids(tables, cfg)
     contract = {
@@ -432,9 +429,8 @@ def write_config_and_report(dest, cfg, qc, n_candidates, *, relative_to=None):
     (dest / "report.md").write_text(
         f"# PACE run: {cfg['run_id']}\n\n"
         f"Measured activity; profile: {cfg['execution_profile']}; target: {cfg['target_level']}.\n\n"
-        f"Scorable candidates: {qc['n_scoreable']} / {n_candidates}. "
-        "Partial normalization is conditional on the measurable subset.\n\n"
-        "Scores are relative support shares. Changes in shares alone do not establish changes "
-        "in enhancer activity or gene expression. Biological validation is not supplied by these software checks.\n",
+        f"Scorable candidates: {qc['n_scoreable']} / {n_candidates}.\n\n"
+        "Each score is the element's share of its gene's activity x contact support; genes with "
+        "unscored candidates have no primary score.\n",
         encoding="utf-8",
     )

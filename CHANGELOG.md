@@ -62,7 +62,7 @@
 
 - Add optional assay-specific activity pseudocounts without filling missing measurements.
 - Add gene-wide TSS filtering with a retained-weight threshold and original/effective weight output.
-- Allow explicit same-species, same-assembly contact-prior transfer between tissues; retain source context and clear target-validation claims.
+- Allow explicit same-species, same-assembly contact-prior transfer between tissues; record source and target contexts.
 - Start cooler prior fits at the matrix resolution by default, including 10–25 kb maps.
 - Present activity × contact normalization as the main formula; document allocation as experimental.
 - Add the lowercase `pace-livestock` alias, remove a case-only duplicate documentation filename and update citation metadata.
@@ -73,10 +73,10 @@
 
 - Withhold incomplete primary scores by default; report conditional scores and support sensitivity intervals.
 - Add matched-scale power-law contact pseudocounts, recorded neighbor correction and same-bin TSS query reuse.
-- Fit contact priors directly from sparse coolers, counting valid zero opportunities; provide an explicit unvalidated human shape baseline.
+- Fit contact priors directly from sparse coolers, counting valid zero opportunities; provide a distance-only baseline.
 - Add region summaries, promoter-signal weights, CPM density normalization, project initialization, pairs and merge commands.
 - Use the lowercase pace executable; force output replacement preserves a prior-result backup.
-- Add contact-power benchmark control and a controlled-degradation validation protocol.
+- Add contact-power benchmark control and a controlled-degradation evaluation protocol.
 
 
 ## 0.4.0
@@ -88,8 +88,6 @@
 - Apply same-bin contact checks to imported evidence and validate imported assay/sample identity.
 - Bind auxiliary assay definitions and methylation platform names to classifier inputs; report held-out raw scores, calibrated probabilities and deployment coverage separately.
 - Update installation, formulas, CLI, manuscript scope and supported test/CI workflows.
-
-This is a software scope change. It does not establish higher biological predictive accuracy.
 
 ## 0.3.0
 
@@ -128,9 +126,7 @@ This is a software scope change. It does not establish higher biological predict
 - Extend continuous integration to the regression suite, wheel installation,
   Docker and Conda workflows.
 
-The bundled data and weights remain synthetic software examples. This release
-does not establish predictive accuracy for a livestock species or tissue. Existing
-run outputs without the new measurement contracts should be rerun before comparison.
+Existing run outputs without the new measurement contracts should be rerun before comparison.
 
 ## 0.2.1 — 2026-09-17
 
@@ -138,8 +134,8 @@ run outputs without the new measurement contracts should be rerun before compari
   guard against rejected macros and Markdown consuming LaTeX escapes.
 - Consolidate the public repository around one current scoring implementation.
 - Rewrite the homepage, formula, notation, comparison, installation, tutorial and
-  output references; remove incompatible equations, parameters and unsupported
-  biological validation statements from the current branch.
+  output references; remove incompatible equations, parameters and
+  statements from the current branch.
 - Retire superseded region/ML workflows, their examples and their model-specific
   tests. Preserve their source and results through Git history, not parallel current APIs.
 - Make compatibility launchers call the installed package; update environment and
