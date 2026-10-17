@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from ..errors import PaceError
-from ..evidence.contact import distance_prior, fit_binned_prior
+from ..evidence.contact import distance_prior, fit_binned_prior, fit_power_law
 from ..provenance import file_hash, output_directory, write_json
 from .tables import write_table
 
@@ -101,13 +101,7 @@ def cooler_distance_bins(
             row["geometric_distance"] = (
                 math.exp(row["log_distance_sum"] / row["n_pairs"]) if row["n_pairs"] else None
             )
-            row["fit_status"] = (
-                "used"
-                if row["n_pairs"] and total > 0
-                else "zero_mean_excluded"
-                if row["n_pairs"]
-                else "empty"
-            )
+            row["fit_status"] = "used" if row["n_pairs"] else "empty"
             all_rows.append(row)
     return all_rows, resolution
 
@@ -217,7 +211,9 @@ def cooler_boundary_cells(
 
 
 BOUNDARY_CAP = 1.0
-BETA_MAX_DISTANCE = 1_000_000
+# Enhancer-promoter links lie within 1 Mb; the decay and the boundary effect are fitted there.
+FIT_MAX_DISTANCE = 1_000_000
+BETA_MAX_DISTANCE = FIT_MAX_DISTANCE
 
 
 def _boundary_beta(groups):
@@ -294,17 +290,12 @@ def fit_boundary_prior(
         level[1] += r["n_pairs"] * math.exp(-beta * r["capped_strength"])
         level[2] += r["n_pairs"] * math.log(r["geometric_distance"])
         level[3] += r["n_pairs"]
-    # Distance classes without contacts are left out, as in the distance-only fit.
-    levels = [v for v in levels.values() if v[0] > 0]
-    x = np.array([v[2] / v[3] - math.log(d_ref) for v in levels])
-    y = np.log([v[0] / v[1] for v in levels])
-    w = np.sqrt([v[3] for v in levels])
-    if len(x) < 2:
-        raise PaceError("Contact prior fit needs at least two nonzero distance classes")
-    coef = np.linalg.lstsq(np.column_stack([np.ones(len(x)), x]) * w[:, None], y * w, rcond=None)[0]
-    a, gamma = math.exp(coef[0]), -float(coef[1])
-    if gamma <= 0 or not math.isfinite(a):
-        raise PaceError("Fitted data do not follow a positive decreasing power-law prior")
+    levels = list(levels.values())
+    a, gamma = fit_power_law(
+        [v[0] for v in levels],
+        [v[1] for v in levels],
+        [v[2] / v[3] - math.log(d_ref) for v in levels],
+    )
     return {
         "a": a,
         "gamma": gamma,
@@ -364,11 +355,7 @@ def fit_cooler_command(args):
         row.update(
             mean_contact=row["contact_sum"] / n if n else None,
             geometric_distance=math.exp(row["log_distance_sum"] / n) if n else None,
-            fit_status="used"
-            if n and row["contact_sum"] > 0
-            else "zero_mean_excluded"
-            if n
-            else "empty",
+            fit_status="used" if n else "empty",
         )
         pooled.append(row)
     d_min = max(resolution, args.minimum_distance)
@@ -445,8 +432,8 @@ def fit_cooler_command(args):
                 if args.test_chromosomes
                 else "not_held_out",
                 "callable_pairs": sum(r["n_pairs"] for r in rows),
-                "zero_mean_bins_excluded_from_log_fit": sum(
-                    r["fit_status"] == "zero_mean_excluded" for r in rows
+                "zero_contact_bins_in_fit": sum(
+                    r["fit_status"] == "used" and r["contact_sum"] == 0 for r in rows
                 ),
             },
         )

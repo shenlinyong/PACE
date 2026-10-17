@@ -484,3 +484,28 @@ def test_console_entries_do_not_collide_on_case_insensitive_filesystems():
         "pace-livestock": "pace_livestock.cli:main",
     }
     assert len({name.casefold() for name in scripts}) == len(scripts)
+
+
+def test_power_law_fit_is_poisson_and_keeps_zero_classes():
+    from pace_livestock.evidence.contact import fit_power_law
+
+    x = np.log([1, 2, 4, 8, 16])
+    n = np.array([500, 400, 300, 200, 100])
+    sums = n * 3.0 * np.exp(-1.2 * x)
+    a, gamma = fit_power_law(sums, n, x)
+    assert (a, gamma) == pytest.approx((3.0, 1.2), rel=1e-9)
+    a_small, gamma_small = fit_power_law(0.01 * sums, n, x)
+    assert gamma_small == pytest.approx(gamma) and a_small == pytest.approx(0.01 * a)
+    # A distant class without contacts is evidence of a steeper decay, not a missing class.
+    zero = sums.copy()
+    zero[-1] = 0
+    assert fit_power_law(zero, n, x)[1] > fit_power_law(zero[:-1], n[:-1], x[:-1])[1]
+    with pytest.raises(PaceError, match="decreasing"):
+        fit_power_law(n * np.exp(0.5 * x), n, x)
+
+
+def test_fit_prior_uses_pairs_up_to_one_megabase(tmp_path):
+    from pace_livestock.cli import build_parser
+
+    args = build_parser().parse_args(["fit-prior", "-o", str(tmp_path / "prior")])
+    assert args.max_distance == 1_000_000

@@ -151,11 +151,11 @@ Outputs keep `observed_value`, `prior_value`, `pseudocount_value`, the evidence 
 
 ### Fitting and transferring a prior
 
-`pace fit-prior --cooler ...` estimates the decay from distance-class means over all callable bin pairs, including zero pixels. Zero-mean classes are reported and left out of the log fit. Optional `--test-chromosomes` are held out and their decay fit is reported. A prior combined with observed contacts must match their scale, normalization, resolution, balancing and window.
+`pace fit-prior --cooler ...` estimates the decay over all callable bin pairs up to `--max-distance` (1 Mb), including zero pixels. The summed contact of each distance class is Poisson with the number of bin pairs as exposure; $a$ is profiled out and $\gamma$ maximises the remaining concave likelihood. Classes without contacts stay in the fit. Optional `--test-chromosomes` are held out and their decay fit is reported. A prior combined with observed contacts must match their scale, normalization, resolution, balancing and window.
 
 `pace predict --prior` accepts a prior fitted on another tissue of the same species and assembly. With `pace run`, add `--allow-cross-context-prior`. Source and target contexts are recorded; the `validated` profile does not accept transferred priors.
 
-A prior fitted on bins is evaluated at bin centres when it is combined with measured contacts (observed and shrinkage modes), on the scale of those bins. In `prior_only` mode it replaces Hi-C and is evaluated at the element and TSS, with distances floored at $\min(d_{\min}, 5\,\mathrm{kb})$; `prior_coordinate_policy` records which applies.
+A prior fitted on bins is evaluated at bin centres when it is combined with measured contacts (observed and shrinkage modes), on the scale of those bins. The combined bin-level contact is then multiplied by `within_bin_factor` $=P_{\mathrm{elem}}(E,t)/P_{\mathrm{bin}}(E,t)$, the prior at the exact anchors (distance floored at $\min(d_{\min}, 5\,\mathrm{kb})$, boundaries crossed between the anchors) over the prior at the bin centres. It places each element–TSS pair within its bin pair; pairs that share a bin pair keep the same bin-level value. `contact.within_bin_distance: false` (`pace run --no-within-bin-distance`, `pace predict --bin-level-contacts`) gives every pair the bin-level value. In `prior_only` mode it replaces Hi-C and is evaluated at the element and TSS, with distances floored at $\min(d_{\min}, 5\,\mathrm{kb})$; `prior_coordinate_policy` records which applies.
 
 The distance-only estimate (`pace predict --distance-only`, or `pace run --prior-preset abc_human --contact-mode prior_only`) sets $\gamma=1$, $a=1$ and $d_{\mathrm{ref}}=d_{\min}=5$ kb, so contact is $1/\max(d,5\,\mathrm{kb})$. It runs in the research profile and cannot be combined with measured contact tables.
 
@@ -169,7 +169,7 @@ pace fit-prior --cooler data/animal1.mcool::/resolutions/5000 \
   --test-chromosomes chr2 --out models/animal1_contact
 ```
 
-The fit uses 30 logarithmic distance classes from the bin size (or `--min-distance`, not below it) to 5 Mb. `--no-balanced` uses raw counts. Fixed-bin, symmetric-upper coolers are required.
+The fit uses 30 logarithmic distance classes from the bin size (or `--min-distance`, not below it) to 1 Mb (`--max-distance`); beyond it the power law is extrapolated. `--no-balanced` uses raw counts. Fixed-bin, symmetric-upper coolers are required.
 
 Boundary positions come from CTCF and their effect from the Hi-C. With `--ctcf peaks.bed` (CTCF ChIP-seq or CUT&Tag peaks, BED or narrowPeak) and `--genome genome.fa`, the strongest CTCF motif (JASPAR MA0139.1) in each peak orients the site, and its strength is the peak signal scaled by its 95th percentile (the relative motif score if the peaks carry no signal). A boundary lies midway between a reverse site and the next forward site within 1 Mb, with the smaller of the two strengths. One of the two files alone is an error; with neither, the prior has no boundary term. The prior is
 
@@ -177,7 +177,7 @@ Boundary positions come from CTCF and their effect from the Hi-C. With `--ctcf p
 P(d,S)=a\left(\frac{\max(d,d_{\min})}{d_{\mathrm{ref}}}\right)^{-\gamma}e^{-\beta\min(S,1)},
 ```
 
-with $d_{\mathrm{ref}}$ = `--reference-distance` (5 kb), $d_{\min}$ the larger of the bin size and `--minimum-distance` (5 kb), and $S$ the summed boundary strength strictly between the two bin centres. $\beta$ is estimated from pairs up to 1 Mb with one free level per distance class, comparing pairs at the same distance. The summed contact of each distance × strength cell is modelled as Poisson with the number of bin pairs as exposure; the class levels are profiled out and $\beta \ge 0$ maximises the remaining concave likelihood. Cells without contacts stay in the fit, and the estimate does not depend on the overall scale of the map. $\gamma$ is then fitted on the boundary-corrected distance levels. `beta_status` reports the outcome: `fitted`; `no_boundary_effect` (contacts do not fall with strength, $\beta = 0$); `beta_unidentifiable` (strength varies only together with distance class, $\beta = 0$); `no_boundary_variation` (all pairs have the same strength, $\beta = 0$); `beta_unbounded` (no contact crosses a boundary, so the likelihood has no finite maximum, $\beta = 0$). `--no-boundaries` fits the distance decay only.
+with $d_{\mathrm{ref}}$ = `--reference-distance` (5 kb), $d_{\min}$ the larger of the bin size and `--minimum-distance` (5 kb), and $S$ the summed boundary strength strictly between the two bin centres. $\beta$ is estimated from pairs up to 1 Mb with one free level per distance class, comparing pairs at the same distance. The summed contact of each distance × strength cell is modelled as Poisson with the number of bin pairs as exposure; the class levels are profiled out and $\beta \ge 0$ maximises the remaining concave likelihood. Cells without contacts stay in the fit, and the estimate does not depend on the overall scale of the map. $a$ and $\gamma$ are then fitted by the same Poisson likelihood on the boundary-corrected distance classes. `beta_status` reports the outcome: `fitted`; `no_boundary_effect` (contacts do not fall with strength, $\beta = 0$); `beta_unidentifiable` (strength varies only together with distance class, $\beta = 0$); `no_boundary_variation` (all pairs have the same strength, $\beta = 0$); `beta_unbounded` (no contact crosses a boundary, so the likelihood has no finite maximum, $\beta = 0$). `--no-boundaries` fits the distance decay only.
 
 Outputs: `manifest.json`, `distance_bins.tsv`, `fit_report.json`, and with boundaries `boundaries.tsv` and `boundary_cells.tsv` (pairs and contact by distance and boundary class).
 
@@ -203,7 +203,7 @@ pace fit-contact-prior --contacts contact_fit.tsv --model-id contact_prior_resea
   --d-ref 10000 --d-min 5000 -o models/prior
 ```
 
-The table has `bin_pair_id`, `distance_bp`, `contact_value`, `split`, `region_id`, with each measured pair once, zeros included. Training and test regions do not overlap. Positive-mean distance bins enter a log-linear fit weighted by pair count; empty and zero-mean bins are reported. A nondecreasing fitted curve is rejected.
+The table has `bin_pair_id`, `distance_bp`, `contact_value`, `split`, `region_id`, with each measured pair once, zeros included. Training and test regions do not overlap. Distance bins with pairs enter a Poisson fit with the pair count as exposure, zero-mean bins included; empty bins are reported. A nondecreasing fitted curve is rejected.
 
 ### Transfer between tissues
 

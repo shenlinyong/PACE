@@ -65,6 +65,8 @@ def check_predict(args):
         raise PaceError(
             "--strict-contacts uses measured contacts only; do not combine with --prior"
         )
+    if args.bin_level_contacts and not args.hic:
+        raise PaceError("--bin-level-contacts applies to --hic input only")
     if args.no_shrinkage and not args.hic:
         raise PaceError("--no-shrinkage applies to --hic input only")
     for _, path in tracks:
@@ -100,7 +102,7 @@ def predict(args):
     from .chunked import run_by_chromosome
     from .cli import cooler_uri, stem
     from .config import load_config
-    from .io.prior_fit import fit_cooler_command
+    from .io.prior_fit import FIT_MAX_DISTANCE, fit_cooler_command
     from .io.tables import read_table
     from .operations import prepare_command
     from .pipeline import compute, write_results
@@ -194,7 +196,7 @@ def predict(args):
                         cooler=cooler_uri(args.hic, resolution),
                         balanced=balanced,
                         min_distance=None,
-                        max_distance=args.radius,
+                        max_distance=min(args.radius, FIT_MAX_DISTANCE),
                         distance_bins=30,
                         reference_distance=5000,
                         minimum_distance=5000,
@@ -222,6 +224,7 @@ def predict(args):
         contact = {"mode": "shrinkage" if shrink else "observed" if contacts else "prior_only"}
         if shrink:
             contact.update(reliability="per_pair", reliability_source="gamma_poisson")
+        contact["within_bin_distance"] = not args.bin_level_contacts
         if args.strict_contacts:
             # Measured bin-pair contacts only: no pseudocount, and same-bin or masked pairs stay NA.
             contact.update(

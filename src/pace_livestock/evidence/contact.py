@@ -57,7 +57,7 @@ def fit_distance_prior(distances, contacts, *, bin_edges, d_ref: float, d_min: f
                 "n_pairs": n,
                 "mean_contact": mean,
                 "geometric_distance": center,
-                "fit_status": "used" if n and mean > 0 else "zero_mean_excluded" if n else "empty",
+                "fit_status": "used" if n else "empty",
             }
         )
     result = fit_binned_prior(bins, d_ref=d_ref, d_min=d_min)
@@ -68,28 +68,54 @@ def fit_distance_prior(distances, contacts, *, bin_edges, d_ref: float, d_min: f
     return result
 
 
+def fit_power_law(contact_sums, exposures, log_distances):
+    """Poisson fit of sum ~ exposure * a * exp(-gamma x), with x = log(d / d_ref).
+
+    a is profiled out, leaving l(gamma) = -gamma sum(c x) - C log sum(E exp(-gamma x)),
+    which is concave; gamma is the root of its derivative. Classes without contacts stay
+    in the fit through their exposure, and rescaling all contacts changes only a.
+    """
+    c, e, x = (np.asarray(v, dtype=float) for v in (contact_sums, exposures, log_distances))
+    keep = e > 0
+    c, e, x = c[keep], e[keep], x[keep]
+    if len(np.unique(x)) < 2 or c.sum() <= 0:
+        raise PaceError("Prior fit needs contacts and at least two distance classes")
+    shift = x.min()
+
+    def slope(gamma):
+        weight = e * np.exp(-gamma * (x - shift))
+        return c.sum() * (weight * x).sum() / weight.sum() - (c * x).sum()
+
+    if slope(0.0) <= 0 or c[x > shift].sum() == 0:
+        raise PaceError("Fitted data do not follow a positive decreasing power-law prior")
+    low, high = 0.0, 1.0
+    while slope(high) > 0:
+        low, high = high, 2 * high
+    for _ in range(100):
+        mid = (low + high) / 2
+        low, high = (mid, high) if slope(mid) > 0 else (low, mid)
+    gamma = (low + high) / 2
+    a = c.sum() / (e * np.exp(-gamma * x)).sum()
+    if not math.isfinite(a) or a <= 0:
+        raise PaceError("Fitted data do not follow a positive decreasing power-law prior")
+    return a, gamma
+
+
 def fit_binned_prior(bins, *, d_ref, d_min):
-    """Fit bin means using all callable opportunities, including unstored zero pixels."""
+    """Poisson fit over all callable opportunities, including unstored zero pixels."""
     if not math.isfinite(d_ref) or not math.isfinite(d_min) or min(d_ref, d_min) <= 0:
         raise PaceError("Prior reference and minimum distances must be positive")
     used = [b for b in bins if b["fit_status"] == "used"]
-    if len(used) < 2:
-        raise PaceError("Prior fit needs at least two nonzero mean distance bins")
-    x = np.log([b["geometric_distance"] / d_ref for b in used])
-    y = np.log([b["mean_contact"] for b in used])
-    w = np.sqrt([b["n_pairs"] for b in used])
-    design = np.column_stack([np.ones(len(x)), x]) * w[:, None]
-    if np.linalg.matrix_rank(design) < 2:
-        raise PaceError("Contact prior slope is unidentifiable")
-    beta = np.linalg.lstsq(design, y * w, rcond=None)[0]
-    a, gamma = math.exp(beta[0]), -float(beta[1])
-    if gamma <= 0 or not math.isfinite(a):
-        raise PaceError("Fitted data do not follow a positive decreasing power-law prior")
+    a, gamma = fit_power_law(
+        [b["mean_contact"] * b["n_pairs"] for b in used],
+        [b["n_pairs"] for b in used],
+        np.log([b["geometric_distance"] / d_ref for b in used]),
+    )
     return {
         "a": a,
         "gamma": gamma,
         "d_ref": d_ref,
         "d_min": d_min,
         "bins": bins,
-        "fit_weight": "valid_pair_count",
+        "fit_weight": "poisson_valid_pairs",
     }

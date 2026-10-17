@@ -52,6 +52,7 @@ VALUE_OPTIONS = {
     "contact_reliability": ("contact", "reliability"),
     "reliability_source": ("contact", "reliability_source"),
     "allow_prior_fallback": ("contact", "allow_prior_fallback"),
+    "within_bin_distance": ("contact", "within_bin_distance"),
     "allow_cross_context_prior": ("contact", "allow_cross_context_prior"),
     "minimum_tss_weight": ("promoters", "minimum_weight"),
     "tss_weights": ("promoters", "weights"),
@@ -233,6 +234,13 @@ def add_run_options(
     model.add_argument("--reliability-source")
     model.add_argument(
         "--allow-prior-fallback", action=argparse.BooleanOptionalAction, default=None
+    )
+    model.add_argument(
+        "--within-bin-distance",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Place each element-TSS pair within its Hi-C bin pair by the prior's ratio "
+        "between exact and bin-centre distances (default on)",
     )
     catalog = parser.add_argument_group("candidate universe")
     catalog.add_argument("--catalog-profile", choices=["canonical_grid", "provided_regions"])

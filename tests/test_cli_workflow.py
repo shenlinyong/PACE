@@ -208,6 +208,42 @@ def test_measured_contacts_without_shrinkage(inputs, tmp_path, capsys, option):
         assert all(r["observation_sample_id"] for r in rows if r["resolution_status"] == "resolved")
 
 
+def test_pairs_are_placed_within_their_bin_pair(inputs, tmp_path, capsys):
+    from pace_livestock.boundary_prior import contact_prior
+
+    assert predict_hic(inputs, tmp_path / "placed") == 0
+    rows = read_table(tmp_path / "placed" / "resolved_contacts.tsv")
+    prior = json.loads(
+        (tmp_path / "placed" / "prepared" / "contact_prior" / "manifest.json").read_text()
+    )
+    units = {r["element_id"]: r for r in read_table(tmp_path / "placed/prepared/catalog/units.tsv")}
+    tss = {
+        r["promoter_id"]: r for r in read_table(tmp_path / "placed/prepared/catalog/promoters.tsv")
+    }
+    shared = {}
+    for r in rows:
+        if r["resolution_status"] != "resolved":
+            continue
+        left, right = int(units[r["element_id"]]["anchor0"]), int(tss[r["promoter_id"]]["tss0"])
+        chrom = units[r["element_id"]]["chrom"]
+        ratio = contact_prior(chrom, left, right, prior, element_level=True) / contact_prior(
+            chrom, left, right, prior
+        )
+        assert float(r["within_bin_factor"]) == pytest.approx(ratio, rel=1e-9)
+        if r["bin_pair_id"] and r["evidence_type"] == "fused":
+            shared.setdefault(r["bin_pair_id"], []).append(r)
+    # Pairs in one bin pair share the bin's posterior and differ only by their placement.
+    groups = [g for g in shared.values() if len({r["within_bin_factor"] for r in g}) > 1]
+    assert groups
+    for g in groups:
+        bin_values = [float(r["resolved_value"]) / float(r["within_bin_factor"]) for r in g]
+        assert bin_values == pytest.approx([bin_values[0]] * len(g), rel=1e-9)
+    capsys.readouterr()
+    assert predict_hic(inputs, tmp_path / "binned", "--bin-level-contacts") == 0
+    binned = read_table(tmp_path / "binned" / "resolved_contacts.tsv")
+    assert {float(r["within_bin_factor"]) for r in binned} == {1.0}
+
+
 def test_strict_contacts_takes_no_prior(inputs, tmp_path, capsys):
     code = predict_hic(inputs, tmp_path / "out", "--strict-contacts", "--prior", tmp_path)
     assert code == 2 and "--strict-contacts" in capsys.readouterr().err

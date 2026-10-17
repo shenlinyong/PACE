@@ -305,6 +305,12 @@ def predict_parser(command):
         "pair toward the fitted distance prior by its read support (needed for coolers "
         "with non-integer counts)",
     )
+    contact.add_argument(
+        "--bin-level-contacts",
+        action="store_true",
+        help="With --hic: give every element-TSS pair the contact of its Hi-C bin pair, "
+        "without placing it by its exact distance within the bins",
+    )
     add_boundary_sources(contact)
     contact.add_argument(
         "--strict-contacts",
@@ -534,7 +540,12 @@ def prior_parsers(command):
     )
     p.add_argument("--balanced", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--min-distance", type=int, help="Default: one contact bin")
-    p.add_argument("--max-distance", type=int, default=5_000_000)
+    p.add_argument(
+        "--max-distance",
+        type=int,
+        default=1_000_000,
+        help="Fit the prior on bin pairs up to this distance (default 1 Mb)",
+    )
     p.add_argument("--distance-bins", type=int, default=30)
     p.add_argument("--reference-distance", type=int, default=5000)
     p.add_argument("--minimum-distance", type=int, default=5000)

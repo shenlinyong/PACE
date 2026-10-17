@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0
+
+- With Hi-C, each element–TSS pair is placed within its bin pair: the bin-level contact (measured, shrunk or prior) is multiplied by the prior's ratio between the exact anchors and the bin centres (`within_bin_factor`). Pairs sharing a bin pair no longer get the same contact whatever their distance, which matters most for 25–100 kb maps. `pace predict --bin-level-contacts` and `contact.within_bin_distance: false` keep the bin-level value.
+- The distance decay ($a$, $\gamma$) is fitted by Poisson likelihood with the number of bin pairs as exposure, in the same way as the boundary effect. Distance classes without contacts stay in the fit; rescaling the map changes only $a$.
+- `pace fit-prior` and `pace predict --hic` fit the prior on bin pairs up to 1 Mb (`--max-distance`), the range of enhancer–promoter links and of the boundary fit, instead of 5 Mb; beyond it the power law is extrapolated.
+
 ## 0.11.1
 
 - The boundary effect beta is the Poisson likelihood estimate on summed contacts per distance × strength cell, with one level per distance class profiled out. Cells without contacts now count as evidence of blocking, and rescaling all contacts no longer changes beta or gamma.

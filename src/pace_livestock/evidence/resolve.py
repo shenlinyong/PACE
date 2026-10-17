@@ -298,6 +298,11 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
     per_pair = w == "per_pair"
     boundaries = load_boundaries(prior_asset) if prior_asset else None
     element_level = mode == "prior_only"
+    within_bin = (
+        cfg["contact"]["within_bin_distance"]
+        and not element_level
+        and prior_policy(prior_asset) == "bin_centers"
+    )
     kappa, kappa_source = None, None
     if per_pair:
         if not t["observed_contacts"]:
@@ -362,6 +367,17 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 )
                 if prior_asset
                 else math.nan
+            )
+            # A Hi-C bin pair measures one contact for every element-TSS pair it holds. The
+            # prior's ratio between the exact anchors and the bin centres places each pair
+            # within its bin pair; it is 1 for priors evaluated at anchors.
+            factor = (
+                contact_prior(
+                    unit["chrom"], left, right, prior_asset, boundaries, element_level=True
+                )
+                / prior
+                if within_bin and math.isfinite(prior) and prior > 0
+                else 1.0
             )
             posteriors = []
             same_bin = (
@@ -484,6 +500,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 "near_diagonal_method": near_method,
                 "shared_tss_bin": any(r["promoter_id"] != key[1] for r in observations),
                 "pseudocount_value": 0.0,
+                "within_bin_factor": 1.0,
                 "structural_status": structural,
             }
             if per_pair:
@@ -495,8 +512,9 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
             if key in imported and per_pair:
                 old = imported[key]
                 for field in ("resolved_value", "reliability", "kappa", "prior_value"):
+                    expected = row[field] * (factor if field == "resolved_value" else 1.0)
                     if not math.isclose(
-                        number(old.get(field), field), row[field], rel_tol=1e-10, abs_tol=1e-12
+                        number(old.get(field), field), expected, rel_tol=1e-10, abs_tol=1e-12
                     ):
                         raise PaceError(
                             "Imported per-pair posterior differs from raw-data recomputation"
@@ -510,6 +528,14 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                     )
             if key in imported and not per_pair:
                 imported_row = dict(imported[key])
+                recorded_factor = number(
+                    imported_row.get("within_bin_factor") or 1.0, "within_bin_factor", minimum=0
+                )
+                if not math.isclose(recorded_factor, factor, rel_tol=1e-9):
+                    raise PaceError(
+                        "Imported contacts used a different within-bin distance factor; "
+                        "recompute them from observed contacts"
+                    )
                 if imported_row["scale"] != cfg["contact"]["scale"]:
                     raise PaceError("Imported contact scale mismatch")
                 imported_source = imported_row["evidence_type"]
@@ -632,15 +658,18 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                         number(row.get("pseudocount_value"), "pseudocount_value", minimum=0),
                         pc,
                         rel_tol=1e-10,
-                    ) or not math.isclose(row["resolved_value"], raw + pc, rel_tol=1e-10):
+                    ) or not math.isclose(
+                        row["resolved_value"], (raw + pc) * factor, rel_tol=1e-10
+                    ):
                         raise PaceError(
                             "Imported pseudocount differs from the declared prior or raw contact"
                         )
                 elif pc > 0:
-                    raw = row["resolved_value"]
+                    rescale = factor if key in imported else 1.0
+                    raw = row["resolved_value"] / rescale
                     row.update(
                         observed_value=raw,
-                        resolved_value=raw + pc,
+                        resolved_value=(raw + pc) * rescale,
                         prior_id=prior_asset["model_id"],
                         prior_value=prior,
                         evidence_type="regularized",
@@ -648,6 +677,10 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                         reason="powerlaw_pseudocount",
                     )
                 row["pseudocount_value"] = pc
+            # Imported rows other than per-pair posteriors already carry the factor.
+            if key not in imported or per_pair:
+                row["resolved_value"] *= factor
+                row["within_bin_factor"] = factor
             row["evidence_id"] = digest({"key": key, "resolution": row})
             output.append(row)
     return sorted(output, key=lambda r: (r["element_id"], r["promoter_id"]))

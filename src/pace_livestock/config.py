@@ -74,6 +74,7 @@ DEFAULTS = {
         "pseudocount": "auto",
         "pseudocount_distance_bp": 5000,
         "pseudocount_strength": 1.0,
+        "within_bin_distance": True,
     },
     "scoring": {"partial_policy": "withhold"},
     "promoters": {
@@ -324,6 +325,7 @@ def load_config(path: str | Path | None = None, *, overrides: dict | None = None
         ("catalog", "include_promoter_units"),
         ("contact", "allow_prior_fallback"),
         ("contact", "allow_cross_context_prior"),
+        ("contact", "within_bin_distance"),
         ("output", "retain_all_candidates"),
         ("comparison", "full_delta_requires_complete"),
         ("comparison", "allow_conditional_intersection"),
