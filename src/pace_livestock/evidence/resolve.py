@@ -206,13 +206,57 @@ def contact_measurement_contract(t, cfg, *, prior_asset=None):
     return {"contract_version": 1, **(baseline or normalize({}, source="contact"))}
 
 
-def prior_policy(prior_asset):
+def prior_policy(prior_asset, *, element_level=False):
     """Coordinates at which a prior is evaluated: genomic_anchors or bin_centers."""
     if not prior_asset:
         return None
+    if element_level:
+        return "genomic_anchors"
     return prior_asset.get(
         "fitting_coordinate_policy", prior_asset.get("prior_coordinate_policy", "genomic_anchors")
     )
+
+
+def run_kappa(observed_contacts, units, promoters, prior_asset, *, resolution, boundaries=None):
+    """Gamma-Poisson concentration from the run's unique callable bin pairs.
+
+    observed_contacts may be any iterable of contact rows (a whole-genome file can be
+    streamed); units and promoters map element_id/promoter_id to their rows.
+    """
+    if boundaries is None:
+        boundaries = load_boundaries(prior_asset)
+    rows = (
+        {
+            **{
+                k: row.get(k)
+                for k in (
+                    "measurement_status",
+                    "resolution",
+                    "raw_count",
+                    "count_to_contact",
+                    "contact_value",
+                    "sample_id",
+                    "bin_pair_id",
+                )
+            },
+            "chrom": units[row["element_id"]]["chrom"],
+            "anchor0": units[row["element_id"]]["anchor0"],
+            "tss0": promoters[row["promoter_id"]]["tss0"],
+        }
+        for row in observed_contacts
+    )
+    fitting = unique_count_pairs(rows, resolution=resolution, boundaries=boundaries)
+    beta = prior_asset.get("beta", 0)
+    cap = prior_asset.get("boundary_cap")
+    expected = [
+        distance_prior(x["distance_bp"], prior_asset)
+        * math.exp(
+            -beta * (x["boundary_strength"] if cap is None else min(x["boundary_strength"], cap))
+        )
+        / x["count_to_contact"]
+        for x in fitting
+    ]
+    return fit_kappa([x["raw_count"] for x in fitting], expected)["kappa"]
 
 
 def resolve_contacts(t, cfg, *, prior_asset=None):
@@ -253,6 +297,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
         raise PaceError("Shrinkage needs explicit reliability and reliability_source")
     per_pair = r == "per_pair"
     boundaries = load_boundaries(prior_asset) if prior_asset else None
+    element_level = mode == "prior_only"
     kappa, kappa_source = None, None
     if per_pair:
         if not t["observed_contacts"]:
@@ -266,25 +311,14 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
         else:
             kappa_source = "configuration"
         if kappa is None:
-            raw = [
-                {
-                    **row,
-                    "chrom": units[row["element_id"]]["chrom"],
-                    "anchor0": units[row["element_id"]]["anchor0"],
-                    "tss0": promoter_lookup[row["promoter_id"]]["tss0"],
-                }
-                for row in t["observed_contacts"]
-            ]
-            fitting = unique_count_pairs(
-                raw, resolution=measurement["resolution"], boundaries=boundaries
+            kappa = run_kappa(
+                t["observed_contacts"],
+                units,
+                promoter_lookup,
+                prior_asset,
+                resolution=measurement["resolution"],
+                boundaries=boundaries,
             )
-            expected = [
-                distance_prior(x["distance_bp"], prior_asset)
-                * math.exp(-prior_asset.get("beta", 0) * x["boundary_strength"])
-                / x["count_to_contact"]
-                for x in fitting
-            ]
-            kappa = fit_kappa([x["raw_count"] for x in fitting], expected)["kappa"]
             kappa_source = "run_unique_bin_pairs"
         kappa = number(kappa, "kappa", minimum=0)
         if kappa == 0:
@@ -323,7 +357,9 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
             # every contact mode, so switching modes never changes the prior itself.
             left, right = unit["anchor0"], p["tss0"]
             prior = (
-                contact_prior(unit["chrom"], left, right, prior_asset, boundaries)
+                contact_prior(
+                    unit["chrom"], left, right, prior_asset, boundaries, element_level=element_level
+                )
                 if prior_asset
                 else math.nan
             )
@@ -412,7 +448,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 "promoter_id": key[1],
                 "observed_value": obs,
                 "prior_value": prior,
-                "prior_coordinate_policy": prior_policy(prior_asset),
+                "prior_coordinate_policy": prior_policy(prior_asset, element_level=element_level),
                 "prior_sha256": prior_asset.get("manifest_sha256") if prior_asset else None,
                 "resolved_value": value,
                 "evidence_id": digest([key, source, used]),
@@ -538,7 +574,12 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                             "(prior_sha256 differs); recompute them from observed contacts"
                         )
                     expected_prior = contact_prior(
-                        unit["chrom"], unit["anchor0"], p["tss0"], prior_asset, boundaries
+                        unit["chrom"],
+                        unit["anchor0"],
+                        p["tss0"],
+                        prior_asset,
+                        boundaries,
+                        element_level=element_level,
                     )
                     recorded = number(
                         imported_row.get("prior_value"), "imported prior_value", minimum=0

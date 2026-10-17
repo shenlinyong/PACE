@@ -59,13 +59,26 @@ def load_boundaries(prior):
     return BoundaryIndex(read_table(path, required=["chrom", "position0", "strength"]))
 
 
-def contact_prior(chrom, left, right, prior, boundaries=None):
+# Without measured contact the prior is evaluated at the element-TSS distance itself,
+# floored at 5 kb as in the distance-only Case C (1/max(d, 5 kb)).
+ELEMENT_MIN_DISTANCE = 5000
+
+
+def contact_prior(chrom, left, right, prior, boundaries=None, *, element_level=False):
+    """Prior contact between two anchors.
+
+    With Hi-C (element_level=False) a prior fitted on bins is evaluated at bin centres, on
+    the scale of the measured bins it is combined with. Without Hi-C (element_level=True)
+    it is evaluated at the anchors, with distances floored at min(d_min, 5 kb).
+    """
     policy = prior.get(
         "fitting_coordinate_policy", prior.get("prior_coordinate_policy", "genomic_anchors")
     )
     if policy not in ("genomic_anchors", "bin_centers"):
         raise PaceError("Unknown contact prior coordinate policy")
-    if policy == "bin_centers":
+    if element_level:
+        prior = {**prior, "d_min": min(prior["d_min"], ELEMENT_MIN_DISTANCE)}
+    elif policy == "bin_centers":
         resolution = integer(prior.get("resolution"), "prior resolution", minimum=1)
         left, right = (x // resolution * resolution + resolution // 2 for x in (left, right))
     beta = number(prior.get("beta", 0), "contact prior beta", minimum=0)
@@ -303,7 +316,6 @@ def motif_boundaries(motifs, *, chip=None, max_gap_bp=1_000_000):
                         evidence_type="chip_supported_motif"
                         if chip is not None
                         else "sequence_motif",
-                        boundary_status="candidate_unvalidated",
                         left_site_start=left["start"],
                         right_site_start=right["start"],
                     )

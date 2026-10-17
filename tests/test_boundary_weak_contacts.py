@@ -146,7 +146,6 @@ def test_divergent_motifs_and_chip_occupancy():
     ]
     result = motif_boundaries(motifs)
     assert len(result) == 1 and result[0]["position0"] == 50
-    assert result[0]["boundary_status"] == "candidate_unvalidated"
     assert motif_boundaries(motifs, chip=[dict(chrom="1", start=20, end=50)]) == []
     assert (
         motif_boundaries(motifs, chip=[dict(chrom="1", start=0, end=100)])[0]["evidence_type"]

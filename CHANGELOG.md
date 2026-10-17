@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.0
+
+- `pace predict --hic` shrinks every element–TSS contact toward the distance prior fitted on the same map (Gamma–Poisson posterior mean). Bin pairs with few reads move toward the prior instead of entering the score as noise. With `--chunk-pairs`, kappa is fitted once on all chromosomes, so chunked and single runs agree. `--no-shrinkage` keeps the measured contacts; `--strict-contacts` implies it.
+- Without Hi-C of the sample (`--prior`, `prior_only` mode), a fitted prior is evaluated at the exact element–TSS distance with distances floored at 5 kb, as in Case C, instead of at bin centres with the bin size as floor. With Hi-C it stays at bin centres, on the scale of the measured bins.
+- Hi-C contacts are extracted one chromosome at a time and written as they are produced; memory follows the largest chromosome instead of the genome.
+- The kappa fit applies the boundary cap of the prior, as scoring does.
+- Neutral status labels: a prior from another tissue is `transfer_status: cross_context`, a boundary table `boundary_status: used`.
+
 ## 0.10.0
 
 - Domain-boundary soft constraint. CTCF ChIP/CUT&Tag peaks and the genome FASTA give the boundary positions (`--ctcf peaks.bed --genome genome.fa`); the built-in CTCF motif (JASPAR MA0139.1) in each peak gives its orientation. `pace fit-prior` and `pace predict --hic` then fit the boundary effect on the Hi-C: `P(d,S) = a (max(d, d_min)/5 kb)^-gamma exp(-beta min(S,1))`, with `d_min` the larger of the Hi-C bin size and 5 kb. `--no-boundaries` fits the distance decay only. Case C (no Hi-C) stays distance only.

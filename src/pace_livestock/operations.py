@@ -297,7 +297,7 @@ def prepare_command(path, out):
             ],
             paths=["pairs", "catalog_dir"],
         )
-        from .io.cooler import query_contacts
+        from .io.cooler import iter_contacts
 
         if bool(cfg.get("pairs")) == bool(cfg.get("catalog_dir")):
             raise PaceError("Give the query pairs OR the catalog directory they are built from")
@@ -305,32 +305,36 @@ def prepare_command(path, out):
         file, *group = cfg["contact"].split("::", 1)
         uri = str((operation_base(path) / file).resolve()) + ("::" + group[0] if group else "")
         if cfg.get("catalog_dir"):
-            from .preparation import build_pairs
+            from .preparation import pairs_by_chromosome
 
-            pairs = build_pairs(cfg["catalog_dir"])
+            chunks = pairs_by_chromosome(cfg["catalog_dir"])
         else:
             pairs = read_table(
                 cfg["pairs"], required=["element_id", "promoter_id", "chrom", "anchor0", "tss0"]
             )
-        for r in pairs:
-            r["anchor0"], r["tss0"] = integer(r["anchor0"], "anchor0"), integer(r["tss0"], "tss0")
-        rows = query_contacts(
-            uri,
-            pairs,
-            resolution=cfg["resolution"],
-            balanced=cfg["balanced"],
-            missing_pixels_are_zero=cfg["missing_pixels_are_zero"],
+            for r in pairs:
+                r["anchor0"], r["tss0"] = (
+                    integer(r["anchor0"], "anchor0"),
+                    integer(r["tss0"], "tss0"),
+                )
+            chunks = [pairs]
+        labels = {
+            **{k: cfg[k] for k in ("sample_id", "source_id", "scale")},
+            "normalization_id": cfg.get("normalization_id"),
+            "balancing": "balanced" if cfg["balanced"] else "unbalanced",
+            "window_id": "bin_pair",
+        }
+        # Rows are written as they are produced, one chromosome at a time.
+        rows = (
+            {**r, **labels}
+            for r in iter_contacts(
+                uri,
+                chunks,
+                resolution=cfg["resolution"],
+                balanced=cfg["balanced"],
+                missing_pixels_are_zero=cfg["missing_pixels_are_zero"],
+            )
         )
-        rows = [
-            {
-                **r,
-                **{k: cfg[k] for k in ("sample_id", "source_id", "scale")},
-                "normalization_id": cfg.get("normalization_id"),
-                "balancing": "balanced" if cfg["balanced"] else "unbalanced",
-                "window_id": "bin_pair",
-            }
-            for r in rows
-        ]
         name = "observed_contacts.tsv"
     elif kind == "bed_features":
         cfg = operation_config(
@@ -423,9 +427,9 @@ def prepare_command(path, out):
             "prepare.kind must be catalog, bigwig, cooler, bed_features, methylation or rna"
         )
     with output_directory(out) as dest:
-        write_table(dest / name, rows)
+        n = write_table(dest / name, rows)
         write_json(
             dest / "preparation_report.json",
-            {"kind": kind, "rows": len(rows), "configuration": cfg},
+            {"kind": kind, "rows": n, "configuration": cfg},
         )
-    return {"rows": len(rows)}
+    return {"rows": n}

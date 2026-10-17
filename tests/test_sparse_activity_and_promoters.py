@@ -186,11 +186,8 @@ def test_other_tissue_prior_requires_opt_in_and_retains_source(tmp_path):
     asset = result["manifest"]["asset_manifests"]["contact_prior"]
     assert asset["source_context_id"] == asset["context_id"] == "other_tissue"
     assert asset["target_context_id"] == cfg["context"]["context_id"]
-    assert asset["transfer_status"] == "cross_context_unvalidated" and asset["validation"] == {}
-    assert all(
-        r["prior_transfer_status"] == "cross_context_unvalidated"
-        for r in result["resolved_contacts"]
-    )
+    assert asset["transfer_status"] == "cross_context" and asset["validation"] == {}
+    assert all(r["prior_transfer_status"] == "cross_context" for r in result["resolved_contacts"])
     for field in ("species", "assembly", "target_level"):
         altered = transferred_prior(cfg)
         altered[field] = "different"

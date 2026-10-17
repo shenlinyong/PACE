@@ -47,6 +47,16 @@ def prepare_pairs(args):
 
 def build_pairs(catalog_dir) -> list[dict]:
     """Unique element-TSS pairs that need a contact value, sorted by key."""
+    rows = [row for chunk in pairs_by_chromosome(catalog_dir) for row in chunk]
+    return sorted(rows, key=lambda r: (r["element_id"], r["promoter_id"]))
+
+
+def pairs_by_chromosome(catalog_dir):
+    """Yield the unique element-TSS pairs of one chromosome at a time, sorted by key.
+
+    Pairs are cis, so a chromosome's pairs are complete on their own; memory follows the
+    largest chromosome instead of the genome.
+    """
     root = Path(catalog_dir)
     units = read_table(root / "units.tsv", required=SCHEMAS["units"].split())
     promoters = read_table(root / "promoters.tsv", required=SCHEMAS["promoters"].split())
@@ -58,27 +68,32 @@ def build_pairs(catalog_dir) -> list[dict]:
     genes = defaultdict(list)
     for p in promoters:
         genes[p["gene_id"]].append(p)
-    rows = {}
+    by_chrom = defaultdict(list)
     for edge in candidates:
         e, gene = edge["element_id"], edge["gene_id"]
         if e not in elements or gene not in genes:
             raise PaceError("Candidate references an unknown unit or gene")
-        for p in genes[gene]:
+        by_chrom[elements[e]["chrom"]].append((e, gene))
+    del candidates
+    for chrom in sorted(by_chrom):
+        rows = {}
+        for e, gene in by_chrom.pop(chrom):
             unit = elements[e]
-            if p["chrom"] != unit["chrom"]:
-                raise PaceError("Only cis contact pairs are supported")
-            key = e, p["promoter_id"]
-            row = {
-                "element_id": e,
-                "promoter_id": p["promoter_id"],
-                "chrom": unit["chrom"],
-                "anchor0": integer(unit["anchor0"], "anchor0"),
-                "tss0": integer(p["tss0"], "tss0"),
-            }
-            if key in rows and rows[key] != row:
-                raise PaceError("One physical promoter has inconsistent coordinates")
-            rows[key] = row
-    return [rows[k] for k in sorted(rows)]
+            for p in genes[gene]:
+                if p["chrom"] != chrom:
+                    raise PaceError("Only cis contact pairs are supported")
+                key = e, p["promoter_id"]
+                row = {
+                    "element_id": e,
+                    "promoter_id": p["promoter_id"],
+                    "chrom": chrom,
+                    "anchor0": integer(unit["anchor0"], "anchor0"),
+                    "tss0": integer(p["tss0"], "tss0"),
+                }
+                if key in rows and rows[key] != row:
+                    raise PaceError("One physical promoter has inconsistent coordinates")
+                rows[key] = row
+        yield [rows[k] for k in sorted(rows)]
 
 
 def normalize_activity(args):

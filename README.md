@@ -20,7 +20,7 @@ PACE keeps the ABC score and changes how its terms are estimated where domestic-
 
 *PACE:*
 
-- *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = r\,C_{\mathrm{obs}} + (1-r)\,P(d)$ with $r = \frac{P(d)/f}{P(d)/f+\kappa}$, so pairs supported by few reads are drawn toward the distance expectation (`pace fuse`).
+- *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = r\,C_{\mathrm{obs}} + (1-r)\,P(d)$ with $r = \frac{P(d)/f}{P(d)/f+\kappa}$, so pairs supported by few reads are drawn toward the distance expectation (default with `--hic`).
 - *Coarse bins:* an element in the TSS's own bin, whose diagonal value is dominated by self-ligation, takes $P(d)$ fitted on the same map; masked bins also take $P(d)$.
 - *Hi-C only from another tissue:* $P(d)$ is fitted on it (Case B). *No Hi-C:* $\widetilde C = 1/\max(d,\,5\,\mathrm{kb})$ (Case C).
 
@@ -111,7 +111,7 @@ Cases A and B use the distance–boundary prior
 P(d)=a\left(\frac{\max(d,\,d_{\min})}{5\,\mathrm{kb}}\right)^{-\gamma}\,e^{-\beta\,\min(S,\,1)},
 ```
 
-where $d$ is the element–TSS distance, $d_{\min}$ the larger of the Hi-C bin size and 5 kb (below one bin, distances are not resolved), $\gamma$ the rate at which contact falls with distance, $S$ the summed strength (0–1 each) of the boundaries between element and TSS, and $\beta$ the drop in log contact across one full-strength boundary. $S$ is capped at 1 because contact falls at the first boundary and not again at each further one. The amplitude $a$ cancels in the score; $\gamma$ and $\beta$ are fitted on the Hi-C, so nothing is set by hand. Without `--ctcf` and `--genome` the prior is $P(d)$ without the boundary term.
+where $d$ is the element–TSS distance, $d_{\min}$ the larger of the Hi-C bin size and 5 kb where $P(d)$ is combined with measured bins (below one bin, distances are not resolved) and 5 kb where it replaces Hi-C (Case B), $\gamma$ the rate at which contact falls with distance, $S$ the summed strength (0–1 each) of the boundaries between element and TSS, and $\beta$ the drop in log contact across one full-strength boundary. $S$ is capped at 1 because contact falls at the first boundary and not again at each further one. The amplitude $a$ cancels in the score; $\gamma$ and $\beta$ are fitted on the Hi-C, so nothing is set by hand. Without `--ctcf` and `--genome` the prior is $P(d)$ without the boundary term.
 
 ### Case A: Hi-C of the same tissue
 
@@ -121,7 +121,7 @@ pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27a
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig1
 ```
 
-$\widetilde C(E,t)$ is the balanced contact between the bins of element and TSS, plus $P(\max(d,5\,\mathrm{kb}))$ fitted on the same map, so that sparse zero pixels do not erase distal elements. An element in the TSS's own bin, and a pair in a masked bin, takes $P(d)$; such pairs are marked in `resolved_contacts.tsv`, and `--strict-contacts` leaves them NA instead. `--hic-resolution` selects the bin size in an `.mcool`. This is the most direct case: loops between distal enhancers and promoters are measured.
+$\widetilde C(E,t)$ is the Gamma–Poisson posterior mean of the contact between the bins of element and TSS, with prior $P(d)$ fitted on the same map ([Contact from sparse Hi-C](#contact-from-sparse-hi-c)): bin pairs with many reads keep their measured value, sparsely sampled ones move toward $P(d)$, so low-depth maps add information instead of noise. An element in the TSS's own bin, and a pair in a masked bin, takes $P(d)$; such pairs are marked in `resolved_contacts.tsv`. `--no-shrinkage` uses the balanced contact plus $P(\max(d,5\,\mathrm{kb}))$ instead (needed for coolers with non-integer counts), and `--strict-contacts` uses measured contacts only and leaves the other pairs NA. `--hic-resolution` selects the bin size in an `.mcool`. This is the most direct case: loops between distal enhancers and promoters are measured.
 
 ### Case B: Hi-C of another tissue of the same species
 
@@ -143,7 +143,7 @@ pace predict -b peaks.bed -g genes.gtf --atac pig2_ATAC.bw --h3k27ac pig2_H3K27a
 3. **$\beta$** is the drop in log contact per unit of $S$ between pairs at the same distance, up to 1 Mb.
 4. **$\gamma$** is the slope of the boundary-corrected mean contact against $\log d$, weighted by the number of pairs.
 
-The fitted values are in `manifest.json`, the boundaries in `boundaries.tsv`. The prior's tissue may differ from the sample's; the transfer is recorded in the outputs. One prior serves every sample of the species and keeps them comparable.
+The fitted values are in `manifest.json`, the boundaries in `boundaries.tsv`. Without Hi-C of the sample, $P(d)$ is evaluated at the exact element–TSS distance with $d_{\min}=5$ kb, as in Case C. The prior's tissue may differ from the sample's; the transfer is recorded in the outputs. One prior serves every sample of the species and keeps them comparable.
 
 ### Case C: no Hi-C
 
@@ -166,6 +166,7 @@ Contact is estimated from distance alone, $\widetilde C(E,t)=1/\max(d,\,5\,\math
 | `--missing-as-zero` | off | Read bases absent from the bigWig as measured zero signal |
 | `--tss-weights` | `usage` | TSS weights: promoter activity share, `equal`, or `provided` (`promoters.tsv`) |
 | `--no-boundaries` | off | Fit the distance decay only, even with CTCF data |
+| `--no-shrinkage` | off | With `--hic`: use measured contacts as they are, without per-pair shrinkage |
 | `--partial-policy` | `withhold` | Genes with unscored candidates: `withhold` or `conditional` |
 | `-t/--threads` | 1 | Chromosomes scored in parallel; memory grows with each thread |
 
@@ -230,18 +231,18 @@ An enhancer regulates a gene when it is active in the tissue and chromatin foldi
 
 | Situation | Contact used |
 |---|---|
-| Measured pair | Balanced contact + $P(\max(d,5\,\mathrm{kb}))$ (`--pseudocount auto`, when a fitted prior is available) |
+| Measured pair, `pace predict --hic` | Gamma–Poisson posterior mean, below |
+| Measured pair, `--no-shrinkage` or `pace run` | Balanced contact + $P(\max(d,5\,\mathrm{kb}))$ (`--pseudocount auto`, when a fitted prior is available) |
 | Element and TSS in the same bin | $P(d)$, or without a prior the maximum of the neighbouring bins, instead of the self-ligation diagonal |
 | Masked or unbalanceable bin | $P(d)$ (`--allow-prior-fallback` with `pace run`; automatic in `pace predict`) |
-| Low counts (`pace fuse`) | Gamma–Poisson posterior mean, below |
 
-**Shrinkage.** `pace fuse` treats the true contact as Gamma-distributed with mean $P(d)$ and shape $\kappa$, and the raw count $y$ as Poisson with mean $C/f$, where $f$ converts counts to balanced contact. The posterior mean is
+**Shrinkage.** `pace predict --hic` (and `pace fuse` in step-by-step runs) treats the true contact as Gamma-distributed with mean $P(d)$ and shape $\kappa$, and the raw count $y$ as Poisson with mean $C/f$, where $f$ converts counts to balanced contact. The posterior mean is
 
 ```math
 \widetilde C = r\,f\,y + (1-r)\,P(d),\qquad r=\frac{P(d)/f}{P(d)/f+\kappa}.
 ```
 
-A pair whose expected count is small gets a small $r$ and stays near the prior; a pair with a large expected count follows the data. A zero count is kept as an observation. $\kappa$ comes from the prior or is estimated from the run's bin pairs, and each replicate is shrunk before averaging. A fixed weight can be given instead (`pace run --contact-mode shrinkage --contact-reliability 0.5 --reliability-source "<how it was chosen>"`).
+A pair whose expected count is small gets a small $r$ and stays near the prior; a pair with a large expected count follows the data. A zero count is kept as an observation. $\kappa$ comes from the prior or is estimated once from all unique bin pairs of the run, also when chromosomes are scored in chunks, and each replicate is shrunk before averaging. A fixed weight can be given instead (`pace run --contact-mode shrinkage --contact-reliability 0.5 --reliability-source "<how it was chosen>"`).
 
 ### Zero and NA
 
@@ -388,7 +389,7 @@ The score is the ABC score: with identical activity, contact, one TSS and a comp
 | | ABC | PACE |
 |---|---|---|
 | TSSs of a gene | One TSS per gene | All distinct TSSs, weighted by promoter activity |
-| Low-depth Hi-C | Distance-based pseudocount | Also per-pair Gamma–Poisson shrinkage toward the distance prior (`pace fuse`) |
+| Low-depth Hi-C | Distance-based pseudocount | Per-pair Gamma–Poisson shrinkage toward the distance prior |
 | Domain boundaries | Not modelled | CTCF boundaries, effect $\beta$ fitted on Hi-C (`--ctcf --genome`) |
 | Contact without the sample's Hi-C | Fixed power law fitted on human Hi-C | $\gamma$ (and $\beta$) fitted on Hi-C of the same species (Case B), or $1/d$ (Case C) |
 | Missing contact | Set to zero | Kept as NA; the gene's score is withheld and a conditional share is reported |

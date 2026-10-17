@@ -136,7 +136,7 @@ def test_predict_one_step_with_hic(inputs, tmp_path, capsys):
     )
     assert code == 0, capsys.readouterr().err
     summary = json.loads(capsys.readouterr().out)
-    assert summary["contact_mode"] == "observed"
+    assert summary["contact_mode"] == "shrinkage"
     qc = json.loads((out / "qc_report.json").read_text())
     assert qc["execution"]["mode"] == "by_chromosome"
     assert len(qc["execution"]["chunks"]) > 1
@@ -157,6 +157,50 @@ def test_predict_one_step_with_hic(inputs, tmp_path, capsys):
         if r["pace_score"] is not None:
             genes[r["gene_id"]] = genes.get(r["gene_id"], 0) + float(r["pace_score"])
     assert genes and all(v == pytest.approx(1) for v in genes.values())
+
+
+def predict_hic(inputs, out, *extra):
+    return call(
+        "predict",
+        "-b",
+        inputs / "peaks.bed",
+        "-g",
+        inputs / "genes.gtf",
+        "-c",
+        inputs / "genome.fa.fai",
+        "--atac",
+        inputs / "atac.bw",
+        "--hic",
+        inputs / "hic.cool",
+        "-r",
+        1_000_000,
+        *context(),
+        "-o",
+        out,
+        *extra,
+    )
+
+
+def test_shrinkage_kappa_is_the_same_with_and_without_chunks(inputs, tmp_path, capsys):
+    import yaml
+
+    assert predict_hic(inputs, tmp_path / "single") == 0
+    assert predict_hic(inputs, tmp_path / "chunked", "--chunk-pairs", 700) == 0
+    capsys.readouterr()
+    contacts = read_table(tmp_path / "single" / "resolved_contacts.tsv")
+    fitted = {float(r["kappa"]) for r in contacts}
+    config = yaml.safe_load((tmp_path / "chunked" / "resolved_config.yaml").read_text())
+    assert len(fitted) == 1 and config["contact"]["kappa"] == pytest.approx(fitted.pop())
+    single, chunked = scores(tmp_path / "single"), scores(tmp_path / "chunked")
+    for key, row in single.items():
+        a, b = row["pace_score"], chunked[key]["pace_score"]
+        assert (a is None and b is None) or float(a) == pytest.approx(float(b), rel=1e-12)
+
+
+@pytest.mark.parametrize("option", ["--no-shrinkage", "--strict-contacts"])
+def test_measured_contacts_without_shrinkage(inputs, tmp_path, capsys, option):
+    assert predict_hic(inputs, tmp_path / "out", option) == 0
+    assert json.loads(capsys.readouterr().out)["contact_mode"] == "observed"
 
 
 def test_predict_needs_contact_choice(inputs, tmp_path, capsys):

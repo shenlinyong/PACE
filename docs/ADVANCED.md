@@ -140,7 +140,7 @@ A prior fitted by `pace fit-prior` with CTCF peaks and the genome FASTA also car
 | Finite off-diagonal observation, including zero | Observed contact + pseudocount $p(d)$ |
 | Missing observation, `allow_prior_fallback` and a prior | $P(d)$, labelled as prior |
 | Missing observation without fallback | NA |
-| `prior_only` mode | $P(d)$ |
+| `prior_only` mode | $P(d)$ at the element–TSS distance, $d_{\min}$ at most 5 kb |
 | `shrinkage` mode | $r\,C_{\mathrm{obs}} + (1-r)\,P(d)$ |
 
 Near-diagonal handling runs first; same-bin membership follows the bin boundaries. `near_diagonal_policy: unresolved` leaves these pairs NA, `prior_or_unresolved` accepts only a prior, and the default `prior_or_neighbor` also accepts the neighbour maximum.
@@ -154,6 +154,8 @@ Outputs keep `observed_value`, `prior_value`, `pseudocount_value`, the evidence 
 `pace fit-prior --cooler ...` estimates the decay from distance-class means over all callable bin pairs, including zero pixels. Zero-mean classes are reported and left out of the log fit. Optional `--test-chromosomes` are held out and their decay fit is reported. A prior combined with observed contacts must match their scale, normalization, resolution, balancing and window.
 
 `pace predict --prior` accepts a prior fitted on another tissue of the same species and assembly. With `pace run`, add `--allow-cross-context-prior`. Source and target contexts are recorded; the `validated` profile does not accept transferred priors.
+
+A prior fitted on bins is evaluated at bin centres when it is combined with measured contacts (observed and shrinkage modes), on the scale of those bins. In `prior_only` mode it replaces Hi-C and is evaluated at the element and TSS, with distances floored at $\min(d_{\min}, 5\,\mathrm{kb})$; `prior_coordinate_policy` records which applies.
 
 The distance-only estimate (`pace predict --distance-only`, or `pace run --prior-preset abc_human --contact-mode prior_only`) sets $\gamma=1$, $a=1$ and $d_{\mathrm{ref}}=d_{\min}=5$ kb, so contact is $1/\max(d,5\,\mathrm{kb})$. It runs in the research profile and cannot be combined with measured contact tables.
 
@@ -277,7 +279,7 @@ For each $\gamma$/$\beta$ grid point the amplitude is profiled analytically unde
 
 Nonpositive excess variation uses the upper bound. Held-out chromosomes enter neither the fit nor $\kappa$; `held_out_residuals.tsv` reports their observed and expected counts, and the report gives the correlation between log distance and boundary strength.
 
-`pace fuse` takes the options of `pace run` and sets `--contact-mode shrinkage --contact-reliability per_pair`:
+`pace predict --hic` uses this shrinkage by default (`--no-shrinkage` turns it off); with `--chunk-pairs`, $\kappa$ is first fitted on every chromosome and then fixed for all chunks. `pace fuse` takes the options of `pace run` and sets `--contact-mode shrinkage --contact-reliability per_pair`:
 
 ```bash
 pace fuse -d prepared/catalog --activity prepared/activity/observed_activity.tsv \

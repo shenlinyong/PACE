@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import sys
 import time
 from pathlib import Path
@@ -60,6 +61,8 @@ def check_predict(args):
         raise PaceError("--distance-only replaces Hi-C and fitted priors; do not combine them")
     if args.strict_contacts and not args.hic:
         raise PaceError("--strict-contacts applies to --hic input only")
+    if args.no_shrinkage and not args.hic:
+        raise PaceError("--no-shrinkage applies to --hic input only")
     for _, path in tracks:
         if not Path(path).is_file():
             raise PaceError(f"bigWig not found: {path}")
@@ -209,7 +212,12 @@ def predict(args):
                 prior = prepared / "contact_prior"
         else:
             log("3/4 no Hi-C: contact from the distance-decay prior")
-        contact = {"mode": "observed" if contacts else "prior_only"}
+        # Hi-C contacts are shrunk pair by pair toward the distance prior (Gamma-Poisson),
+        # so bin pairs supported by few reads follow the prior and well-sampled ones the data.
+        shrink = bool(contacts) and not (args.no_shrinkage or args.strict_contacts)
+        contact = {"mode": "shrinkage" if shrink else "observed" if contacts else "prior_only"}
+        if shrink:
+            contact.update(reliability="per_pair", reliability_source="gamma_poisson")
         if prior:
             contact["prior_path"] = str(Path(prior).resolve())
             # Masked (unbalanced) bins and missing pixels take the fitted expectation,
@@ -253,6 +261,10 @@ def predict(args):
         )
         if not args.abc_prior:
             infer_contact_scale(cfg)
+        if shrink and args.chunk_pairs:
+            # Chromosome chunks share one kappa, fitted on every chromosome.
+            cfg["contact"]["kappa"] = genome_kappa(cfg)
+            log(f"    contact shrinkage: kappa = {cfg['contact']['kappa']:.3g}")
         log("4/4 scoring element-gene pairs")
         if args.chunk_pairs:
             result = run_by_chromosome(
@@ -283,6 +295,36 @@ def predict(args):
         "contact_mode": cfg["contact"]["mode"],
         "activity_panel": cfg["activity"]["panel"],
     }
+
+
+def genome_kappa(cfg):
+    """Gamma-Poisson kappa from all unique bin pairs of the run, read as a stream."""
+    from .evidence.assets import load_asset
+    from .evidence.resolve import run_kappa
+    from .io.tables import integer, iter_table, read_table
+
+    prior = load_asset(cfg["contact"]["prior_path"], cfg, kind="contact_prior")
+    if prior.get("kappa") is not None:
+        return prior["kappa"]
+    units = {
+        r["element_id"]: {"chrom": r["chrom"], "anchor0": integer(r["anchor0"], "anchor0")}
+        for r in read_table(cfg["inputs"]["units"], required=["element_id", "chrom", "anchor0"])
+    }
+    promoters = {
+        r["promoter_id"]: {"tss0": integer(r["tss0"], "tss0")}
+        for r in read_table(cfg["inputs"]["promoters"], required=["promoter_id", "tss0"])
+    }
+    rows = iter_table(cfg["inputs"]["observed_contacts"])
+    first = next(rows, None)
+    if first is None:
+        raise PaceError("No Hi-C contacts to fit the shrinkage kappa")
+    return run_kappa(
+        itertools.chain([first], rows),
+        units,
+        promoters,
+        prior,
+        resolution=integer(first["resolution"], "resolution", minimum=1),
+    )
 
 
 def warn_sparse_track(table, missing_as_zero):

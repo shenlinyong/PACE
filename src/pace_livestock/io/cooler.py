@@ -7,15 +7,25 @@ import numpy as np
 from ..errors import PaceError
 
 
-def query_contacts(
+def query_contacts(uri, pairs, **options):
+    """Contact rows for a list of element-TSS pairs."""
+    return list(iter_contacts(uri, [pairs], **options))
+
+
+def iter_contacts(
     uri,
-    pairs,
+    chunks,
     *,
     resolution: int,
     balanced: bool,
     missing_pixels_are_zero: bool,
     diagonal_window_bp=5000,
 ):
+    """Yield contact rows for successive lists of pairs (e.g. one chromosome each).
+
+    The cooler is opened once; lookups are kept only for the current list, so memory
+    follows the largest list instead of all pairs.
+    """
     if type(balanced) is not bool or type(missing_pixels_are_zero) is not bool:
         raise PaceError("balanced and missing_pixels_are_zero must be YAML booleans")
     try:
@@ -32,13 +42,46 @@ def query_contacts(
     weights = bins["weight"].to_numpy(float) if balanced else np.ones(len(bins))
     valid = np.isfinite(weights) & (weights > 0) if balanced else np.ones(len(bins), dtype=bool)
     offsets = {chrom: c.offset(chrom) for chrom in c.chromnames}
-    wanted = {pair["chrom"] for pair in pairs}
+    raw_selector = c.matrix(balance=False, sparse=True)
+    selector = c.matrix(balance=balanced, sparse=True)
+    wanted = set()
+    for pairs in chunks:
+        wanted.update(pair["chrom"] for pair in pairs)
+        yield from _chunk_contacts(
+            c,
+            pairs,
+            offsets,
+            weights,
+            valid,
+            selector,
+            raw_selector,
+            resolution=resolution,
+            balanced=balanced,
+            missing_pixels_are_zero=missing_pixels_are_zero,
+            diagonal_window_bp=diagonal_window_bp,
+        )
     if wanted and not wanted & set(offsets):
         raise PaceError(
             f"No chromosome of the catalog is in the Hi-C file {uri} (catalog: "
             f"{', '.join(sorted(wanted)[:3])}; Hi-C: {', '.join(list(offsets)[:3])}). "
             "Use the same chromosome names everywhere (chr1 vs 1)"
         )
+
+
+def _chunk_contacts(
+    c,
+    pairs,
+    offsets,
+    weights,
+    valid,
+    selector,
+    raw_selector,
+    *,
+    resolution,
+    balanced,
+    missing_pixels_are_zero,
+    diagonal_window_bp,
+):
     requests, grouped, absent = [], defaultdict(set), []
     for pair in pairs:
         chrom = pair["chrom"]
@@ -78,8 +121,6 @@ def query_contacts(
         for x, y in near:
             grouped[x].add(y)
     lookup, raw_lookup = {}, {}
-    raw_selector = c.matrix(balance=False, sparse=True)
-    selector = c.matrix(balance=balanced, sparse=True)
     for i, js in grouped.items():
         low, high = min(js), max(js) + 1
         block = selector[i : i + 1, low:high].tocoo()
@@ -116,7 +157,8 @@ def query_contacts(
         }
         for pair in absent
     ]
-    return unmeasured + [
+    yield from unmeasured
+    yield from (
         {
             **pair,
             "contact_value": lookup[i, j],
@@ -143,4 +185,4 @@ def query_contacts(
             else None,
         }
         for pair, i, j in requests
-    ]
+    )

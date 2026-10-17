@@ -113,7 +113,7 @@ def load_asset(path, cfg: dict, *, kind: str) -> dict:
     if transferred:
         m["source_context_id"] = m["context_id"]
         m["target_context_id"] = cfg["context"]["context_id"]
-        m["transfer_status"] = "cross_context_unvalidated"
+        m["transfer_status"] = "cross_context"
         m["source_validation"] = m["validation"]
         m["validation"] = {}
     return m
@@ -138,7 +138,7 @@ def capabilities(cfg: dict) -> dict:
         try:
             m = load_asset(path, cfg, kind=kind)
             assets[kind] = {
-                "weights_status": "transferred_unvalidated"
+                "weights_status": "transferred"
                 if m.get("transfer_status")
                 else "synthetic"
                 if m["is_synthetic"]

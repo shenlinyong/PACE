@@ -209,8 +209,9 @@ PREDICT_EPILOG = """\
 Pick ONE contact source according to your data:
 
   A. --hic FILE      Hi-C of the same tissue (.cool/.mcool), best choice. The
-                     distance decay of the same map is fitted automatically
-                     and fills masked bins.
+                     distance decay of the same map is fitted automatically;
+                     each contact is shrunk toward it by its read support, and
+                     it fills masked bins.
      pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac k27ac.bw \\
          --hic pig1.mcool --hic-resolution 10000 \\
          --ctcf pig1_ctcf.narrowPeak --genome genome.fa \\
@@ -297,12 +298,20 @@ def predict_parser(command):
         action="store_true",
         help="With --hic: fit the distance decay without the CTCF domain-boundary term",
     )
+    contact.add_argument(
+        "--no-shrinkage",
+        action="store_true",
+        help="With --hic: use the balanced contacts as measured instead of shrinking each "
+        "pair toward the fitted distance prior by its read support (needed for coolers "
+        "with non-integer counts)",
+    )
     add_boundary_sources(contact)
     contact.add_argument(
         "--strict-contacts",
         action="store_true",
-        help="With --hic: leave pairs in masked Hi-C bins NA instead of using the "
-        "distance prior fitted on the same map (genes with such pairs are then withheld)",
+        help="With --hic: use measured contacts only; pairs in masked Hi-C bins stay NA "
+        "instead of taking the distance prior fitted on the same map (genes with such pairs "
+        "are then withheld). Implies --no-shrinkage",
     )
     # One animal per run; several animals are combined with 'pace run --samples'.
     add_context(p, target_level=False)

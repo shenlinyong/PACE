@@ -59,7 +59,8 @@ def test_chunks_reject_the_same_incompatible_measurements_as_whole_run(tmp_path,
     assert not output.exists()
 
 
-def test_fitted_bin_prior_uses_same_coordinates_in_all_contact_modes(tmp_path):
+def test_fitted_bin_prior_coordinates_follow_the_contact_mode(tmp_path):
+    """With Hi-C the prior sits at bin centres; without it, at the element and the TSS."""
     cfg = load_config(create_example(tmp_path / "inputs", "measured"))
     tables = load_tables(cfg)
     unit, promoter = tables["units"][0], tables["promoters"][0]
@@ -83,7 +84,18 @@ def test_fitted_bin_prior_uses_same_coordinates_in_all_contact_modes(tmp_path):
     )
     from unittest.mock import patch
 
-    expected = 500 / abs(left - right) * math.exp(-1)
+    at_bins = 500 / abs(left - right) * math.exp(-boundary.strength(unit["chrom"], left, right))
+    anchors = unit["anchor0"], promoter["tss0"]
+    at_anchors = (
+        500
+        / max(abs(anchors[0] - anchors[1]), 500)
+        * math.exp(-min(boundary.strength(unit["chrom"], *anchors), 1))
+    )
+    expected = {
+        "prior_only": (at_anchors, "genomic_anchors"),
+        "shrinkage": (at_bins, "bin_centers"),
+        "observed": (at_bins, "bin_centers"),
+    }
     for mode, reliability in (("prior_only", None), ("shrinkage", 0.5), ("observed", None)):
         cfg["contact"].update(mode=mode, reliability=reliability, reliability_source="test")
         with patch("pace_livestock.evidence.resolve.load_boundaries", return_value=boundary):
@@ -93,8 +105,19 @@ def test_fitted_bin_prior_uses_same_coordinates_in_all_contact_modes(tmp_path):
             for r in rows
             if r["element_id"] == unit["element_id"] and r["promoter_id"] == promoter["promoter_id"]
         )
-        assert found["prior_value"] == pytest.approx(expected)
-        assert found["prior_coordinate_policy"] == "bin_centers"
+        assert found["prior_value"] == pytest.approx(expected[mode][0])
+        assert found["prior_coordinate_policy"] == expected[mode][1]
+
+
+def test_prior_without_hic_floors_distance_at_5kb():
+    from pace_livestock.boundary_prior import contact_prior
+
+    prior = dict(a=1.0, gamma=1.0, d_ref=5000.0, d_min=10000.0, resolution=10000)
+    prior["fitting_coordinate_policy"] = "bin_centers"
+    assert contact_prior("c", 0, 2000, prior, element_level=True) == pytest.approx(1.0)
+    assert contact_prior("c", 0, 7000, prior, element_level=True) == pytest.approx(5 / 7)
+    # Same-bin pair with Hi-C: both anchors map to one bin centre, floored at the bin size.
+    assert contact_prior("c", 0, 7000, prior) == pytest.approx(0.5)
 
 
 def test_identities_do_not_depend_on_chunk_size(tmp_path):
@@ -196,3 +219,20 @@ def test_anchor_prior_is_identical_in_prior_only_and_per_pair_modes(tmp_path):
         values[mode] = {(r["element_id"], r["promoter_id"]): r["prior_value"] for r in rows}
         assert {r["prior_coordinate_policy"] for r in rows} == {"genomic_anchors"}
     assert values["prior_only"] == values["shrinkage"]
+
+
+def test_contact_pairs_are_built_one_chromosome_at_a_time(tmp_path):
+    from pathlib import Path
+
+    from pace_livestock.preparation import build_pairs, pairs_by_chromosome
+
+    cfg = two_chromosomes(tmp_path)
+    catalog = Path(cfg["inputs"]["units"]).parent
+    chunks = list(pairs_by_chromosome(catalog))
+    assert [{r["chrom"] for r in chunk} for chunk in chunks] == [
+        {c} for c in sorted({r["chrom"] for r in read_table(cfg["inputs"]["units"])})
+    ]
+    combined = sorted(
+        (r for chunk in chunks for r in chunk), key=lambda r: (r["element_id"], r["promoter_id"])
+    )
+    assert combined == build_pairs(catalog)

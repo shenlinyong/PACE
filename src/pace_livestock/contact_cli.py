@@ -77,14 +77,13 @@ def boundaries_command(path, out):
             dict(
                 n_motifs=len(motifs),
                 n_boundaries=len(boundaries),
-                boundary_status="candidate_unvalidated",
                 parameters={k: cfg.get(k) for k in ("threshold", "max_gap_bp")},
                 source_hashes={
                     k: file_hash(cfg[k]) for k in ("motifs", "fasta", "pwm", "chip") if cfg.get(k)
                 },
             ),
         )
-    return {"output": str(out), "n_boundaries": len(boundaries), "status": "candidate_unvalidated"}
+    return {"output": str(out), "n_boundaries": len(boundaries), "status": "complete"}
 
 
 def prior_command(path, out, *, fit=False):
@@ -189,7 +188,7 @@ def prior_command(path, out, *, fit=False):
         manifest["beta"] > 0 or fit and any(float(b) > 0 for b in cfg["beta_grid"])
     ) and not cfg.get("boundaries"):
         raise PaceError("Positive beta requires an explicit boundary table")
-    manifest["boundary_status"] = "candidate_unvalidated" if cfg.get("boundaries") else "not_used"
+    manifest["boundary_status"] = "used" if cfg.get("boundaries") else "not_used"
     predictions = []
     if cfg.get("pairs"):
         for row in read_table(cfg["pairs"], required=["chrom", "anchor0", "tss0"]):
