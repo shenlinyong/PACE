@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.2
+
+- `pace benchmark`: the `ABC_style_single_TSS` and `contact_power_2` baselines use the run's `scoring.partial_policy`, as PACE does; with `conditional`, all three now score the same labels. Metrics add a `common_labels` scope (labels every built-in method scores).
+- `pace benchmark` requires `species` and `assembly` in the label table and checks them, with `context_id`, against the run; a membership table sharing no element with the run's catalog is rejected.
+- `pace predict` writes `activity_coverage.tsv`: per bigWig, how uncovered bases were read (`ignored` or `zero_signal`) and how many elements are partly, under half or not covered.
+- The documentation states that the shrinkage weight follows the expected read count $P(d)/f$, not the observed one.
+
 ## 0.12.1
 
 - The prior is fitted from $d_{\min}$ on, as it is applied: pairs closer than $d_{\min}$ (for example 1–5 kb on a 1 kb map) lie on the flat part of $P(d)$ and biased $\gamma$ down and $a$ up. This holds for `pace fit-prior`, `pace predict --hic`, the boundary fit and table-based fits.

@@ -8,7 +8,7 @@ from collections import defaultdict
 
 from ..catalog import map_labels
 from ..config import load_config, operation_base, operation_config, strict_keys
-from ..core.scoring import log_normalize, safe_exp, score
+from ..core.scoring import log_normalize, score
 from ..errors import PaceError
 from ..io.tables import number, read_table, write_table
 from ..pipeline import compute
@@ -68,14 +68,31 @@ def benchmark_command(path, out):
             "label_id",
             "assayed_region_id",
             "gene_id",
+            "species",
+            "assembly",
             "context_id",
             "effect_direction",
             "label_status",
         ],
     )
-    if any(r["context_id"] != run_cfg["context"]["context_id"] for r in labels):
-        raise PaceError("Functional labels and scored context differ")
+    # Labels of another species or assembly can share tissue names and element IDs.
+    for field in ("species", "assembly", "context_id"):
+        if any(r[field] != run_cfg["context"][field] for r in labels):
+            raise PaceError(f"Functional labels and scored run differ in {field}")
     membership = read_table(cfg["region_membership"], required=["region_id", "element_id"])
+    from ..schemas import load_tables
+
+    t = load_tables(run_cfg)
+    catalog = {u["element_id"] for u in t["units"]}
+    listed = {r["element_id"] for r in membership}
+    # Elements outside the catalog are kept (their labels count as missed predictions), but a
+    # membership table that shares no element with the run was built for another catalog.
+    outside = listed - catalog
+    if listed and not listed & catalog:
+        raise PaceError(
+            "Region membership shares no element with the run's catalog; map the labels "
+            "onto this run's elements"
+        )
     mapped, rejected = map_labels(labels, membership)
     if not mapped:
         raise PaceError(
@@ -119,9 +136,6 @@ def benchmark_command(path, out):
         )
         methods[f"PACE_eta{eta}"] = compute(c)["scores"]
     # ABC-style single physical TSS: choose smallest tss0, then promoter_id, before evaluation.
-    from ..schemas import load_tables
-
-    t = load_tables(run_cfg)
     selected = {}
     for p in sorted(t["promoters"], key=lambda r: (r["gene_id"], r["tss0"], r["promoter_id"])):
         selected.setdefault(p["gene_id"], p["promoter_id"])
@@ -139,27 +153,16 @@ def benchmark_command(path, out):
         {**r, "Cbar": contact[r["element_id"], selected[r["gene_id"]]], "reason": ""}
         for r in resolved["scores"]
     ]
-    methods["ABC_style_single_TSS"] = score(abc_edges, eta=0)[0]
+    # Every formula baseline uses the run's missing-value policy, so differences between
+    # methods come from the model and not from which genes each one is allowed to score.
+    policy = run_cfg["scoring"]["partial_policy"]
+    methods["ABC_style_single_TSS"] = score(abc_edges, eta=0, partial_policy=policy)[0]
     # Distinguish allocation from simply steepening the contact exponent.
-    power_rows = [dict(r) for r in resolved["scores"]]
-    by_gene = defaultdict(list)
-    for row in power_rows:
-        a, contact = row["A_used"], row["Cbar"]
-        row["log_support"] = (
-            math.nan
-            if math.isnan(a) or math.isnan(contact)
-            else -math.inf
-            if a == 0 or contact == 0
-            else math.log(a) + 2 * math.log(contact)
-        )
-        row["support"] = safe_exp(row["log_support"])
-        by_gene[row["gene_id"]].append(row)
-    for group in by_gene.values():
-        values, _ = log_normalize([r["log_support"] for r in group])
-        complete = all(not math.isnan(r["log_support"]) for r in group)
-        for row, value in zip(group, values, strict=True):
-            row["pace_score"] = float(value) if complete else math.nan
-    methods["contact_power_2"] = power_rows
+    power_edges = [
+        {**r, "Cbar": r["Cbar"] ** 2 if math.isfinite(r["Cbar"]) else r["Cbar"], "reason": ""}
+        for r in resolved["scores"]
+    ]
+    methods["contact_power_2"] = score(power_edges, eta=0, partial_policy=policy)[0]
     reference_rows = methods["PACE_eta0"]
     lookup = {
         name: {(r["element_id"], r["gene_id"]): r for r in rows} for name, rows in methods.items()
@@ -194,6 +197,12 @@ def benchmark_command(path, out):
     scores_by_method["negative_distance"] = {
         (r["element_id"], r["gene_id"]): -r["distance_bp"] for r in reference_rows
     }
+    # Labels every built-in method scores: compared on these, coverage plays no part.
+    common_labels = [
+        i
+        for i, k in enumerate(keys)
+        if all(math.isfinite(m.get(k, math.nan)) for m in scores_by_method.values())
+    ]
 
     external_status = []
     for external in cfg.get("external_methods", []):
@@ -243,6 +252,17 @@ def benchmark_command(path, out):
         value = threshold["value"] if threshold else None
         metric = binary_metrics(y, [predictions.get(k, math.nan) for k in keys], threshold=value)
         report.append({"method": method, "scope": "all_tested_labels", **metric})
+        report.append(
+            {
+                "method": method,
+                "scope": "common_labels",
+                **binary_metrics(
+                    [y[i] for i in common_labels],
+                    [predictions.get(keys[i], math.nan) for i in common_labels],
+                    threshold=value,
+                ),
+            }
+        )
         if method in common_scores:
             common = binary_metrics(y, [common_scores[method].get(k, math.nan) for k in keys])
             report.append({"method": method, "scope": "common_normalization", **common})
@@ -276,6 +296,9 @@ def benchmark_command(path, out):
                 "external_methods": external_status,
                 "thresholds": cfg.get("thresholds", {}),
                 "n_labels": len(mapped),
+                "n_common_labels": len(common_labels),
+                "n_membership_elements_outside_catalog": len(outside),
+                "partial_policy": run_cfg["scoring"]["partial_policy"],
                 "n_excluded": len(rejected),
                 "input_profile": run_cfg["execution_profile"],
                 "eta_calibration": calibration,

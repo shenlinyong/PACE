@@ -103,7 +103,7 @@ def predict(args):
     from .cli import cooler_uri, stem
     from .config import load_config
     from .io.prior_fit import FIT_MAX_DISTANCE, fit_cooler_command
-    from .io.tables import read_table
+    from .io.tables import read_table, write_table
     from .operations import prepare_command
     from .pipeline import compute, write_results
     from .preparation import merge_tables
@@ -135,7 +135,7 @@ def predict(args):
             catalog_dir,
         )
         log(f"    {catalog['units']} elements, {catalog['candidates']} element-gene pairs")
-        activity_tables = []
+        activity_tables, coverage = [], []
         for (assay, path), sample in zip(tracks, unique_sample_ids(tracks), strict=True):
             log(f"2/4 quantifying {assay} signal: {path}")
             out = prepared / f"activity_{sample}"
@@ -155,12 +155,20 @@ def predict(args):
                 out,
             )
             activity_tables.append(str(out / "observed_activity.tsv"))
-            warn_sparse_track(out / "observed_activity.tsv", args.missing_as_zero)
+            coverage.append(
+                sparse_track_summary(
+                    out / "observed_activity.tsv",
+                    args.missing_as_zero,
+                    assay=assay,
+                    sample_id=sample,
+                )
+            )
         merge_tables(
             SimpleNamespace(
                 inputs=activity_tables, table="observed_activity", out=prepared / "activity"
             )
         )
+        write_table(dest / "activity_coverage.tsv", coverage)
         contacts = None
         if args.hic:
             log(f"3/4 extracting Hi-C contacts at {resolution} bp: {args.hic}")
@@ -342,18 +350,33 @@ def genome_kappa(cfg):
     )
 
 
-def warn_sparse_track(table, missing_as_zero):
-    """Point out bigWigs that leave out zero-signal regions (MACS bedGraph conversions)."""
+def sparse_track_summary(table, missing_as_zero, *, assay, sample_id):
+    """Coverage of one bigWig over the elements, logged and kept in activity_coverage.tsv.
+
+    bigWigs may leave out regions without reads (MACS bedGraph conversions) or regions not
+    measured; which applies decides whether uncovered bases are zeros or are ignored.
+    """
     from .io.tables import read_table
 
-    rows = read_table(table, required=["measurement_status", "callable_fraction"])
-    empty = sum(r["measurement_status"] != "observed" for r in rows)
-    partly = sum(float(r["callable_fraction"] or 0) < 1 for r in rows)
-    if rows and not missing_as_zero and partly / len(rows) > 0.05:
+    rows = read_table(table, required=["measurement_status", "stored_fraction"])
+    stored = [float(r["stored_fraction"] or 0) for r in rows]
+    summary = {
+        "sample_id": sample_id,
+        "assay": assay,
+        "uncovered_bases": "zero_signal" if missing_as_zero else "ignored",
+        "elements": len(rows),
+        "partly_covered": sum(f < 1 for f in stored),
+        "under_half_covered": sum(0 < f < 0.5 for f in stored),
+        "uncovered": sum(f == 0 for f in stored),
+        "not_observed": sum(r["measurement_status"] != "observed" for r in rows),
+    }
+    if rows and not missing_as_zero and summary["partly_covered"] / len(rows) > 0.05:
         log(
-            f"    note: {partly} of {len(rows)} elements are not fully covered by the bigWig "
-            f"({empty} not at all). Uncovered bases are ignored (partly covered elements are "
-            "averaged over covered bases, empty ones stay NA and withhold their genes). If "
-            "this bigWig omits zero-signal regions (e.g. converted from a MACS bedGraph), "
+            f"    note: {summary['partly_covered']} of {len(rows)} elements are not fully "
+            f"covered by the bigWig ({summary['under_half_covered']} under half, "
+            f"{summary['uncovered']} not at all). Uncovered bases are ignored, so a partly "
+            "covered element takes the mean of its covered bases and an empty one stays NA. "
+            "If this bigWig omits zero-signal regions (e.g. converted from a MACS bedGraph), "
             "rerun with --missing-as-zero"
         )
+    return summary

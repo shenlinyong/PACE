@@ -20,7 +20,7 @@ PACE keeps the ABC score and changes how its terms are estimated where domestic-
 
 *PACE:*
 
-- *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = w\,C_{\mathrm{obs}} + (1-w)\,P(d)$ with $w = \frac{P(d)/f}{P(d)/f+\kappa}$, so pairs supported by few reads are drawn toward the distance expectation (default with `--hic`).
+- *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = w\,C_{\mathrm{obs}} + (1-w)\,P(d)$ with $w = \frac{P(d)/f}{P(d)/f+\kappa}$, so bin pairs expected to receive few reads ($P(d)/f$ small relative to $\kappa$: shallow maps, long distances) are drawn toward the distance expectation (default with `--hic`). The weight follows the expected count, not the observed one: at the same expectation, 0 and 100 reads get the same $w$ and different posterior means.
 - *Coarse bins:* one bin pair holds element–TSS pairs at very different distances; each is placed within it by $P(d)/P(d_{\mathrm{bin}})$, the prior at its exact distance over the prior at the bin centres. An element in the TSS's own bin, whose diagonal value is dominated by self-ligation, takes $P(d)$ fitted on the same map; masked bins also take $P(d)$.
 - *Hi-C only from another tissue:* $P(d)$ is fitted on it (Case B). *No Hi-C:* $\widetilde C = 1/\max(d,\,5\,\mathrm{kb})$ (Case C).
 
@@ -121,7 +121,7 @@ pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27a
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig1
 ```
 
-$\widetilde C(E,t)$ is the Gamma–Poisson posterior mean of the contact between the bins of element and TSS, with prior $P(d)$ fitted on the same map ([Contact from sparse Hi-C](#contact-from-sparse-hi-c)): bin pairs with many reads keep their measured value, sparsely sampled ones move toward $P(d)$, so low-depth maps add information instead of noise. A bin pair holds many element–TSS pairs at different distances; each is placed within it by the prior's ratio $P(d)/P(d_{\mathrm{bin}})$ between the exact distance (floored at 5 kb) and the distance of the bin centres, so the bin's measured level is kept and spread by distance (`within_bin_factor` in `resolved_contacts.tsv`; `--bin-level-contacts` turns this off). This matters most for coarse maps, where one 50–100 kb bin pair holds near and distant pairs alike. An element in the TSS's own bin, and a pair in a masked bin, takes $P(d)$; such pairs are marked in `resolved_contacts.tsv`. `--no-shrinkage` uses the balanced contact plus $P(\max(d,5\,\mathrm{kb}))$ instead (needed for coolers with non-integer counts), and `--strict-contacts` uses measured bin-pair contacts only, without pseudocount or prior, and leaves same-bin and masked pairs NA. `--hic-resolution` selects the bin size in an `.mcool`. This is the most direct case: loops between distal enhancers and promoters are measured.
+$\widetilde C(E,t)$ is the Gamma–Poisson posterior mean of the contact between the bins of element and TSS, with prior $P(d)$ fitted on the same map ([Contact from sparse Hi-C](#contact-from-sparse-hi-c)): bin pairs expected to receive many reads keep close to their measured value, those expected to receive few move toward $P(d)$, so low-depth maps add information instead of noise. A bin pair holds many element–TSS pairs at different distances; each is placed within it by the prior's ratio $P(d)/P(d_{\mathrm{bin}})$ between the exact distance (floored at 5 kb) and the distance of the bin centres, so the bin's measured level is kept and spread by distance (`within_bin_factor` in `resolved_contacts.tsv`; `--bin-level-contacts` turns this off). This matters most for coarse maps, where one 50–100 kb bin pair holds near and distant pairs alike. An element in the TSS's own bin, and a pair in a masked bin, takes $P(d)$; such pairs are marked in `resolved_contacts.tsv`. `--no-shrinkage` uses the balanced contact plus $P(\max(d,5\,\mathrm{kb}))$ instead (needed for coolers with non-integer counts), and `--strict-contacts` uses measured bin-pair contacts only, without pseudocount or prior, and leaves same-bin and masked pairs NA. `--hic-resolution` selects the bin size in an `.mcool`. This is the most direct case: loops between distal enhancers and promoters are measured.
 
 ### Case B: Hi-C of another tissue of the same species
 
@@ -380,7 +380,7 @@ All settings and defaults are listed in [Advanced use](docs/ADVANCED.md#complete
 | `expression` (optional) | `gene_id sample_id tpm status` |
 | `methylation` (optional) | `chrom dyad_start0 methylated_count total_count sample_id assay` |
 | `features` (optional) | `entity_type entity_id feature_name value evidence_id status` |
-| `labels` (optional) | `label_id assayed_region_id gene_id context_id perturbation_type effect_direction effect_size label_status assay_id group_id source_id` |
+| `labels` (optional) | `label_id assayed_region_id gene_id species assembly context_id perturbation_type effect_direction effect_size label_status assay_id group_id source_id` |
 
 `measurement_status` is one of `observed`, `unmeasured`, `low_coverage`, `unmappable`, `invalid`, `not_applicable`.
 

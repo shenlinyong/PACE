@@ -647,6 +647,8 @@ def test_benchmark_keeps_frozen_contact_and_varies_eta(configured, tmp_path):
             label_id=f"L{i}",
             assayed_region_id=e,
             gene_id=g,
+            species="synthetic",
+            assembly="toy_assembly",
             context_id="toy_tissue",
             effect_direction="down" if positive else "none",
             label_status="enhancing_positive" if positive else "powered_negative",

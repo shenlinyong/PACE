@@ -201,6 +201,9 @@ def test_shrinkage_kappa_is_the_same_with_and_without_chunks(inputs, tmp_path, c
 def test_measured_contacts_without_shrinkage(inputs, tmp_path, capsys, option):
     assert predict_hic(inputs, tmp_path / "out", option) == 0
     assert json.loads(capsys.readouterr().out)["contact_mode"] == "observed"
+    coverage = read_table(tmp_path / "out" / "activity_coverage.tsv")
+    assert [(r["assay"], r["uncovered_bases"]) for r in coverage] == [("ATAC", "ignored")]
+    assert int(coverage[0]["elements"]) > 0
     rows = read_table(tmp_path / "out" / "resolved_contacts.tsv")
     if option == "--strict-contacts":
         assert {r["evidence_type"] for r in rows} == {"observed"}

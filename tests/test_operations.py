@@ -7,6 +7,7 @@ import yaml
 from fixture import create_example
 
 from pace_livestock.cli import main
+from pace_livestock.errors import PaceError
 from pace_livestock.evaluation.benchmark import benchmark_command
 from pace_livestock.io.tables import read_table, write_table
 from pace_livestock.operations import fit_contact_command, prepare_command
@@ -86,6 +87,8 @@ def test_benchmark_four_explicit_baselines(tmp_path):
             label_id=f"L{i}",
             assayed_region_id=e,
             gene_id=g,
+            species="synthetic",
+            assembly="toy_assembly",
             context_id="toy_tissue",
             effect_direction="down" if i % 2 else "none",
             label_status="enhancing_positive" if i % 2 else "powered_negative",
@@ -121,3 +124,68 @@ def test_cli_help_and_errors(tmp_path, capsys):
     assert main(["run", "--config", str(cfg), "--out", str(tmp_path / "run")]) == 0
     assert main(["run", "--config", str(cfg), "--out", str(tmp_path / "run")]) == 2
     assert "already exists" in capsys.readouterr().err
+
+
+def benchmark_inputs(tmp_path, **label_fields):
+    run_config = create_example(tmp_path / "inputs", "measured")
+    write_table(
+        tmp_path / "membership.tsv", [dict(region_id=e, element_id=e) for e in ("E1", "E2", "E3")]
+    )
+    labels = [
+        dict(
+            label_id=f"L{i}",
+            assayed_region_id=e,
+            gene_id=g,
+            species="synthetic",
+            assembly="toy_assembly",
+            context_id="toy_tissue",
+            effect_direction="down" if i % 2 else "none",
+            label_status="enhancing_positive" if i % 2 else "powered_negative",
+            **label_fields,
+        )
+        for i, (e, g) in enumerate([(e, g) for e in ("E1", "E2", "E3") for g in ("G1", "G2")])
+    ]
+    write_table(tmp_path / "labels.tsv", labels)
+    p = tmp_path / "benchmark.yaml"
+    p.write_text(
+        yaml.safe_dump(
+            dict(
+                run_config=str(run_config), labels="labels.tsv", region_membership="membership.tsv"
+            )
+        )
+    )
+    return p, run_config
+
+
+def test_benchmark_baselines_share_the_missing_value_policy(tmp_path):
+    p, run_config = benchmark_inputs(tmp_path)
+    cfg = yaml.safe_load(run_config.read_text())
+    cfg.setdefault("scoring", {})["partial_policy"] = "conditional"
+    run_config.write_text(yaml.safe_dump(cfg))
+    contacts = run_config.parent / "observed_contacts.tsv"
+    rows = read_table(contacts)
+    write_table(contacts, [r for r in rows if r["bin_pair_id"] != "E1:P1"])
+    report = benchmark_command(p, tmp_path / "benchmark")
+    scored = {r["method"]: r["n_scored"] for r in report if r["scope"] == "all_tested_labels"}
+    assert scored["PACE_eta0"] == scored["ABC_style_single_TSS"] == scored["contact_power_2"] == 5
+    common = {r["method"]: r["n_tested"] for r in report if r["scope"] == "common_labels"}
+    # eta = 1 also needs E1's contact with G1 to score E1-G2, so four labels are common.
+    assert set(common.values()) == {4}
+
+
+@pytest.mark.parametrize("field", ["species", "assembly"])
+def test_benchmark_rejects_labels_of_another_genome(tmp_path, field):
+    p, _ = benchmark_inputs(tmp_path)
+    labels = read_table(tmp_path / "labels.tsv")
+    write_table(tmp_path / "labels.tsv", [{**r, field: "other"} for r in labels])
+    with pytest.raises(PaceError, match=field):
+        benchmark_command(p, tmp_path / "benchmark")
+
+
+def test_benchmark_rejects_membership_of_another_catalog(tmp_path):
+    p, _ = benchmark_inputs(tmp_path)
+    write_table(
+        tmp_path / "membership.tsv", [dict(region_id=e, element_id=f"x{e}") for e in ("E1", "E2")]
+    )
+    with pytest.raises(PaceError, match="catalog"):
+        benchmark_command(p, tmp_path / "benchmark")
