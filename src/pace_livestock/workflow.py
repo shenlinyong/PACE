@@ -228,7 +228,10 @@ def predict(args):
         if args.strict_contacts:
             # Measured bin-pair contacts only: no pseudocount, and same-bin or masked pairs stay NA.
             contact.update(
-                near_diagonal_policy="unresolved", pseudocount="none", allow_prior_fallback=False
+                near_diagonal_policy="unresolved",
+                pseudocount="none",
+                allow_prior_fallback=False,
+                within_bin_distance=False,
             )
         if prior:
             contact["prior_path"] = str(Path(prior).resolve())

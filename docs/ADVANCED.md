@@ -169,7 +169,7 @@ pace fit-prior --cooler data/animal1.mcool::/resolutions/5000 \
   --test-chromosomes chr2 --out models/animal1_contact
 ```
 
-The fit uses 30 logarithmic distance classes from the bin size (or `--min-distance`, not below it) to 1 Mb (`--max-distance`); beyond it the power law is extrapolated. `--no-balanced` uses raw counts. Fixed-bin, symmetric-upper coolers are required.
+The fit uses 30 logarithmic distance classes from $d_{\min}$ (or a larger `--min-distance`) to 1 Mb (`--max-distance`); beyond it the power law is extrapolated. Pairs closer than $d_{\min}$ are left out: the prior is flat there, so they carry no information on $\gamma$ and would inflate $a$. `fit_range` in `manifest.json` records the range used. `--no-balanced` uses raw counts. Fixed-bin, symmetric-upper coolers are required.
 
 Boundary positions come from CTCF and their effect from the Hi-C. With `--ctcf peaks.bed` (CTCF ChIP-seq or CUT&Tag peaks, BED or narrowPeak) and `--genome genome.fa`, the strongest CTCF motif (JASPAR MA0139.1) in each peak orients the site, and its strength is the peak signal scaled by its 95th percentile (the relative motif score if the peaks carry no signal). A boundary lies midway between a reverse site and the next forward site within 1 Mb, with the smaller of the two strengths. One of the two files alone is an error; with neither, the prior has no boundary term. The prior is
 
@@ -203,7 +203,7 @@ pace fit-contact-prior --contacts contact_fit.tsv --model-id contact_prior_resea
   --d-ref 10000 --d-min 5000 -o models/prior
 ```
 
-The table has `bin_pair_id`, `distance_bp`, `contact_value`, `split`, `region_id`, with each measured pair once, zeros included. Training and test regions do not overlap. Distance bins with pairs enter a Poisson fit with the pair count as exposure, zero-mean bins included; empty bins are reported. A nondecreasing fitted curve is rejected.
+The table has `bin_pair_id`, `distance_bp`, `contact_value`, `split`, `region_id`, with each measured pair once, zeros included. Training and test regions do not overlap. Pairs closer than `--d-min` are left out (`n_pairs_below_d_min`); distance bins with pairs enter a Poisson fit with the pair count as exposure, zero-mean bins included; empty bins are reported. A nondecreasing fitted curve is rejected.
 
 ### Transfer between tissues
 
@@ -617,6 +617,7 @@ contact:
   pseudocount: auto
   pseudocount_distance_bp: 5000
   pseudocount_strength: 1.0
+  within_bin_distance: true
 scoring:
   partial_policy: withhold
 promoters:

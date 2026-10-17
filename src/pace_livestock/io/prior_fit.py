@@ -324,10 +324,17 @@ def map_boundaries(args):
 
 
 def fit_cooler_command(args):
+    import cooler
+
+    resolution = int(cooler.Cooler(str(args.cooler)).binsize or 0)
+    d_min = max(resolution, args.minimum_distance)
+    # P(d) is flat below d_min, so closer pairs carry no information on the decay and
+    # would inflate a; the fit starts at d_min, as the prior is applied.
+    min_distance = max(resolution if args.min_distance is None else args.min_distance, d_min)
     rows, resolution = cooler_distance_bins(
         args.cooler,
         balanced=args.balanced,
-        min_distance=args.min_distance,
+        min_distance=min_distance,
         max_distance=args.max_distance,
         n_bins=args.distance_bins,
         test_chromosomes=args.test_chromosomes,
@@ -358,7 +365,6 @@ def fit_cooler_command(args):
             fit_status="used" if n else "empty",
         )
         pooled.append(row)
-    d_min = max(resolution, args.minimum_distance)
     fitted = fit_binned_prior(pooled, d_ref=args.reference_distance, d_min=d_min)
     boundaries, boundary_source, cells = [], None, []
     if not getattr(args, "no_boundaries", True):
@@ -368,7 +374,7 @@ def fit_cooler_command(args):
             args.cooler,
             boundaries,
             balanced=args.balanced,
-            min_distance=args.min_distance,
+            min_distance=min_distance,
             max_distance=args.max_distance,
             n_bins=args.distance_bins,
             test_chromosomes=args.test_chromosomes,
@@ -401,10 +407,7 @@ def fit_cooler_command(args):
         "calibration_sources": [],
         "test_sources": [source] if args.test_chromosomes else [],
         "validation": {},
-        "fit_range": [
-            resolution if args.min_distance is None else args.min_distance,
-            args.max_distance,
-        ],
+        "fit_range": [min_distance, args.max_distance],
         "zero_pixel_policy": "all_callable_bin_opportunities_included",
         # Distances were measured between bins, so the prior is applied at bin centres.
         "fitting_coordinate_policy": "bin_centers",

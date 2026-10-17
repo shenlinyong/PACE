@@ -509,3 +509,30 @@ def test_fit_prior_uses_pairs_up_to_one_megabase(tmp_path):
 
     args = build_parser().parse_args(["fit-prior", "-o", str(tmp_path / "prior")])
     assert args.max_distance == 1_000_000
+
+
+def test_fine_cooler_fit_starts_at_minimum_distance(tmp_path):
+    # 1 kb bins and d_min = 5 kb: pairs closer than d_min lie on the flat part of the prior.
+    cooler = pytest.importorskip("cooler")
+    pd = pytest.importorskip("pandas")
+    n, res = 400, 1000
+    bins = pd.DataFrame(
+        {"chrom": ["chr1"] * n, "start": np.arange(n) * res, "end": np.arange(1, n + 1) * res}
+    )
+    i, j = np.triu_indices(n, k=1)
+    count = 1e5 * (np.maximum((j - i) * res, 5000) / 5000) ** -1.2
+    path = tmp_path / "fine.cool"
+    cooler.create_cooler(
+        str(path),
+        bins,
+        pd.DataFrame({"bin1_id": i, "bin2_id": j, "count": count}),
+        dtypes={"count": "float64"},
+    )
+    out = tmp_path / "prior"
+    argv = ["fit-prior", "--cooler", path, "--no-balanced", "--no-boundaries"]
+    argv += ["--species", "synthetic", "--assembly", "toy", "--tissue", "toy", "--synthetic"]
+    assert main([str(a) for a in [*argv, "--max-distance", 300_000, "-o", out]]) == 0
+    prior = json.loads((out / "manifest.json").read_text())
+    assert prior["fit_range"][0] == 5000
+    assert prior["gamma"] == pytest.approx(1.2, rel=0.01)
+    assert prior["a"] == pytest.approx(1e5, rel=0.02)

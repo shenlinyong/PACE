@@ -46,10 +46,10 @@ def fit_distance_prior(distances, contacts, *, bin_edges, d_ref: float, d_min: f
         raise PaceError("Prior fit needs increasing bin edges and positive d_ref/d_min")
     bins = []
     for low, high in zip(boundaries[:-1], boundaries[1:], strict=True):
-        mask = (d >= low) & (d < high)
+        mask = (d >= low) & (d < high) & (d >= d_min)
         n = int(mask.sum())
         mean = float(np.mean(c[mask])) if n else None
-        center = float(np.exp(np.mean(np.log(np.maximum(d[mask], d_min))))) if n else None
+        center = float(np.exp(np.mean(np.log(d[mask])))) if n else None
         bins.append(
             {
                 "low": float(low),
@@ -64,6 +64,7 @@ def fit_distance_prior(distances, contacts, *, bin_edges, d_ref: float, d_min: f
     result.update(
         fit_range=[float(boundaries[0]), float(boundaries[-1])],
         n_pairs_outside_bins=int(np.sum((d < boundaries[0]) | (d >= boundaries[-1]))),
+        n_pairs_below_d_min=int(np.sum(d < d_min)),
     )
     return result
 

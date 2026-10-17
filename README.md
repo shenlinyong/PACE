@@ -139,7 +139,7 @@ pace predict -b peaks.bed -g genes.gtf --atac pig2_ATAC.bw --h3k27ac pig2_H3K27a
 `pace fit-prior`:
 
 1. **Boundaries** are placed between each reverse CTCF site and the next forward site, as CTCF loop anchors face into their own domain; strengths are scaled to 0–1.
-2. **Valid bin pairs** are grouped by distance (30 logarithmic classes from one bin to 1 Mb, where enhancer–promoter links lie) and by the crossed boundary strength $S$. Pixels absent from the sparse matrix count as zeros.
+2. **Valid bin pairs** are grouped by distance (30 logarithmic classes from $d_{\min}$ to 1 Mb, where enhancer–promoter links lie; closer pairs lie on the flat part of the prior) and by the crossed boundary strength $S$. Pixels absent from the sparse matrix count as zeros.
 3. **$\beta$** is the drop in log contact per unit of $S$ between pairs at the same distance.
 4. **$a$ and $\gamma$** describe the boundary-corrected decay with distance.
 
@@ -223,7 +223,7 @@ How to read them:
 An enhancer regulates a gene when it is active in the tissue and chromatin folding brings it to the gene's promoter. The product of activity and contact is the element's *support* for the gene, and the score is its share of the gene's total support, so the scores of one gene sum to 1.
 
 - **Activity $A_\star(E)$:** the geometric mean of the assays $\mathcal M$ used, e.g. $\sqrt{\text{ATAC}\times\text{H3K27ac}}$, where $x_m(E)$ is the replicate-averaged signal of assay $m$. The same assays are used for every element of a run. A constant scale factor of a track (library size, normalization) cancels in the share.
-- **Contact $\overline C(E,G)$:** the weighted mean of the contacts with the gene's distinct TSSs $\mathcal T(G)$; transcripts that start at the same position count once. $\pi(t\mid G)$ is the TSS's share of the gene's promoter activity (the activity of the 500 bp cell containing it). Genes whose promoter cells are unmeasured or all zero use equal weights. `--tss-weights equal` or `provided` (the `pi` column of `promoters.tsv`, e.g. from CAGE with `pace promoter-weights`) change this.
+- **Contact $\overline C(E,G)$:** the weighted mean of the contacts with the gene's distinct TSSs $\mathcal T(G)$; transcripts that start at the same position count once. $\pi(t\mid G)$ is the TSS's share of the gene's promoter activity (the activity of the 500 bp cell containing it). A TSS whose cell is unmeasured takes the mean activity of the gene's measured TSSs (`pi_source: gene_mean_promoter_activity`); genes without measured TSSs, or with all-zero promoter activity, use equal weights. `--tss-weights equal` or `provided` (the `pi` column of `promoters.tsv`, e.g. from CAGE with `pace promoter-weights`) change this.
 - **TSS contact $\widetilde C(E,t)$:** from Hi-C and the distance–boundary prior, depending on the case (above and below).
 - **Denominator:** all candidates $\mathcal E(G)$ within the radius of the gene's TSSs, including promoters of the gene and its neighbours. A gene with one strong enhancer gives it a large share; a gene with many shares the credit.
 

@@ -51,7 +51,13 @@ def check_markdown(path: Path, root: Path) -> list[str]:
     for term in RETIRED_TERMS:
         if term in text:
             issues.append(f"{relative}: retired model term {term!r}")
-    if re.search(r"(?i)(?:default|默认)[^\n]{0,80}(?:\\eta|eta)\s*[=$ ]+1(?!\d)", text):
+    # "default" must name eta = 1 itself, e.g. "eta=1 (default)" or "default eta = 1",
+    # not a sentence that lists eta=0 as default and eta=1 as an option.
+    eta_one = r"(?:\\eta|eta)\$?\s*=\s*\$?1(?!\d)"
+    if re.search(
+        rf"(?i)(?:default|默认)[\s:：(（`$]*{eta_one}|{eta_one}\$?\s*[(（]?\s*(?:default|默认)",
+        text,
+    ):
         issues.append(f"{relative}: incompatible default allocation exponent")
     if "\\[" in text or "\\]" in text:
         issues.append(f"{relative}: use GitHub-supported fenced math blocks")

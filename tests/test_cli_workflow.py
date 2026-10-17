@@ -204,6 +204,9 @@ def test_measured_contacts_without_shrinkage(inputs, tmp_path, capsys, option):
     rows = read_table(tmp_path / "out" / "resolved_contacts.tsv")
     if option == "--strict-contacts":
         assert {r["evidence_type"] for r in rows} == {"observed"}
+        assert {float(r["within_bin_factor"]) for r in rows} == {1.0}
+        config = (tmp_path / "out" / "resolved_config.yaml").read_text()
+        assert "within_bin_distance: false" in config
         assert {r["reason"] for r in rows if r["resolution_status"] == "resolved"} == {"resolved"}
         assert all(r["observation_sample_id"] for r in rows if r["resolution_status"] == "resolved")
 
@@ -510,3 +513,18 @@ def test_predict_with_a_prior_from_another_tissue(inputs, tmp_path, capsys):
     manifest = json.loads((out / "run_manifest.json").read_text())
     prior = manifest["asset_manifests"]["contact_prior"]
     assert (prior["source_context_id"], prior["target_context_id"]) == ("liver", "muscle")
+
+
+def test_gtf_mixing_transcript_and_exon_only_records(tmp_path):
+    from pace_livestock.io.bed_gtf import read_gtf
+
+    gtf = tmp_path / "mixed.gtf"
+    gtf.write_text(
+        'chr1\tsrc\ttranscript\t1001\t3000\t.\t+\t.\tgene_id "A"; transcript_id "A.1";\n'
+        'chr1\tsrc\texon\t1001\t1500\t.\t+\t.\tgene_id "A"; transcript_id "A.1";\n'
+        'chr1\tsrc\texon\t5001\t5500\t.\t-\t.\tgene_id "B"; transcript_id "B.1";\n'
+        'chr1\tsrc\texon\t6001\t7000\t.\t-\t.\tgene_id "B"; transcript_id "B.1";\n'
+    )
+    promoters, transcripts = read_gtf(gtf)
+    assert {(p["gene_id"], p["tss0"]) for p in promoters} == {("A", 1000), ("B", 6999)}
+    assert len(transcripts) == 2

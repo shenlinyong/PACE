@@ -10,8 +10,10 @@ from ..core import activity
 def usage_weights(tables, resolved_a, cfg):
     """Set each TSS weight to its share of the gene's promoter activity.
 
-    A TSS is measured by the activity of the grid cell that contains it. Genes with an
-    unmeasured, absent or all-zero promoter cell fall back to equal weights.
+    A TSS is measured by the activity of the grid cell that contains it. A TSS whose cell
+    is unmeasured or absent takes the mean activity of the gene's measured TSSs, so it
+    neither gains nor loses weight while the measured TSSs keep their information. Genes
+    without measured TSSs, or whose measured activity is all zero, use equal weights.
     """
     width, offset = cfg["catalog"]["width_bp"], cfg["catalog"]["offset_bp"]
     values = defaultdict(list)
@@ -33,11 +35,20 @@ def usage_weights(tables, resolved_a, cfg):
                 if rows
                 else math.nan
             )
-        total = math.fsum(usage)
+        known = [u for u in usage if math.isfinite(u)]
+        mean = math.fsum(known) / len(known) if known else math.nan
+        filled = [u if math.isfinite(u) else mean for u in usage]
+        total = math.fsum(filled)
         measured = math.isfinite(total) and total > 0
-        for p, u in zip(group, usage, strict=True):
-            p["pi"] = u / total if measured else 1 / len(group)
-            p["pi_source"] = "promoter_activity" if measured else "equal_physical_tss"
+        for p, u, f in zip(group, usage, filled, strict=True):
+            p["pi"] = f / total if measured else 1 / len(group)
+            p["pi_source"] = (
+                "equal_physical_tss"
+                if not measured
+                else "promoter_activity"
+                if math.isfinite(u)
+                else "gene_mean_promoter_activity"
+            )
 
 
 def resolve_promoter_weights(tables, contacts, cfg):

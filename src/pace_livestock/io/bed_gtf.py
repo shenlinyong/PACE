@@ -88,7 +88,7 @@ def read_chrom_sizes(path, *, aliases=None) -> dict[str, int]:
 
 
 def read_gtf(path, *, aliases=None, gene_types=None):
-    """Distinct physical TSSs from GTF transcript lines (or exon lines if none).
+    """Distinct physical TSSs from GTF transcript lines (exon lines for transcripts without one).
 
     gene_types keeps only transcripts whose gene_biotype/gene_type/transcript_biotype/
     transcript_type attribute is listed (for example protein_coding or mRNA).
@@ -140,13 +140,13 @@ def read_gtf(path, *, aliases=None, gene_types=None):
 
 
 def _transcript_records(path):
-    """Transcript lines of a GTF, or transcripts assembled from exon lines when absent.
+    """Transcript lines of a GTF, and transcripts assembled from exon lines where absent.
 
-    Some annotations (gffread, UCSC) only contain exon/CDS lines; the transcript span
-    is then the smallest exon start to the largest exon end of each transcript_id.
+    Some annotations (gffread, UCSC, merged annotations) have transcripts with only exon
+    lines; their span is the smallest exon start to the largest exon end of the
+    transcript_id. Transcripts with a transcript line use that line.
     """
-    exons = {}
-    found = False
+    exons, described = {}, set()
     with text_open(path) as handle:
         for n, line in enumerate(handle, 1):
             if not line.strip() or line.startswith("#"):
@@ -165,16 +165,16 @@ def _transcript_records(path):
                 raise PaceError(
                     "GTF transcript requires gene_id and transcript_id; versions are retained"
                 )
+            key = fields[0], fields[6], attr["transcript_id"]
             if fields[2] == "transcript":
-                found = True
+                described.add(key)
                 yield n, fields, start, end, attr
-            elif not found:
-                key = fields[0], fields[6], attr["transcript_id"]
+            else:
                 if key in exons:
                     exons[key][2] = min(exons[key][2], start)
                     exons[key][3] = max(exons[key][3], end)
                 else:
                     exons[key] = [n, fields, start, end, attr]
-    if not found:
-        for n, fields, start, end, attr in exons.values():
+    for key, (n, fields, start, end, attr) in exons.items():
+        if key not in described:
             yield n, fields, start, end, attr

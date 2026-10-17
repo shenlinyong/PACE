@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.1
+
+- The prior is fitted from $d_{\min}$ on, as it is applied: pairs closer than $d_{\min}$ (for example 1–5 kb on a 1 kb map) lie on the flat part of $P(d)$ and biased $\gamma$ down and $a$ up. This holds for `pace fit-prior`, `pace predict --hic`, the boundary fit and table-based fits.
+- `--strict-contacts` also keeps the bin-level contact (no within-bin factor).
+- A TSS whose promoter cell is unmeasured takes the mean activity of the gene's measured TSSs (`pi_source: gene_mean_promoter_activity`) instead of switching the whole gene to equal weights.
+- GTF files mixing transcript lines and exon-only transcripts keep both; exon-only transcripts were dropped as soon as one transcript line was present.
+- The documented default configuration includes `contact.within_bin_distance`; the documentation check no longer flags "η = 0 (default), η = 1 optional" and runs in CI.
+
 ## 0.12.0
 
 - With Hi-C, each element–TSS pair is placed within its bin pair: the bin-level contact (measured, shrunk or prior) is multiplied by the prior's ratio between the exact anchors and the bin centres (`within_bin_factor`). Pairs sharing a bin pair no longer get the same contact whatever their distance, which matters most for 25–100 kb maps. `pace predict --bin-level-contacts` and `contact.within_bin_distance: false` keep the bin-level value.

@@ -277,8 +277,15 @@ def test_usage_weights_follow_promoter_activity():
         tss("f", "G3", 1600),  # one unmeasured
         tss("g", "G4", 100),
         tss("h", "G4", 9000),  # no activity unit
+        tss("i", "G5", 100),
+        tss("j", "G5", 700),
+        tss("k", "G5", 1600),  # unmeasured: takes the mean of 4 and 2
     ]
     usage_weights({"promoters": promoters}, resolved, cfg)
     pi = {p["promoter_id"]: p["pi"] for p in promoters}
     assert pi["a"] == pytest.approx(2 / 3) and pi["b"] == pytest.approx(1 / 3)
     assert [pi[k] for k in "cdefgh"] == [0.5] * 6
+    assert [pi[k] for k in "ijk"] == pytest.approx([4 / 9, 2 / 9, 3 / 9])
+    sources = {p["promoter_id"]: p["pi_source"] for p in promoters}
+    assert sources["k"] == "gene_mean_promoter_activity" and sources["i"] == "promoter_activity"
+    assert sources["c"] == "equal_physical_tss"
