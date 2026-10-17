@@ -139,13 +139,16 @@ def tss_contact(contacts, weights) -> float:
 
 
 def score(
-    edges: list[dict], *, eta: float = 0, partial_policy="withhold"
+    edges: list[dict], *, eta: float = 0, partial_policy="withhold", contact_power: float = 1
 ) -> tuple[list[dict], list[dict]]:
     """Score sparse E–G records carrying A_used and Cbar; never drop an input edge.
 
     All planned genes for each element MUST be present, including missing contacts.
     This pure kernel assumes the catalog and promoter mappings were validated upstream.
+    contact_power raises Cbar to a power in log space (benchmark baseline only).
     """
+    if not math.isfinite(contact_power) or contact_power <= 0:
+        raise PaceError("contact_power must be a positive finite number")
     if isinstance(eta, bool) or not isinstance(eta, (int, float)) or not 0 <= eta <= 1:
         raise PaceError(f"eta must be a finite number in [0, 1], received {eta!r}")
     if partial_policy not in ("withhold", "conditional"):
@@ -186,7 +189,7 @@ def score(
             else:
                 log_b = math.log(contact) - log_csum if eta else 0.0
                 row["B"] = math.exp(log_b) if eta else math.nan
-                row["log_support"] = math.log(a) + math.log(contact) + eta * log_b
+                row["log_support"] = math.log(a) + contact_power * math.log(contact) + eta * log_b
                 reason = "resolved"
             row["support"] = safe_exp(row["log_support"])
             row["support_status"] = (

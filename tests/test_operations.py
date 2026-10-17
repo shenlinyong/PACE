@@ -189,3 +189,44 @@ def test_benchmark_rejects_membership_of_another_catalog(tmp_path):
     )
     with pytest.raises(PaceError, match="catalog"):
         benchmark_command(p, tmp_path / "benchmark")
+
+
+def test_single_class_metrics_keep_the_defined_average_precision():
+    from pace_livestock.evaluation.metrics import binary_metrics
+
+    positives = binary_metrics([1, 1], [0.2, 0.5])
+    assert positives["average_precision"] == 1 and math.isnan(positives["auroc"])
+    negatives = binary_metrics([0, 0], [0.2, 0.5])
+    assert math.isnan(negatives["average_precision"]) and math.isnan(negatives["auroc"])
+
+
+@pytest.mark.parametrize("scale", [1e-200, 1.0, 1e200])
+def test_contact_power_is_computed_in_log_space(scale):
+    from pace_livestock.core.scoring import score
+
+    edges = [
+        dict(element_id=e, gene_id="G", A_used=a, Cbar=c * scale)
+        for e, a, c in (("E1", 4.0, 3.0), ("E2", 2.0, 2.0), ("E3", 1.0, 1.0))
+    ]
+    rows, _ = score(edges, contact_power=2)
+    support = [4 * 9, 2 * 4, 1]
+    assert [r["pace_score"] for r in rows] == pytest.approx([s / sum(support) for s in support])
+
+
+def test_benchmark_compares_external_methods_on_shared_labels(tmp_path):
+    p, run_config = benchmark_inputs(tmp_path)
+    external = [
+        dict(element_id=e, gene_id=g, score=s)
+        for (e, g), s in [(("E1", "G1"), 0.9), (("E2", "G1"), 0.1), (("E3", "G2"), 0.7)]
+    ]
+    write_table(tmp_path / "external.tsv", external)
+    cfg = yaml.safe_load(p.read_text())
+    cfg["external_methods"] = [
+        dict(name="other", path="external.tsv", version="1", configuration="default")
+    ]
+    p.write_text(yaml.safe_dump(cfg))
+    report = benchmark_command(p, tmp_path / "benchmark")
+    shared = {r["method"]: r for r in report if r["scope"] == "common_labels_all_methods"}
+    assert set(shared) >= {"other", "PACE_eta0", "ABC_style_single_TSS"}
+    assert {r["n_tested"] for r in shared.values()} == {3}
+    assert {r["n_scored"] for r in shared.values()} == {3}

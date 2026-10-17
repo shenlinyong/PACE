@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import sys
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
 from pathlib import Path
@@ -181,11 +182,18 @@ def ctcf_sites(peaks, fasta, *, min_score_fraction=0.6):
     length = len(log_pwm)
     signals = [p["signal"] for p in peaks if p.get("signal") is not None]
     scale = float(np.quantile(signals, 0.95)) if signals else 0.0
-    sites = []
+    sites, unplaced = [], 0
     with Reference(fasta) as reference:
+        known = set(reference.sizes)
+        if peaks and not any(p["chrom"] in known for p in peaks):
+            raise PaceError(
+                f"No CTCF peak lies on a FASTA chromosome (peaks use e.g. {peaks[0]['chrom']!r}, "
+                f"the FASTA {sorted(known)[0]!r}); use the same chromosome names"
+            )
         for peak in peaks:
             chrom, start = peak["chrom"], int(peak["start"])
-            if chrom not in reference.sizes:
+            if chrom not in known:
+                unplaced += 1
                 continue
             stop = min(int(peak["end"]), reference.sizes[chrom]) - length + 1
             if stop <= start:
@@ -210,6 +218,12 @@ def ctcf_sites(peaks, fasta, *, min_score_fraction=0.6):
                     strength=max(strength, 0.0),
                 )
             )
+    if unplaced:
+        print(
+            f"    note: {unplaced} of {len(peaks)} CTCF peaks lie on chromosomes absent from "
+            "the FASTA and were left out",
+            file=sys.stderr,
+        )
     return sites
 
 

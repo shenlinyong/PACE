@@ -35,8 +35,12 @@ def binary_metrics(labels, scores, *, threshold=None):
         "threshold": threshold,
         "reason": "resolved",
     }
-    if len(yv) == 0 or yv.sum() == 0 or yv.sum() == len(yv):
-        result["reason"] = "no_scores_or_single_class"
+    if len(yv) == 0 or yv.sum() == 0:
+        result["reason"] = "no_scored_positive"
+    elif yv.sum() == len(yv):
+        # Every scored label is positive: precision is 1 at every recall, AUROC undefined.
+        result["average_precision"] = 1.0
+        result["reason"] = "single_class_auroc_undefined"
     else:
         order = np.argsort(-sv, kind="stable")
         ys, ss = yv[order], sv[order]

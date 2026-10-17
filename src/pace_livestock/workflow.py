@@ -57,6 +57,12 @@ def check_predict(args):
             "--ctcf and --genome add CTCF domain boundaries whose effect is fitted on --hic; "
             "for --prior, give them to 'pace fit-prior'"
         )
+    if args.ctcf and (args.prior or args.strict_contacts or args.no_boundaries):
+        raise PaceError(
+            "--ctcf and --genome place boundaries in the prior fitted on --hic; they are not "
+            "used with --prior (give them to 'pace fit-prior'), --strict-contacts or "
+            "--no-boundaries"
+        )
     if args.abc_prior and (args.hic or args.prior):
         raise PaceError("--distance-only replaces Hi-C and fitted priors; do not combine them")
     if args.strict_contacts and not args.hic:

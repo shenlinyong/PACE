@@ -158,11 +158,10 @@ def benchmark_command(path, out):
     policy = run_cfg["scoring"]["partial_policy"]
     methods["ABC_style_single_TSS"] = score(abc_edges, eta=0, partial_policy=policy)[0]
     # Distinguish allocation from simply steepening the contact exponent.
-    power_edges = [
-        {**r, "Cbar": r["Cbar"] ** 2 if math.isfinite(r["Cbar"]) else r["Cbar"], "reason": ""}
-        for r in resolved["scores"]
+    power_edges = [{**r, "reason": ""} for r in resolved["scores"]]
+    methods["contact_power_2"] = score(power_edges, eta=0, partial_policy=policy, contact_power=2)[
+        0
     ]
-    methods["contact_power_2"] = score(power_edges, eta=0, partial_policy=policy)[0]
     reference_rows = methods["PACE_eta0"]
     lookup = {
         name: {(r["element_id"], r["gene_id"]): r for r in rows} for name, rows in methods.items()
@@ -234,6 +233,13 @@ def benchmark_command(path, out):
                 "common_denominator": "not_assessed_without_support",
             }
         )
+    # Labels every method scores, external ones included: the fair set for comparisons
+    # with other software. common_labels covers the built-in methods only.
+    all_common = [
+        i
+        for i, k in enumerate(keys)
+        if all(math.isfinite(m.get(k, math.nan)) for m in scores_by_method.values())
+    ]
     report = []
     strata = cfg.get("stratify", [])
     for field in strata:
@@ -263,6 +269,18 @@ def benchmark_command(path, out):
                 ),
             }
         )
+        if any(e["status"] == "available" for e in external_status):
+            report.append(
+                {
+                    "method": method,
+                    "scope": "common_labels_all_methods",
+                    **binary_metrics(
+                        [y[i] for i in all_common],
+                        [predictions.get(keys[i], math.nan) for i in all_common],
+                        threshold=value,
+                    ),
+                }
+            )
         if method in common_scores:
             common = binary_metrics(y, [common_scores[method].get(k, math.nan) for k in keys])
             report.append({"method": method, "scope": "common_normalization", **common})
@@ -297,6 +315,7 @@ def benchmark_command(path, out):
                 "thresholds": cfg.get("thresholds", {}),
                 "n_labels": len(mapped),
                 "n_common_labels": len(common_labels),
+                "n_common_labels_all_methods": len(all_common),
                 "n_membership_elements_outside_catalog": len(outside),
                 "partial_policy": run_cfg["scoring"]["partial_policy"],
                 "n_excluded": len(rejected),

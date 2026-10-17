@@ -234,3 +234,15 @@ def test_cells_without_contacts_count_as_blocking():
 def test_boundary_fit_without_strength_variation():
     prior = fit_cells(boundary_cells([1, 1, 1], [[0]] * 3, 1.0))
     assert prior["beta"] == 0 and prior["beta_status"] == "no_boundary_variation"
+
+
+def test_ctcf_peaks_must_share_chromosome_names_with_the_fasta(domains_genome, tmp_path, capsys):
+    renamed = tmp_path / "renamed.bed"
+    lines = (domains_genome / "ctcf.bed").read_text().splitlines(keepends=True)
+    renamed.write_text("".join(line.replace("chr1", "1", 1) for line in lines))
+    with pytest.raises(PaceError, match="chromosome names"):
+        ctcf_boundaries(renamed, domains_genome / "genome.fa")
+    # Some peaks on other contigs: they are left out and counted.
+    renamed.write_text("".join(lines) + "chrUn\t100\t220\tp\t0\t.\t5.0\n")
+    assert ctcf_boundaries(renamed, domains_genome / "genome.fa")
+    assert "1 of 7 CTCF peaks" in capsys.readouterr().err

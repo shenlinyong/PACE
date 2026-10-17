@@ -531,3 +531,13 @@ def test_gtf_mixing_transcript_and_exon_only_records(tmp_path):
     promoters, transcripts = read_gtf(gtf)
     assert {(p["gene_id"], p["tss0"]) for p in promoters} == {("A", 1000), ("B", 6999)}
     assert len(transcripts) == 2
+
+
+@pytest.mark.parametrize("extra", [["--prior", "."], ["--strict-contacts"], ["--no-boundaries"]])
+def test_ctcf_is_rejected_where_it_would_be_ignored(inputs, tmp_path, capsys, extra):
+    fasta = tmp_path / "g.fa"
+    fasta.write_text(">1\nACGT\n")
+    code = predict_hic(
+        inputs, tmp_path / "out", "--ctcf", inputs / "peaks.bed", "--genome", fasta, *extra
+    )
+    assert code == 2 and "--ctcf" in capsys.readouterr().err

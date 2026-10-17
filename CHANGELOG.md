@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.3
+
+- `pace benchmark` adds a `common_labels_all_methods` scope when external methods are given: labels scored by every method, external ones included, so other software is compared on the same labels.
+- `contact_power_2` raises the contact to the power 2 in log space (`score(..., contact_power=2)`); squaring the contact first could underflow or overflow.
+- Average precision is 1 when every scored label is positive; only AUROC is undefined then.
+- CTCF peaks: when none lies on a FASTA chromosome, the run stops with the names on both sides; peaks on other contigs are counted and reported.
+- `pace predict` rejects `--ctcf/--genome` with `--prior`, `--strict-contacts` or `--no-boundaries`, where the boundaries would not be used.
+
 ## 0.12.2
 
 - `pace benchmark`: the `ABC_style_single_TSS` and `contact_power_2` baselines use the run's `scoring.partial_policy`, as PACE does; with `conditional`, all three now score the same labels. Metrics add a `common_labels` scope (labels every built-in method scores).
