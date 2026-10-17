@@ -20,7 +20,7 @@ PACE keeps the ABC score and changes how its terms are estimated where domestic-
 
 *PACE:*
 
-- *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = r\,C_{\mathrm{obs}} + (1-r)\,P(d)$ with $r = \frac{P(d)/f}{P(d)/f+\kappa}$, so pairs supported by few reads are drawn toward the distance expectation (default with `--hic`).
+- *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = w\,C_{\mathrm{obs}} + (1-w)\,P(d)$ with $w = \frac{P(d)/f}{P(d)/f+\kappa}$, so pairs supported by few reads are drawn toward the distance expectation (default with `--hic`).
 - *Coarse bins:* an element in the TSS's own bin, whose diagonal value is dominated by self-ligation, takes $P(d)$ fitted on the same map; masked bins also take $P(d)$.
 - *Hi-C only from another tissue:* $P(d)$ is fitted on it (Case B). *No Hi-C:* $\widetilde C = 1/\max(d,\,5\,\mathrm{kb})$ (Case C).
 
@@ -121,7 +121,7 @@ pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27a
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig1
 ```
 
-$\widetilde C(E,t)$ is the Gamma–Poisson posterior mean of the contact between the bins of element and TSS, with prior $P(d)$ fitted on the same map ([Contact from sparse Hi-C](#contact-from-sparse-hi-c)): bin pairs with many reads keep their measured value, sparsely sampled ones move toward $P(d)$, so low-depth maps add information instead of noise. An element in the TSS's own bin, and a pair in a masked bin, takes $P(d)$; such pairs are marked in `resolved_contacts.tsv`. `--no-shrinkage` uses the balanced contact plus $P(\max(d,5\,\mathrm{kb}))$ instead (needed for coolers with non-integer counts), and `--strict-contacts` uses measured contacts only and leaves the other pairs NA. `--hic-resolution` selects the bin size in an `.mcool`. This is the most direct case: loops between distal enhancers and promoters are measured.
+$\widetilde C(E,t)$ is the Gamma–Poisson posterior mean of the contact between the bins of element and TSS, with prior $P(d)$ fitted on the same map ([Contact from sparse Hi-C](#contact-from-sparse-hi-c)): bin pairs with many reads keep their measured value, sparsely sampled ones move toward $P(d)$, so low-depth maps add information instead of noise. An element in the TSS's own bin, and a pair in a masked bin, takes $P(d)$; such pairs are marked in `resolved_contacts.tsv`. `--no-shrinkage` uses the balanced contact plus $P(\max(d,5\,\mathrm{kb}))$ instead (needed for coolers with non-integer counts), and `--strict-contacts` uses measured bin-pair contacts only, without pseudocount or prior, and leaves same-bin and masked pairs NA. `--hic-resolution` selects the bin size in an `.mcool`. This is the most direct case: loops between distal enhancers and promoters are measured.
 
 ### Case B: Hi-C of another tissue of the same species
 
@@ -239,10 +239,10 @@ An enhancer regulates a gene when it is active in the tissue and chromatin foldi
 **Shrinkage.** `pace predict --hic` (and `pace fuse` in step-by-step runs) treats the true contact as Gamma-distributed with mean $P(d)$ and shape $\kappa$, and the raw count $y$ as Poisson with mean $C/f$, where $f$ converts counts to balanced contact. The posterior mean is
 
 ```math
-\widetilde C = r\,f\,y + (1-r)\,P(d),\qquad r=\frac{P(d)/f}{P(d)/f+\kappa}.
+\widetilde C = w\,f\,y + (1-w)\,P(d),\qquad w=\frac{P(d)/f}{P(d)/f+\kappa}.
 ```
 
-A pair whose expected count is small gets a small $r$ and stays near the prior; a pair with a large expected count follows the data. A zero count is kept as an observation. $\kappa$ comes from the prior or is estimated once from all unique bin pairs of the run, also when chromosomes are scored in chunks, and each replicate is shrunk before averaging. A fixed weight can be given instead (`pace run --contact-mode shrinkage --contact-reliability 0.5 --reliability-source "<how it was chosen>"`).
+A pair whose expected count is small gets a small $w$ and stays near the prior; a pair with a large expected count follows the data. A zero count is kept as an observation. $\kappa$ comes from the prior or is estimated once from all unique bin pairs of the run, also when chromosomes are scored in chunks, and each replicate is shrunk before averaging. A fixed weight can be given instead (`pace run --contact-mode shrinkage --contact-reliability 0.5 --reliability-source "<how it was chosen>"`).
 
 ### Zero and NA
 

@@ -61,6 +61,10 @@ def check_predict(args):
         raise PaceError("--distance-only replaces Hi-C and fitted priors; do not combine them")
     if args.strict_contacts and not args.hic:
         raise PaceError("--strict-contacts applies to --hic input only")
+    if args.strict_contacts and args.prior:
+        raise PaceError(
+            "--strict-contacts uses measured contacts only; do not combine with --prior"
+        )
     if args.no_shrinkage and not args.hic:
         raise PaceError("--no-shrinkage applies to --hic input only")
     for _, path in tracks:
@@ -176,7 +180,7 @@ def predict(args):
                 prepared / "hic",
             )
             contacts = str(prepared / "hic" / "observed_contacts.tsv")
-            if not args.prior:
+            if not (args.prior or args.strict_contacts):
                 log(
                     "    fitting the distance decay of this Hi-C map"
                     + (
@@ -218,6 +222,11 @@ def predict(args):
         contact = {"mode": "shrinkage" if shrink else "observed" if contacts else "prior_only"}
         if shrink:
             contact.update(reliability="per_pair", reliability_source="gamma_poisson")
+        if args.strict_contacts:
+            # Measured bin-pair contacts only: no pseudocount, and same-bin or masked pairs stay NA.
+            contact.update(
+                near_diagonal_policy="unresolved", pseudocount="none", allow_prior_fallback=False
+            )
         if prior:
             contact["prior_path"] = str(Path(prior).resolve())
             # Masked (unbalanced) bins and missing pixels take the fitted expectation,

@@ -141,7 +141,7 @@ A prior fitted by `pace fit-prior` with CTCF peaks and the genome FASTA also car
 | Missing observation, `allow_prior_fallback` and a prior | $P(d)$, labelled as prior |
 | Missing observation without fallback | NA |
 | `prior_only` mode | $P(d)$ at the element–TSS distance, $d_{\min}$ at most 5 kb |
-| `shrinkage` mode | $r\,C_{\mathrm{obs}} + (1-r)\,P(d)$ |
+| `shrinkage` mode | $w\,C_{\mathrm{obs}} + (1-w)\,P(d)$ |
 
 Near-diagonal handling runs first; same-bin membership follows the bin boundaries. `near_diagonal_policy: unresolved` leaves these pairs NA, `prior_or_unresolved` accepts only a prior, and the default `prior_or_neighbor` also accepts the neighbour maximum.
 
@@ -177,7 +177,7 @@ Boundary positions come from CTCF and their effect from the Hi-C. With `--ctcf p
 P(d,S)=a\left(\frac{\max(d,d_{\min})}{d_{\mathrm{ref}}}\right)^{-\gamma}e^{-\beta\min(S,1)},
 ```
 
-with $d_{\mathrm{ref}}$ = `--reference-distance` (5 kb), $d_{\min}$ the larger of the bin size and `--minimum-distance` (5 kb), and $S$ the summed boundary strength strictly between the two bin centres. $\beta$ is estimated from pairs up to 1 Mb with one free level per distance class, comparing pairs at the same distance; $\gamma$ is then fitted on the boundary-corrected distance levels. A nonpositive $\beta$ is set to 0 (`beta_status: no_boundary_effect`). `--no-boundaries` fits the distance decay only.
+with $d_{\mathrm{ref}}$ = `--reference-distance` (5 kb), $d_{\min}$ the larger of the bin size and `--minimum-distance` (5 kb), and $S$ the summed boundary strength strictly between the two bin centres. $\beta$ is estimated from pairs up to 1 Mb with one free level per distance class, comparing pairs at the same distance. The summed contact of each distance × strength cell is modelled as Poisson with the number of bin pairs as exposure; the class levels are profiled out and $\beta \ge 0$ maximises the remaining concave likelihood. Cells without contacts stay in the fit, and the estimate does not depend on the overall scale of the map. $\gamma$ is then fitted on the boundary-corrected distance levels. `beta_status` reports the outcome: `fitted`; `no_boundary_effect` (contacts do not fall with strength, $\beta = 0$); `beta_unidentifiable` (strength varies only together with distance class, $\beta = 0$); `no_boundary_variation` (all pairs have the same strength, $\beta = 0$); `beta_unbounded` (no contact crosses a boundary, so the likelihood has no finite maximum, $\beta = 0$). `--no-boundaries` fits the distance decay only.
 
 Outputs: `manifest.json`, `distance_bins.tsv`, `fit_report.json`, and with boundaries `boundaries.tsv` and `boundary_cells.tsv` (pairs and contact by distance and boundary class).
 
@@ -292,11 +292,11 @@ With conversion factor $f$ and prior contact $C_0$:
 ```math
 C\sim\mathrm{Gamma}(\kappa,\ \mathrm{rate}=\kappa/C_0),\qquad
 Y\mid C\sim\mathrm{Poisson}(C/f),\qquad
-r=\frac{C_0/f}{C_0/f+\kappa},\qquad
-\mathrm{E}(C\mid Y)=r\,fY+(1-r)\,C_0
+w=\frac{C_0/f}{C_0/f+\kappa},\qquad
+\mathrm{E}(C\mid Y)=w\,fY+(1-w)\,C_0
 ```
 
-Zero counts are observations and receive a positive posterior mean. Masked pairs use the prior with $r=0$. Diagonal pairs follow the near-diagonal policy. Each sample is shrunk separately and then aggregated over technical replicates, biological replicates and donors. `kappa: auto` takes the prior's $\kappa$, or estimates it from the run's unique callable bin pairs; a positive number overrides it. `resolved_contacts.tsv` records $\kappa$, its source and `posterior_samples` (per-sample means, variances, raw counts, factors and reliabilities). Imported per-pair tables are recomputed from their raw observations and must agree.
+Zero counts are observations and receive a positive posterior mean. Masked pairs use the prior with $w=0$. Diagonal pairs follow the near-diagonal policy. Each sample is shrunk separately and then aggregated over technical replicates, biological replicates and donors. `kappa: auto` takes the prior's $\kappa$, or estimates it from the run's unique callable bin pairs; a positive number overrides it. `resolved_contacts.tsv` records $\kappa$, its source and `posterior_samples` (per-sample means, variances, raw counts, factors and reliabilities). Imported per-pair tables are recomputed from their raw observations and must agree.
 
 ### Learning gamma, beta and eta from eQTLs
 

@@ -220,6 +220,38 @@ BOUNDARY_CAP = 1.0
 BETA_MAX_DISTANCE = 1_000_000
 
 
+def _boundary_beta(groups):
+    """Poisson maximum-likelihood beta with one free level per distance class.
+
+    groups: per distance class, arrays (summed contact c, pairs n, capped strength s).
+    Each cell is c ~ Poisson(n alpha_k exp(-beta s)); profiling out alpha_k leaves
+    l(beta) = -beta sum(c s) - sum_k C_k log sum_i n_i exp(-beta s_i), which is concave,
+    so beta is the root of its derivative. Zero-contact cells keep their pairs in the
+    expected count, and scaling every contact by one factor leaves beta unchanged.
+    If every contact lies at the lowest strength of its class, the likelihood rises without
+    bound; beta then has no finite estimate and the prior falls back to the distance decay.
+    """
+
+    def slope(beta):
+        total = 0.0
+        for c, n, s in groups:
+            weight = n * np.exp(-beta * (s - s.min()))
+            total += c.sum() * (weight * s).sum() / weight.sum() - (c * s).sum()
+        return total
+
+    if slope(0.0) <= 0:
+        return 0.0, "no_boundary_effect"
+    if all(c[s > s.min()].sum() == 0 for c, _, s in groups):
+        return 0.0, "beta_unbounded"
+    low, high = 0.0, 1.0
+    while slope(high) > 0:
+        low, high = high, 2 * high
+    for _ in range(100):
+        mid = (low + high) / 2
+        low, high = (mid, high) if slope(mid) > 0 else (low, mid)
+    return (low + high) / 2, "fitted"
+
+
 def fit_boundary_prior(
     cells, *, d_ref, d_min, cap=BOUNDARY_CAP, beta_max_distance=BETA_MAX_DISTANCE
 ):
@@ -228,25 +260,33 @@ def fit_boundary_prior(
     beta is the log-contact drop per unit of crossed boundary strength between pairs at
     the same distance (one free level per distance class), using pairs within
     beta_max_distance, where enhancer-promoter links lie and the boundary effect is not
-    yet saturated. gamma and a then come from the boundary-corrected distance levels.
+    yet saturated. It is the Poisson (quasi-)likelihood estimate on summed contacts, so
+    cells without contacts count as evidence of blocking. beta is identifiable only when
+    some distance class with contacts holds pairs of different strength, and finite only
+    when some contact crosses a boundary; otherwise it is 0 (beta_unidentifiable,
+    beta_unbounded) and the prior is the distance decay. gamma and a then come
+    from the boundary-corrected distance levels.
     """
-    used = [r for r in cells if r["contact_sum"] > 0]
-    for r in used:
+    for r in cells:
         r["capped_strength"] = min(r["mean_strength"], cap)
-    near = [r for r in used if r["geometric_distance"] <= beta_max_distance]
-    classes = sorted({r["distance_class"] for r in near})
-    beta, status = 0.0, "no_boundary_variation"
-    if near and np.ptp([r["capped_strength"] for r in near]) > 0:
-        index = {k: i for i, k in enumerate(classes)}
-        design = np.zeros((len(near), len(classes) + 1))
-        for t, r in enumerate(near):
-            design[t, index[r["distance_class"]]] = 1.0
-            design[t, -1] = -r["capped_strength"]
-        y = np.log([r["contact_sum"] / r["n_pairs"] for r in near])
-        w = np.sqrt([r["n_pairs"] for r in near])
-        beta = float(np.linalg.lstsq(design * w[:, None], y * w, rcond=None)[0][-1])
-        status = "fitted" if beta > 0 else "no_boundary_effect"
-        beta = max(beta, 0.0)
+    near = {}
+    for r in cells:
+        if r["geometric_distance"] <= beta_max_distance and r["n_pairs"] > 0:
+            near.setdefault(r["distance_class"], []).append(r)
+    groups = []
+    for rows in near.values():
+        c = np.array([r["contact_sum"] for r in rows], dtype=float)
+        s = np.array([r["capped_strength"] for r in rows], dtype=float)
+        if c.sum() > 0 and np.ptp(s) > 0:
+            groups.append((c, np.array([r["n_pairs"] for r in rows], dtype=float), s))
+    strengths = [r["capped_strength"] for rows in near.values() for r in rows]
+    if groups:
+        beta, status = _boundary_beta(groups)
+    elif strengths and np.ptp(strengths) > 0:
+        beta, status = 0.0, "beta_unidentifiable"
+    else:
+        beta, status = 0.0, "no_boundary_variation"
+    used = [r for r in cells if r["n_pairs"] > 0]
     levels = {}
     for r in used:
         level = levels.setdefault(r["distance_class"], [0.0, 0.0, 0.0, 0])
@@ -254,9 +294,11 @@ def fit_boundary_prior(
         level[1] += r["n_pairs"] * math.exp(-beta * r["capped_strength"])
         level[2] += r["n_pairs"] * math.log(r["geometric_distance"])
         level[3] += r["n_pairs"]
-    x = np.array([v[2] / v[3] - math.log(d_ref) for v in levels.values()])
-    y = np.log([v[0] / v[1] for v in levels.values()])
-    w = np.sqrt([v[3] for v in levels.values()])
+    # Distance classes without contacts are left out, as in the distance-only fit.
+    levels = [v for v in levels.values() if v[0] > 0]
+    x = np.array([v[2] / v[3] - math.log(d_ref) for v in levels])
+    y = np.log([v[0] / v[1] for v in levels])
+    w = np.sqrt([v[3] for v in levels])
     if len(x) < 2:
         raise PaceError("Contact prior fit needs at least two nonzero distance classes")
     coef = np.linalg.lstsq(np.column_stack([np.ones(len(x)), x]) * w[:, None], y * w, rcond=None)[0]

@@ -309,8 +309,8 @@ def predict_parser(command):
     contact.add_argument(
         "--strict-contacts",
         action="store_true",
-        help="With --hic: use measured contacts only; pairs in masked Hi-C bins stay NA "
-        "instead of taking the distance prior fitted on the same map (genes with such pairs "
+        help="With --hic: use measured bin-pair contacts only, without distance pseudocount "
+        "or prior; same-bin pairs and pairs in masked Hi-C bins stay NA (genes with such pairs "
         "are then withheld). Implies --no-shrinkage",
     )
     # One animal per run; several animals are combined with 'pace run --samples'.

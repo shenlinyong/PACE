@@ -334,14 +334,14 @@ def posterior_contact(raw_count, count_to_contact, prior, kappa):
     expected = mu / factor
     if not math.isfinite(expected) or expected <= 0:
         raise PaceError("Expected raw count is outside the numeric range")
-    r = 1 / (1 + shape / expected)
-    value = r * (y * factor) + (1 - r) * mu
-    variance = (y + shape) * (factor * r) ** 2
+    w = 1 / (1 + shape / expected)
+    value = w * (y * factor) + (1 - w) * mu
+    variance = (y + shape) * (factor * w) ** 2
     if not math.isfinite(value) or not math.isfinite(variance):
         raise PaceError("Contact posterior exceeds the numeric range")
     return dict(
         resolved_value=value,
-        reliability=r,
+        reliability=w,
         expected_raw_count=expected,
         posterior_variance=variance,
         kappa=shape,

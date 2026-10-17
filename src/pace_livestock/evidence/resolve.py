@@ -292,10 +292,10 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
         raise PaceError(
             "Power-law pseudocount requires observed mode and a compatible fitted prior"
         )
-    r = cfg["contact"]["reliability"]
-    if mode == "shrinkage" and (r is None or not cfg["contact"]["reliability_source"]):
+    w = cfg["contact"]["reliability"]
+    if mode == "shrinkage" and (w is None or not cfg["contact"]["reliability_source"]):
         raise PaceError("Shrinkage needs explicit reliability and reliability_source")
-    per_pair = r == "per_pair"
+    per_pair = w == "per_pair"
     boundaries = load_boundaries(prior_asset) if prior_asset else None
     element_level = mode == "prior_only"
     kappa, kappa_source = None, None
@@ -435,7 +435,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                     value, source, weight = prior, "contact_prior", 0.0
                     reason = "unavailable_bin_prior"
             elif mode == "shrinkage":
-                value, source, weight = shrink(obs, prior, r), "fused", r
+                value, source, weight = shrink(obs, prior, w), "fused", w
             elif math.isfinite(obs):
                 value, source, weight = obs, "observed", 1.0
             elif cfg["contact"]["allow_prior_fallback"]:
@@ -542,7 +542,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                         if imported_source == "contact_prior"
                         else 1.0
                         if imported_source in ("observed", "aggregate", "regularized")
-                        else r
+                        else w
                     )
                     if imported_weight != expected_weight:
                         raise PaceError(

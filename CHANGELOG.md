@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.1
+
+- The boundary effect beta is the Poisson likelihood estimate on summed contacts per distance × strength cell, with one level per distance class profiled out. Cells without contacts now count as evidence of blocking, and rescaling all contacts no longer changes beta or gamma.
+- beta is fitted only when some distance class holds pairs of different boundary strength. When strength varies only together with distance, beta is 0 with `beta_status: beta_unidentifiable` and the prior is the distance decay. When no contact crosses a boundary, the likelihood keeps rising and beta has no finite estimate; it is then 0 with `beta_status: beta_unbounded`, so a sparse map cannot remove all contacts across boundaries.
+- The shrinkage weight is written $w$ in the documentation (formerly $r$, easily confused with $\gamma$).
+- `--strict-contacts` uses measured bin-pair contacts only: no distance pseudocount, and same-bin or masked pairs stay NA. No prior is fitted, and `--prior` is rejected with it.
+
 ## 0.11.0
 
 - `pace predict --hic` shrinks every element–TSS contact toward the distance prior fitted on the same map (Gamma–Poisson posterior mean). Bin pairs with few reads move toward the prior instead of entering the score as noise. With `--chunk-pairs`, kappa is fitted once on all chromosomes, so chunked and single runs agree. `--no-shrinkage` keeps the measured contacts; `--strict-contacts` implies it.

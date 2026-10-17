@@ -162,3 +162,75 @@ def test_reference_accepts_iupac_ambiguity_codes(tmp_path):
     (tmp_path / "g.fa").write_text(">c\nACGTRYKMNacgt\n")
     with Reference(tmp_path / "g.fa") as reference:
         assert reference.fetch("c", 0, 13) == "ACGTRYKMNACGT"
+
+
+def boundary_cells(levels, strengths, drop, scale=1.0, n=100):
+    """Cells at distances 10 kb * 2**k with the expected contact of the boundary prior."""
+    cells = []
+    for k, level in enumerate(levels):
+        d = 10_000 * 2**k
+        for m, s in enumerate(strengths[k]):
+            cells.append(
+                dict(
+                    distance_class=k,
+                    strength_class=m,
+                    n_pairs=n,
+                    contact_sum=scale * n * level * (d / 5000) ** -1.0 * drop**s,
+                    geometric_distance=d,
+                    mean_strength=s,
+                )
+            )
+    return cells
+
+
+def fit_cells(cells):
+    from pace_livestock.io.prior_fit import fit_boundary_prior
+
+    return fit_boundary_prior(cells, d_ref=5000, d_min=5000)
+
+
+def test_boundary_fit_recovers_beta_and_is_scale_free():
+    cells = boundary_cells([1, 1, 1, 1], [[0, 1]] * 4, DROP)
+    small = fit_cells(boundary_cells([1, 1, 1, 1], [[0, 1]] * 4, DROP, scale=0.01))
+    big = fit_cells(cells)
+    assert big["beta_status"] == "fitted"
+    assert big["beta"] == pytest.approx(-math.log(DROP), rel=1e-6)
+    assert small["beta"] == pytest.approx(big["beta"], rel=1e-6)
+    assert small["gamma"] == pytest.approx(big["gamma"], rel=1e-6) == pytest.approx(1.0)
+    assert small["a"] == pytest.approx(0.01 * big["a"], rel=1e-6)
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.01])
+def test_boundary_strength_confounded_with_distance_is_not_fitted(scale):
+    # One strength per distance class: the strength effect cannot be told from the decay.
+    prior = fit_cells(boundary_cells([1, 1, 1, 1], [[0], [0.5], [1], [1]], 1.0, scale=scale))
+    assert prior["beta"] == 0 and prior["beta_status"] == "beta_unidentifiable"
+    assert prior["gamma"] == pytest.approx(1.0)
+
+
+def test_cells_without_contacts_count_as_blocking():
+    cells = boundary_cells([1, 1, 1], [[0, 1]] * 3, 1.0)
+    for r in cells:
+        if r["mean_strength"] == 1:
+            r["contact_sum"] = 0.0
+        else:
+            r["contact_sum"] *= 2
+    prior = fit_cells(cells)
+    # No contact crosses a boundary: the likelihood has no finite maximum.
+    assert prior["beta_status"] == "beta_unbounded" and prior["beta"] == 0
+    assert prior["gamma"] == pytest.approx(1.0)
+    for r in cells:
+        if r["mean_strength"] == 1:
+            r["contact_sum"] = r["contact_sum"] + 0.5 * r["n_pairs"] / 2 ** r["distance_class"]
+    partial = fit_cells(cells)
+    assert partial["beta_status"] == "fitted" and 0 < partial["beta"] < 10
+    for r in cells:
+        if r["mean_strength"] == 1:
+            r["contact_sum"] = 1e-9 * r["n_pairs"]
+    steep = fit_cells(cells)
+    assert steep["beta_status"] == "fitted" and steep["beta"] > 20
+
+
+def test_boundary_fit_without_strength_variation():
+    prior = fit_cells(boundary_cells([1, 1, 1], [[0]] * 3, 1.0))
+    assert prior["beta"] == 0 and prior["beta_status"] == "no_boundary_variation"
