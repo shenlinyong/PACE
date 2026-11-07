@@ -58,7 +58,7 @@ PACE keeps the ABC score and changes how its terms are estimated where Hi-C and 
 6. [Step by step, several animals and comparisons](#step-by-step-several-animals-and-comparisons)
 7. [RNA-seq, methylation and other data](#rna-seq-methylation-and-other-data)
 8. [Reference](#reference)
-9. [PACE and ABC](#pace-and-abc)
+9. [Advantages of PACE](#advantages-of-pace)
 10. [Troubleshooting](#troubleshooting)
 11. [Citation](#citation)
 
@@ -388,11 +388,11 @@ All settings and defaults are listed in [Advanced use](docs/ADVANCED.md#complete
 
 `measurement_status` is one of `observed`, `unmeasured`, `low_coverage`, `unmappable`, `invalid`, `not_applicable`.
 
-## PACE and ABC
+## Advantages of PACE
 
-The score is the ABC score: with identical activity, contact, one TSS and a complete candidate set, PACE and ABC give the same value. They differ in how the inputs are obtained:
+PACE estimates the terms of the activity-by-contact score more carefully where Hi-C, annotation or data completeness are limited:
 
-| | ABC | PACE |
+| | Standard ABC | PACE |
 |---|---|---|
 | TSSs of a gene | One TSS per gene | All distinct TSSs, weighted by promoter activity |
 | Low-depth Hi-C | Distance-based pseudocount | Per-pair Gamma–Poisson shrinkage toward the distance prior |
