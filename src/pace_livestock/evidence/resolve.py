@@ -259,6 +259,13 @@ def run_kappa(observed_contacts, units, promoters, prior_asset, *, resolution, b
     if not fitting:
         # Only same-bin pairs were measured: none is shrunk, so kappa is not needed.
         return None
+    if len(fitting) < 3:
+        raise PaceError(
+            f"Only {len(fitting)} measured bin pair(s) outside the TSS's own bin need shrinkage, "
+            "too few to estimate kappa (at least 3 are needed). Reuse a kappa fitted on a "
+            "larger run (a prior with kappa, or contact.kappa in the configuration), or "
+            "use --no-shrinkage with --pseudocount none"
+        )
     return fit_kappa([x["raw_count"] for x in fitting], expected)["kappa"]
 
 
@@ -461,9 +468,11 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                     value, used = aggregate_observations(posteriors, samples, "resolved_value")
                     weight, _ = aggregate_observations(posteriors, samples, "reliability")
                     source = "fused"
-                else:
+                elif cfg["contact"]["allow_prior_fallback"]:
                     value, source, weight = prior, "contact_prior", 0.0
                     reason = "unavailable_bin_prior"
+                else:
+                    value, source, weight = math.nan, "observed", math.nan
             elif mode == "shrinkage":
                 value, source, weight = shrink(obs, prior, w), "fused", w
             elif math.isfinite(obs):

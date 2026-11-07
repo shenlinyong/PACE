@@ -325,6 +325,7 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
             "contact_reliability_source": cfg["contact"]["reliability_source"],
             "contact_kappa": cfg["contact"]["kappa"],
             "allow_prior_fallback": cfg["contact"]["allow_prior_fallback"],
+            "within_bin_distance": cfg["contact"]["within_bin_distance"],
             "pseudocount": cfg["contact"]["pseudocount"],
             "pseudocount_distance_bp": cfg["contact"]["pseudocount_distance_bp"],
             "pseudocount_strength": cfg["contact"]["pseudocount_strength"],

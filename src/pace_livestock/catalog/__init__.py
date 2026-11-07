@@ -105,23 +105,26 @@ def candidate_edges(units: list[dict], promoters: list[dict], *, radius: int = 5
 def map_labels(labels, memberships):
     """Map labels to catalog elements through the membership table.
 
-    A region name shared by several BED files maps to several elements. A label that
-    names its `source_id` selects the elements of that source when this leaves exactly
-    one; otherwise the label stays ambiguous and is not scored.
+    A label that names its `source_id` is looked up as (source_id, region_id) and is
+    unmapped when that source has no such region; a region of another BED file never
+    stands in for it. Labels without a source, or a membership table without sources,
+    are looked up by region name alone, and a name shared by several elements stays
+    ambiguous.
     """
     mapping = defaultdict(set)
     by_source = defaultdict(set)
+    has_sources = False
     for row in memberships:
         mapping[row["region_id"]].add(row["element_id"])
         if row.get("source_id"):
+            has_sources = True
             by_source[row["region_id"], row["source_id"]].add(row["element_id"])
     usable, rejected = [], []
     for row in labels:
-        elements = mapping.get(row["assayed_region_id"], set())
-        if len(elements) > 1 and row.get("source_id"):
-            narrowed = by_source.get((row["assayed_region_id"], row["source_id"]), set())
-            if len(narrowed) == 1:
-                elements = narrowed
+        if row.get("source_id") and has_sources:
+            elements = by_source.get((row["assayed_region_id"], row["source_id"]), set())
+        else:
+            elements = mapping.get(row["assayed_region_id"], set())
         label, reason = classify_label(row)
         if not elements:
             reason = "unmapped_region"

@@ -179,10 +179,11 @@ def test_interval_union_and_motif_orientation():
         )
 
 
-def test_label_source_id_resolves_a_region_name_shared_by_two_beds():
+def test_label_source_id_selects_the_region_of_that_source_only():
     membership = [
         {"region_id": "shared", "element_id": "E1", "source_id": "assayA"},
         {"region_id": "shared", "element_id": "E2", "source_id": "assayB"},
+        {"region_id": "only_b", "element_id": "E3", "source_id": "assayB"},
     ]
     label = dict(
         assayed_region_id="shared",
@@ -192,5 +193,17 @@ def test_label_source_id_resolves_a_region_name_shared_by_two_beds():
     )
     usable, rejected = map_labels([{**label, "source_id": "assayA"}], membership)
     assert [r["element_id"] for r in usable] == ["E1"] and not rejected
-    usable, rejected = map_labels([label, {**label, "source_id": "other"}], membership)
-    assert not usable and [r["reason"] for r in rejected] == ["ambiguous_region"] * 2
+    # Without a source, a name shared by two BED files is ambiguous.
+    usable, rejected = map_labels([label], membership)
+    assert not usable and [r["reason"] for r in rejected] == ["ambiguous_region"]
+    # A source without that region never borrows another source's element.
+    wrong = [
+        {**label, "source_id": "other"},
+        {**label, "assayed_region_id": "only_b", "source_id": "assayA"},
+    ]
+    usable, rejected = map_labels(wrong, membership)
+    assert not usable and [r["reason"] for r in rejected] == ["unmapped_region"] * 2
+    # A membership table without sources is looked up by region name alone.
+    plain = [{"region_id": "r", "element_id": "E9"}]
+    usable, _ = map_labels([{**label, "assayed_region_id": "r", "source_id": "x"}], plain)
+    assert [r["element_id"] for r in usable] == ["E9"]

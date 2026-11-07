@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.7
+
+- `pace benchmark`: a label that names its `source_id` is looked up as (`source_id`, region) and is unmapped when that source lacks the region; it no longer takes the element of another source.
+- `pace compare` treats `contact.within_bin_distance` as part of the evidence policy: runs that differ in it need `--allow-evidence-difference` and give conditional differences only.
+- Per-pair shrinkage respects `contact.allow_prior_fallback: false`: a pair without a usable measurement stays NA instead of taking the prior.
+- Shrinkage with one or two shrinkable bin pairs stops with a message that names the options (a $\kappa$ from a larger run, or `--no-shrinkage --pseudocount none`).
+- The profile-likelihood bound on $\beta$ uses the exposure $\sum 1/f$ of each cell, as the count model does, instead of the number of bin pairs.
+- Documentation: the prior amplitude $a$ cancels only in prior-only scores; in Case A it enters the shrinkage weight.
+
 ## 0.12.6
 
 - `pace benchmark`: a label that names its `source_id` resolves a region name shared by several BED files; without a matching source it stays ambiguous.

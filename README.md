@@ -115,7 +115,7 @@ Cases A and B use the distance–boundary prior
 P(d)=a\left(\frac{\max(d,\,d_{\min})}{5\,\mathrm{kb}}\right)^{-\gamma}\,e^{-\beta\,\min(S,\,1)},
 ```
 
-where $d$ is the element–TSS distance, $d_{\min}$ the larger of the Hi-C bin size and 5 kb where $P(d)$ is combined with measured bins (below one bin, distances are not resolved) and 5 kb where it replaces Hi-C (Case B), $\gamma$ the rate at which contact falls with distance, $S$ the summed strength (0–1 each) of the boundaries between element and TSS, and $\beta$ the drop in log contact across one full-strength boundary. $S$ is capped at 1 because contact falls at the first boundary and not again at each further one. The amplitude $a$ cancels in the score; $\gamma$ and $\beta$ are fitted on the Hi-C, so nothing is set by hand. Without `--ctcf` and `--genome` the prior is $P(d)$ without the boundary term.
+where $d$ is the element–TSS distance, $d_{\min}$ the larger of the Hi-C bin size and 5 kb where $P(d)$ is combined with measured bins (below one bin, distances are not resolved) and 5 kb where it replaces Hi-C (Case B), $\gamma$ the rate at which contact falls with distance, $S$ the summed strength (0–1 each) of the boundaries between element and TSS, and $\beta$ the drop in log contact across one full-strength boundary. $S$ is capped at 1 because contact falls at the first boundary and not again at each further one. The amplitude $a$ cancels in scores that use the prior alone (Cases B and C). In Case A it also sets the scale on which measured reads are compared with the prior in the shrinkage weight, so a prior taken from another map must be on the scale of the Hi-C it is combined with. $\gamma$ and $\beta$ are fitted on the Hi-C, so nothing is set by hand. Without `--ctcf` and `--genome` the prior is $P(d)$ without the boundary term.
 
 ### Case A: Hi-C of the same tissue
 
@@ -320,7 +320,7 @@ Technical replicates are averaged within each biological replicate, biological r
 pace compare --left results/pig1 --right results/pig2 -o results/pig2_vs_pig1
 ```
 
-`pace compare` rescores both runs over their common candidates and reports right minus left. Both runs need the same species, assembly and tissue label; runs of different tissues are not compared. Runs with their own Hi-C each have their own contact model and need `--allow-evidence-difference`, which gives conditional differences only. Interpret a difference through activity, contact and the gene total, not `pace_score` alone.
+`pace compare` rescores both runs over their common candidates and reports right minus left. Both runs need the same species, assembly and tissue label; runs of different tissues are not compared. Runs that differ in the contact method (for example `--bin-level-contacts`) need `--allow-evidence-difference` and give conditional differences only. Runs with their own Hi-C each have their own contact model and need `--allow-evidence-difference`, which gives conditional differences only. Interpret a difference through activity, contact and the gene total, not `pace_score` alone.
 
 **Whole genomes.** Every term is computed within a chromosome, so `pace predict` scores chromosomes separately (`--by-chromosome` in `pace run`) and in parallel (`-t`) with identical results. Memory is set by the largest chromosome; a smaller `--radius` reduces it.
 

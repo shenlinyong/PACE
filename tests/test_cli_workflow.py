@@ -815,3 +815,55 @@ def test_pseudocount_can_be_switched_off_without_shrinkage(inputs, tmp_path, cap
     assert not any(r["evidence_type"] == "regularized" for r in kept["none"])
     assert predict_hic(inputs, tmp_path / "bad", "--pseudocount", "none") == 2
     assert "--pseudocount" in capsys.readouterr().err
+
+
+def test_compare_flags_a_difference_in_bin_distance_placement(inputs, tmp_path, capsys):
+    assert predict_hic(inputs, tmp_path / "placed") == 0
+    assert predict_hic(inputs, tmp_path / "binned", "--bin-level-contacts") == 0
+    capsys.readouterr()
+    left, right = tmp_path / "placed", tmp_path / "binned"
+    assert call("compare", "--left", left, "--right", right, "-o", tmp_path / "c1") == 2
+    assert "evidence_policy" in capsys.readouterr().err
+    code = call(
+        "compare",
+        "--left",
+        left,
+        "--right",
+        right,
+        "--allow-evidence-difference",
+        "-o",
+        tmp_path / "c2",
+    )
+    capsys.readouterr()
+    assert code == 0
+
+
+def test_hic_run_with_two_shrinkable_pairs_explains_the_kappa_limit(inputs, tmp_path, capsys):
+    (tmp_path / "peaks.bed").write_text(
+        "chr1\t1003000\t1003400\nchr1\t1013000\t1013400\nchr1\t1023000\t1023400\n"
+    )
+    (tmp_path / "genes.gtf").write_text(
+        'chr1\tsrc\ttranscript\t1005001\t1009000\t.\t+\t.\tgene_id "G"; transcript_id "T";\n'
+    )
+    args = [
+        "predict",
+        "-b",
+        tmp_path / "peaks.bed",
+        "-g",
+        tmp_path / "genes.gtf",
+        "-c",
+        inputs / "genome.fa.fai",
+        "--atac",
+        inputs / "atac.bw",
+        "--hic",
+        inputs / "hic.cool",
+        "-r",
+        25000,
+        *context(),
+    ]
+    assert call(*args, "-o", tmp_path / "shrunk") == 2
+    err = capsys.readouterr().err
+    assert "too few to estimate kappa" in err and "--no-shrinkage" in err
+    code = call(*args, "--no-shrinkage", "--pseudocount", "none", "-o", tmp_path / "plain")
+    capsys.readouterr()
+    assert code == 0

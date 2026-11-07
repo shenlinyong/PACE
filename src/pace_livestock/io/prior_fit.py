@@ -153,7 +153,7 @@ def cooler_boundary_cells(
     chrom_codes = np.empty(len(bins), dtype=int)
     train = np.zeros(len(c.chromnames), dtype=bool)
     shape = (n_steps, S_CLASSES)
-    n_pairs, contact, crossed, counts = (np.zeros(shape) for _ in range(4))
+    n_pairs, contact, crossed, counts, exposure = (np.zeros(shape) for _ in range(5))
     for code, chrom in enumerate(c.chromnames):
         first, last = c.extent(chrom)
         chrom_codes[first:last] = code
@@ -174,6 +174,11 @@ def cooler_boundary_cells(
             m = _strength_class(s)
             k = step - first_step
             n_pairs[k] += np.bincount(m[both], minlength=S_CLASSES)
+            # A pair is expected to receive 1/f reads per unit of contact, f = w_i w_j.
+            reads_per_contact = 1.0 / (
+                weights[first : last - step][both] * weights[first + step : last][both]
+            )
+            exposure[k] += np.bincount(m[both], weights=reads_per_contact, minlength=S_CLASSES)
             crossed[k] += np.bincount(m[both], weights=s[both], minlength=S_CLASSES)
     for start in range(0, int(c.info["nnz"]), chunksize):
         pixels = c.pixels()[start : start + chunksize]
@@ -204,6 +209,7 @@ def cooler_boundary_cells(
                         n_pairs=int(n_pairs[k, m]),
                         contact_sum=float(contact[k, m]),
                         count_sum=float(counts[k, m]),
+                        exposure_sum=float(exposure[k, m]),
                         geometric_distance=float((first_step + k) * resolution),
                         mean_strength=float(crossed[k, m] / n_pairs[k, m]),
                     )
@@ -225,7 +231,8 @@ def _boundary_beta(groups):
     """Poisson maximum-likelihood beta with one free level per distance class.
 
     groups: per distance class, arrays (summed contact c, pairs n, capped strength s) and
-    optionally the read counts behind c. Each cell is c ~ Poisson(n alpha_k exp(-beta s));
+    optionally the read counts behind c and their exposure (sum of 1/f over the pairs).
+    Each cell is c ~ Poisson(n alpha_k exp(-beta s));
     profiling out alpha_k leaves
     l(beta) = -beta sum(c s) - sum_k C_k log sum_i n_i exp(-beta s_i), which is concave,
     so beta is the root of its derivative. Zero-contact cells keep their pairs in the
@@ -238,20 +245,22 @@ def _boundary_beta(groups):
 
     def slope(beta):
         total = 0.0
-        for c, n, s, _ in groups:
+        for c, n, s, _, _ in groups:
             weight = n * np.exp(-beta * (s - s.min()))
             total += c.sum() * (weight * s).sum() / weight.sum() - (c * s).sum()
         return total
 
     if slope(0.0) <= 0:
         return 0.0, "no_boundary_effect"
-    if all(c[s > s.min()].sum() == 0 for c, _, s, _ in groups):
+    if all(c[s > s.min()].sum() == 0 for c, _, s, _, _ in groups):
 
         def drop(beta):
             total = 0.0
-            for _, n, s, counts in groups:
+            for _, _, s, counts, exposure in groups:
                 lowest = s == s.min()
-                ratio = (n * np.exp(-beta * (s - s.min())))[~lowest].sum() / n[lowest].sum()
+                ratio = (exposure * np.exp(-beta * (s - s.min())))[~lowest].sum() / exposure[
+                    lowest
+                ].sum()
                 total += counts.sum() * math.log1p(ratio)
             return total
 
@@ -301,7 +310,9 @@ def fit_boundary_prior(
         s = np.array([r["capped_strength"] for r in rows], dtype=float)
         if c.sum() > 0 and np.ptp(s) > 0:
             counts = np.array([r.get("count_sum", r["contact_sum"]) for r in rows], dtype=float)
-            groups.append((c, np.array([r["n_pairs"] for r in rows], dtype=float), s, counts))
+            n = np.array([r["n_pairs"] for r in rows], dtype=float)
+            exposure = np.array([r.get("exposure_sum", r["n_pairs"]) for r in rows], dtype=float)
+            groups.append((c, n, s, counts, exposure))
     strengths = [r["capped_strength"] for rows in near.values() for r in rows]
     if groups:
         beta, status = _boundary_beta(groups)

@@ -327,3 +327,48 @@ def test_fully_blocked_boundary_does_not_inflate_the_decay_exponent(tmp_path):
     fit = fit_boundary_prior(cells, d_ref=5000, d_min=5000)
     assert fit["beta_status"] == "beta_unbounded" and fit["beta"] > 1
     assert fit["gamma"] == pytest.approx(1.0, abs=0.05)
+
+
+def test_unbounded_beta_uses_the_reads_each_pair_is_expected_to_receive():
+    from pace_livestock.io.prior_fit import BETA_BOUND_DROP, fit_boundary_prior
+
+    def fit(crossing_exposure):
+        cells = [
+            dict(
+                distance_class=0,
+                strength_class=0,
+                n_pairs=100,
+                contact_sum=5.0,
+                count_sum=50.0,
+                exposure_sum=100.0,
+                geometric_distance=10_000,
+                mean_strength=0.0,
+            ),
+            dict(
+                distance_class=0,
+                strength_class=4,
+                n_pairs=100,
+                contact_sum=0.0,
+                count_sum=0.0,
+                exposure_sum=crossing_exposure,
+                geometric_distance=10_000,
+                mean_strength=1.0,
+            ),
+            dict(
+                distance_class=1,
+                strength_class=0,
+                n_pairs=100,
+                contact_sum=2.0,
+                count_sum=20.0,
+                exposure_sum=100.0,
+                geometric_distance=20_000,
+                mean_strength=0.0,
+            ),
+        ]
+        return fit_boundary_prior(cells, d_ref=5000, d_min=5000)
+
+    for exposure in (100.0, 1000.0):
+        # Only the first class has a crossing cell; the bound solves
+        # 50 log(1 + (exposure / 100) exp(-beta)) = BETA_BOUND_DROP.
+        expected = math.log((exposure / 100.0) / math.expm1(BETA_BOUND_DROP / 50.0))
+        assert fit(exposure)["beta"] == pytest.approx(expected, rel=1e-6)

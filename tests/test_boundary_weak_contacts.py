@@ -243,6 +243,14 @@ def test_pipeline_per_pair_with_masked_bins_and_true_zero(configured):
     rows[0].update(raw_count=0, contact_value=0)
     rows[1].update(contact_value=None, measurement_status="unmappable", count_to_contact=None)
     write_table(configured["inputs"]["observed_contacts"], rows)
+    without = compute(
+        {**configured, "contact": {**configured["contact"], "allow_prior_fallback": False}}
+    )
+    unfilled = {(r["element_id"], r["promoter_id"]): r for r in without["resolved_contacts"]}
+    # Without the fallback a masked bin stays unresolved: no prior value is substituted.
+    assert math.isnan(unfilled["E2", "P1"]["resolved_value"])
+    assert unfilled["E2", "P1"]["resolution_status"] == "unresolved"
+    configured["contact"]["allow_prior_fallback"] = True
     result = compute(configured)
     contacts = {(r["element_id"], r["promoter_id"]): r for r in result["resolved_contacts"]}
     zero = contacts["E1", "P1"]
