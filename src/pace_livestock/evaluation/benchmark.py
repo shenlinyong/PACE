@@ -57,7 +57,10 @@ def verify_run_inputs(config_path, run_cfg):
     The baselines are recomputed from the run's input tables, so a modified table would
     give scores that no longer belong to the reported run.
     """
-    manifest_path = Path(config_path).resolve().parent / "run_manifest.json"
+    config_path = Path(config_path).resolve()
+    # A result folder is passed as the directory itself; a config file sits inside one.
+    folder = config_path if config_path.is_dir() else config_path.parent
+    manifest_path = folder / "run_manifest.json"
     if not manifest_path.is_file():
         return
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

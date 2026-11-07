@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `pace benchmark --run RESULT_FOLDER` now reads `run_manifest.json` from the result folder itself, so changed inputs or a changed contact prior are rejected as with `resolved_config.yaml`.
+- Chromosome chunks without Hi-C rows take the contact prior when the prior fallback is allowed and kappa is fixed, as in a whole-genome run.
+- TSSs in the same Hi-C bin pool the measurements of that bin pair by sample, so replicates recorded under different TSSs give each of them the same contact.
+
 ## 0.12.9
 
 - `pace benchmark` also checks the contact prior against the hash in `run_manifest.json`; a prior edited after the run is rejected.

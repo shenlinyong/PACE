@@ -981,9 +981,122 @@ def test_benchmark_check_detects_a_changed_contact_prior(inputs, tmp_path, capsy
     assert code == 0
     config = out / "resolved_config.yaml"
     verify_run_inputs(config, load_config(config))
+    verify_run_inputs(out, load_config(out))
     manifest = out / "prepared" / "contact_prior" / "manifest.json"
     prior = json.loads(manifest.read_text())
     prior["gamma"] = 3.0
     manifest.write_text(json.dumps(prior))
     with pytest.raises(PaceError, match="contact prior"):
         verify_run_inputs(config, load_config(config))
+    # A result folder given instead of its config file is checked against its own manifest.
+    with pytest.raises(PaceError, match="contact prior"):
+        verify_run_inputs(out, load_config(out))
+
+
+def test_chromosome_chunk_without_hic_rows_uses_the_prior(inputs, tmp_path, capsys):
+    cat = tmp_path / "catalog"
+    code = call(
+        "catalog",
+        "-b",
+        inputs / "peaks.bed",
+        "-g",
+        inputs / "genes.gtf",
+        "-c",
+        inputs / "atac.bw",
+        "-r",
+        1_000_000,
+        "-o",
+        cat,
+    )
+    assert code == 0, capsys.readouterr().err
+    for assay, name in (("ATAC", "atac"), ("H3K27ac", "h3k27ac")):
+        assert (
+            call(
+                "activity",
+                "-i",
+                inputs / f"{name}.bw",
+                "-a",
+                assay,
+                "-d",
+                cat,
+                "-o",
+                tmp_path / name,
+            )
+            == 0
+        )
+    assert (
+        call(
+            "merge",
+            "-t",
+            "observed_activity",
+            "-i",
+            tmp_path / "atac/observed_activity.tsv",
+            tmp_path / "h3k27ac/observed_activity.tsv",
+            "-o",
+            tmp_path / "activity",
+        )
+        == 0
+    )
+    assert (
+        call(
+            "contacts",
+            "-i",
+            inputs / "hic.cool",
+            "-r",
+            RESOLUTION,
+            "-d",
+            cat,
+            "-o",
+            tmp_path / "hic",
+        )
+        == 0
+    )
+    assert (
+        call("fit-prior", "--cooler", inputs / "hic.cool", *context(), "-o", tmp_path / "prior")
+        == 0
+    )
+    capsys.readouterr()
+    table = tmp_path / "hic/observed_contacts.tsv"
+    rows = read_table(table)
+    elements = {r["element_id"]: r["chrom"] for r in read_table(cat / "units.tsv")}
+    dropped = sorted(set(elements.values()))[-1]
+    kept = [r for r in rows if elements[r["element_id"]] != dropped]
+    assert kept and len(kept) < len(rows)
+    thin = tmp_path / "thin_contacts.tsv"
+    thin.write_text(
+        "\t".join(rows[0])
+        + "\n"
+        + "".join(
+            "\t".join("NA" if r[k] is None else str(r[k]) for k in rows[0]) + "\n" for r in kept
+        )
+    )
+    fixed = tmp_path / "fixed_kappa.yaml"
+    fixed.write_text("contact:\n  kappa: 5\n")
+    run = [
+        "run",
+        "-d",
+        cat,
+        "--config",
+        fixed,
+        "--activity",
+        tmp_path / "activity/observed_activity.tsv",
+        "--contacts",
+        thin,
+        "--contact-prior",
+        tmp_path / "prior",
+        "--allow-prior-fallback",
+        "--contact-mode",
+        "shrinkage",
+        "--contact-reliability",
+        "per_pair",
+        *context(),
+    ]
+    assert call(*run, "-o", tmp_path / "single") == 0, capsys.readouterr().err
+    code = call(*run, "--by-chromosome", "--chunk-pairs", 1, "-o", tmp_path / "chunked")
+    assert code == 0, capsys.readouterr().err
+    single, chunked = scores(tmp_path / "single"), scores(tmp_path / "chunked")
+    assert single.keys() == chunked.keys()
+    for key, row in single.items():
+        a, b = row["pace_score"], chunked[key]["pace_score"]
+        assert (a is None) == (b is None)
+        assert a is None or float(a) == pytest.approx(float(b), rel=1e-9)

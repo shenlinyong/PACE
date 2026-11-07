@@ -158,6 +158,26 @@ def test_same_bin_tss_reuses_one_measurement_without_fake_replicates(tmp_path):
     assert b["shared_tss_bin"] and "contact:E1:P1:S_Hi-C" in b["parent_evidence_ids"]
 
 
+def test_same_bin_tss_pools_replicates_recorded_under_different_tss(tmp_path):
+    cfg = load_config(create_example(tmp_path / "input", "measured"))
+    t = load_tables(cfg)
+    p = t["promoters"][0]
+    p["pi"] = 0.25
+    t["promoters"].append({**p, "promoter_id": "P1b", "tss0": p["tss0"] + 1, "pi": 0.75})
+    first = next(
+        r for r in t["observed_contacts"] if r["element_id"] == "E1" and r["promoter_id"] == "P1"
+    )
+    t["samples"].append({**next(iter(t["samples"])), "sample_id": "S_rep2"})
+    t["observed_contacts"] = [r for r in t["observed_contacts"] if r is not first] + [
+        {**first, "contact_value": 3.0},
+        {**first, "promoter_id": "P1b", "sample_id": "S_rep2", "contact_value": 9.0},
+    ]
+    rows = resolve_contacts(t, cfg)
+    a = next(r for r in rows if r["element_id"] == "E1" and r["promoter_id"] == "P1")
+    b = next(r for r in rows if r["element_id"] == "E1" and r["promoter_id"] == "P1b")
+    assert a["resolved_value"] == b["resolved_value"]
+
+
 def test_regularized_contacts_roundtrip_and_tampering(tmp_path):
     cfg = configured(tmp_path)
     original = run(cfg, tmp_path / "result")
