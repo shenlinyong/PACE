@@ -982,6 +982,11 @@ def test_benchmark_check_detects_a_changed_contact_prior(inputs, tmp_path, capsy
     config = out / "resolved_config.yaml"
     verify_run_inputs(config, load_config(config))
     verify_run_inputs(out, load_config(out))
+    import shutil
+
+    moved = tmp_path / "moved" / "run"
+    shutil.copytree(out, moved)
+    verify_run_inputs(moved, load_config(moved))
     manifest = out / "prepared" / "contact_prior" / "manifest.json"
     prior = json.loads(manifest.read_text())
     prior["gamma"] = 3.0
@@ -993,7 +998,10 @@ def test_benchmark_check_detects_a_changed_contact_prior(inputs, tmp_path, capsy
         verify_run_inputs(out, load_config(out))
 
 
-def test_chromosome_chunk_without_hic_rows_uses_the_prior(inputs, tmp_path, capsys):
+@pytest.mark.parametrize("fallback", [True, False])
+def test_chromosome_chunk_without_hic_rows_follows_the_whole_run(
+    inputs, tmp_path, capsys, fallback
+):
     cat = tmp_path / "catalog"
     code = call(
         "catalog",
@@ -1084,7 +1092,7 @@ def test_chromosome_chunk_without_hic_rows_uses_the_prior(inputs, tmp_path, caps
         thin,
         "--contact-prior",
         tmp_path / "prior",
-        "--allow-prior-fallback",
+        *(["--allow-prior-fallback"] if fallback else []),
         "--contact-mode",
         "shrinkage",
         "--contact-reliability",
@@ -1096,6 +1104,8 @@ def test_chromosome_chunk_without_hic_rows_uses_the_prior(inputs, tmp_path, caps
     assert code == 0, capsys.readouterr().err
     single, chunked = scores(tmp_path / "single"), scores(tmp_path / "chunked")
     assert single.keys() == chunked.keys()
+    missing = [k for k, r in single.items() if r["pace_score"] is None]
+    assert bool(missing) is not fallback
     for key, row in single.items():
         a, b = row["pace_score"], chunked[key]["pace_score"]
         assert (a is None) == (b is None)

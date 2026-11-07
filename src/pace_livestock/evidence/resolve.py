@@ -282,7 +282,7 @@ def run_kappa(
     return fit_kappa([x["raw_count"] for x in fitting], expected)["kappa"]
 
 
-def resolve_contacts(t, cfg, *, prior_asset=None):
+def resolve_contacts(t, cfg, *, prior_asset=None, chunk=False):
     measurement = contact_measurement_contract(t, cfg, prior_asset=prior_asset)
     samples = {r["sample_id"]: r for r in t["samples"]}
     units = {r["element_id"]: r for r in t["units"]}
@@ -328,11 +328,10 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
     within_bin = cfg["contact"]["within_bin_distance"] and place_in_bin
     kappa, kappa_source = None, None
     if per_pair:
-        # A chromosome chunk may hold no Hi-C rows; with a frozen kappa and an allowed prior
-        # fallback every pair of that chunk then takes the prior, as in a whole-genome run.
-        if not t["observed_contacts"] and not (
-            prior_asset and cfg["contact"]["allow_prior_fallback"]
-        ):
+        # A chromosome chunk may hold no Hi-C rows. Genome-wide checks ran before chunking, so
+        # its pairs then follow the whole-genome rule: the prior where the fallback is allowed,
+        # NA otherwise.
+        if not t["observed_contacts"] and not chunk:
             raise PaceError(
                 "per_pair shrinkage requires raw observed_contacts, including when reusing resolved contacts"
             )
@@ -369,15 +368,14 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
             done.add(key)
             distance = abs(unit["anchor0"] - p["tss0"])
             observations = observed[key]
-            # TSSs in one Hi-C bin share a bin pair: pool its measurements by sample, so each
-            # TSS sees the same replicate set and duplicate TSS queries are not replicates.
-            if measurement["resolution"]:
-                candidates = same_tss_bin[
-                    key[0], p["chrom"], p["tss0"] // measurement["resolution"]
-                ]
-                own_pairs = {o["bin_pair_id"] for o in observations}
-                if own_pairs:
-                    candidates = [c for c in candidates if c["bin_pair_id"] in own_pairs]
+            # TSSs in one Hi-C bin share a physical bin pair (chromosome, resolution, element
+            # bin and TSS bin), whatever bin_pair_id each file gave it. Pool its measurements
+            # by sample, so each TSS sees the same replicate set and duplicate TSS queries are
+            # not replicates. A same-bin pair takes no measured value; it only reuses a
+            # neighbouring TSS's rows when it has none of its own.
+            res = measurement["resolution"]
+            if res and (not observations or unit["anchor0"] // res != p["tss0"] // res):
+                candidates = same_tss_bin[key[0], p["chrom"], p["tss0"] // res]
                 by_sample = {}
                 for candidate in candidates:
                     sid = candidate["sample_id"]

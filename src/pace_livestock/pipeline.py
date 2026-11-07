@@ -15,7 +15,15 @@ from .evidence.assets import builtin_contact_prior, capabilities, load_asset
 from .evidence.promoters import resolve_promoter_weights, usage_weights
 from .evidence.resolve import contact_measurement_contract, resolve_activity, resolve_contacts
 from .io.tables import write_table
-from .provenance import digest, environment, file_hash, output_directory, software_hash, write_json
+from .provenance import (
+    digest,
+    environment,
+    file_hash,
+    output_directory,
+    policy_digest,
+    software_hash,
+    write_json,
+)
 from .reporting import evidence_catalog, evidence_summary, multiomics_features
 from .schemas import load_tables, promoter_weight_id, universe_ids
 
@@ -62,7 +70,7 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
         from .weak_labels import apply_weak_model
 
         assets["contact_prior"], weak_allocation = apply_weak_model(cfg, tables, assets, resolved_a)
-    resolved_c = resolve_contacts(tables, cfg, prior_asset=assets.get("contact_prior"))
+    resolved_c = resolve_contacts(tables, cfg, prior_asset=assets.get("contact_prior"), chunk=chunk)
     prior_metadata = assets.get("contact_prior", {})
     for row in resolved_c:
         if row.get("prior_id"):
@@ -353,6 +361,7 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
             for kind, asset in assets.items()
         },
         "config_hash": digest(cfg),
+        "policy_hash": policy_digest(cfg),
         "allocation": allocation,
         "ml_feature_contract": ml_contract,
     }

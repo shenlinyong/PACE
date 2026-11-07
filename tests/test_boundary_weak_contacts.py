@@ -477,6 +477,36 @@ def test_learned_eta_reaches_main_scores_and_reusable_artifact(configured, tmp_p
         compute(configured)
 
 
+def test_benchmark_check_accepts_weak_calibrated_run_and_rejects_changed_policy(
+    configured, tmp_path
+):
+    from pace_livestock.evaluation.benchmark import verify_run_inputs
+
+    variants = four_chromosomes(configured)
+    model, _ = calibrate(
+        configured,
+        variants,
+        gamma_grid=[1],
+        beta_grid=[0],
+        eta_grid=[0, 1],
+        test_chromosomes=["c4"],
+        aggregation="independent_signals",
+    )
+    path = tmp_path / "weak_model.json"
+    write_json(path, model)
+    configured["allocation"]["weak_model_path"] = str(path)
+    run(configured, tmp_path / "weak_run")
+    folder = tmp_path / "weak_run"
+    verify_run_inputs(folder, load_config(folder))
+    changed = load_config(folder)
+    changed["scoring"]["partial_policy"] = "conditional"
+    with pytest.raises(PaceError, match="scoring settings"):
+        verify_run_inputs(folder, changed)
+    write_json(path, {**model, "selected": {**model["selected"], "gamma": 2.0}})
+    with pytest.raises(PaceError, match="weak calibrator"):
+        verify_run_inputs(folder, load_config(folder))
+
+
 def test_all_five_cli_commands_and_main_run(configured, tmp_path):
     motifs = tmp_path / "motifs.tsv"
     write_table(

@@ -202,6 +202,32 @@ def model_scope(cfg, tables, assets, resolved_activity):
     return clean(calibration_scope(cfg, tables, assets, scales))
 
 
+def weak_parameters(model):
+    """The selected gamma, beta and eta of a weak calibrator, checked and as numbers."""
+    parameters = dict(model["selected"])
+    for key in ("gamma", "beta", "eta"):
+        value = number(parameters[key], key, minimum=0, maximum=1 if key == "eta" else None)
+        if key == "gamma" and value == 0:
+            raise PaceError("gamma must be positive")
+        parameters[key] = value
+    return parameters
+
+
+def weak_calibrated_prior(source, parameters, path):
+    """The source prior with the calibrator's gamma and beta, recorded as a derived asset."""
+    prior = {
+        **source,
+        "gamma": parameters["gamma"],
+        "beta": parameters["beta"],
+        "validation": {},
+        "weak_calibrator_sha256": file_hash(path),
+    }
+    prior["calibration_sources"] = [*prior["calibration_sources"], file_hash(path)]
+    prior["model_id"] += ":weak:" + file_hash(path)[:12]
+    prior["manifest_sha256"] = digest({k: v for k, v in prior.items() if k != "asset_directory"})
+    return prior
+
+
 def apply_weak_model(cfg, tables, assets, resolved_activity):
     path = cfg["allocation"]["weak_model_path"]
     model = read_json(path)
@@ -219,22 +245,8 @@ def apply_weak_model(cfg, tables, assets, resolved_activity):
         raise PaceError("Weak calibrator lacks chromosome-separated fitting evidence")
     if set(model["training_chromosomes"]) & set(model["test_chromosomes"]):
         raise PaceError("Weak calibrator training/test chromosomes overlap")
-    parameters = model["selected"]
-    for key in ("gamma", "beta", "eta"):
-        value = number(parameters[key], key, minimum=0, maximum=1 if key == "eta" else None)
-        if key == "gamma" and value == 0:
-            raise PaceError("gamma must be positive")
-        parameters[key] = value
-    prior = {
-        **assets["contact_prior"],
-        "gamma": parameters["gamma"],
-        "beta": parameters["beta"],
-        "validation": {},
-        "weak_calibrator_sha256": file_hash(path),
-    }
-    prior["calibration_sources"] = [*prior["calibration_sources"], file_hash(path)]
-    prior["model_id"] += ":weak:" + file_hash(path)[:12]
-    prior["manifest_sha256"] = digest({k: v for k, v in prior.items() if k != "asset_directory"})
+    parameters = weak_parameters(model)
+    prior = weak_calibrated_prior(assets["contact_prior"], parameters, path)
     allocation = {
         **model,
         "eta": parameters["eta"],

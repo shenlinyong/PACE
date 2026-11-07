@@ -16,7 +16,7 @@ from ..evidence.assets import load_asset
 from ..io.tables import number, read_table, write_table
 from ..labels import classify_label
 from ..pipeline import compute
-from ..provenance import file_hash, output_directory, write_json
+from ..provenance import file_hash, output_directory, policy_digest, read_json, write_json
 from .compare import load_run
 from .metrics import binary_metrics
 
@@ -72,12 +72,35 @@ def verify_run_inputs(config_path, run_cfg):
                 "baselines would not describe the reported run. Rerun the analysis or restore "
                 "the file"
             )
+    # The scoring settings are part of the run: a changed partial_policy, eta or contact rule
+    # gives other scores from unchanged tables.
+    if manifest.get("policy_hash") and policy_digest(run_cfg) != manifest["policy_hash"]:
+        raise PaceError(
+            "The scoring settings differ from the ones recorded in run_manifest.json; the "
+            "baselines would not describe the reported run. Restore resolved_config.yaml or "
+            "rerun the analysis"
+        )
     # The contact prior is an input of the scores as well (its boundary table is bound to
-    # its manifest by checksum).
+    # its manifest by checksum). Scores of an eQTL-calibrated run use the derived prior, so
+    # the source prior and the calibrator file are verified separately and the derived
+    # prior is rebuilt from them.
     prior = run_cfg["contact"].get("prior_path")
-    if prior and "contact_prior" in manifest.get("asset_hashes", {}):
-        current = load_asset(prior, run_cfg, kind="contact_prior")["manifest_sha256"]
-        if current != manifest["asset_hashes"]["contact_prior"]:
+    recorded_prior = manifest.get("asset_hashes", {}).get("contact_prior")
+    if prior and recorded_prior:
+        source = load_asset(prior, run_cfg, kind="contact_prior")
+        expected = source["manifest_sha256"]
+        weak = run_cfg["allocation"].get("weak_model_path")
+        if weak:
+            if file_hash(weak) != manifest.get("allocation", {}).get("artifact_sha256"):
+                raise PaceError(
+                    f"The weak calibrator {weak} differs from the one recorded in "
+                    "run_manifest.json; the baselines would not describe the reported run"
+                )
+            from ..weak_labels import weak_calibrated_prior, weak_parameters
+
+            parameters = weak_parameters(read_json(weak))
+            expected = weak_calibrated_prior(source, parameters, weak)["manifest_sha256"]
+        if expected != recorded_prior:
             raise PaceError(
                 f"The contact prior {prior} differs from the one recorded in run_manifest.json; "
                 "the baselines would not describe the reported run"

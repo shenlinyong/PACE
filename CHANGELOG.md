@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `pace benchmark` also rejects a result folder whose scoring settings (for example `partial_policy`) changed after the run: the manifest records a path-independent `policy_hash`, so moving the folder does not affect the check.
+- `pace benchmark` accepts unchanged eQTL-calibrated runs: the source prior and the weak calibrator file are verified separately and the calibrated prior is rebuilt from them before it is compared.
+- TSSs in the same Hi-C bin are pooled by physical bin pair (chromosome, resolution, element bin, TSS bin) instead of the file's `bin_pair_id`, so replicates from separate files agree.
+- A chromosome chunk without Hi-C rows follows the whole-genome rule also when the prior fallback is off: its pairs stay NA. A run without any raw contacts is rejected before chunking.
 - `pace benchmark --run RESULT_FOLDER` now reads `run_manifest.json` from the result folder itself, so changed inputs or a changed contact prior are rejected as with `resolved_config.yaml`.
 - Chromosome chunks without Hi-C rows take the contact prior when the prior fallback is allowed and kappa is fixed, as in a whole-genome run.
 - TSSs in the same Hi-C bin pool the measurements of that bin pair by sample, so replicates recorded under different TSSs give each of them the same contact.

@@ -170,12 +170,19 @@ def test_same_bin_tss_pools_replicates_recorded_under_different_tss(tmp_path):
     t["samples"].append({**next(iter(t["samples"])), "sample_id": "S_rep2"})
     t["observed_contacts"] = [r for r in t["observed_contacts"] if r is not first] + [
         {**first, "contact_value": 3.0},
-        {**first, "promoter_id": "P1b", "sample_id": "S_rep2", "contact_value": 9.0},
+        {
+            **first,
+            "promoter_id": "P1b",
+            "sample_id": "S_rep2",
+            "contact_value": 9.0,
+            # Another file numbers the same physical bin pair differently.
+            "bin_pair_id": "other_file:" + str(first["bin_pair_id"]),
+        },
     ]
     rows = resolve_contacts(t, cfg)
     a = next(r for r in rows if r["element_id"] == "E1" and r["promoter_id"] == "P1")
     b = next(r for r in rows if r["element_id"] == "E1" and r["promoter_id"] == "P1b")
-    assert a["resolved_value"] == b["resolved_value"]
+    assert a["resolved_value"] == b["resolved_value"] == 6.0
 
 
 def test_regularized_contacts_roundtrip_and_tampering(tmp_path):

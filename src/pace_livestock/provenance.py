@@ -65,6 +65,24 @@ def digest(value) -> str:
     ).hexdigest()
 
 
+def policy_digest(cfg: dict) -> str:
+    """Digest of every setting that shapes the scores, without input or asset locations.
+
+    Moving a result folder rewrites paths but not the policy, so the digest stays valid.
+    """
+
+    def strip(value):
+        if isinstance(value, dict):
+            return {
+                k: strip(v) for k, v in value.items() if k != "inputs" and not k.endswith("_path")
+            }
+        if isinstance(value, (list, tuple)):
+            return [strip(v) for v in value]
+        return value
+
+    return digest(strip(cfg))
+
+
 def digest_rows(rows) -> str:
     """Order-sensitive SHA-256 of many records without building one large JSON string."""
     h = hashlib.sha256()

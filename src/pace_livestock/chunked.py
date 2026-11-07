@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .errors import PaceError
 from .io.tables import read_table, write_table
-from .provenance import digest, file_hash, output_directory, write_json
+from .provenance import digest, file_hash, output_directory, policy_digest, write_json
 
 # Tables read once and passed unchanged to every chunk.
 GLOBAL_TABLES = ("samples", "sources", "evidence")
@@ -526,6 +526,7 @@ def merge_manifest(cfg: dict, results: list[dict], dest: Path) -> dict:
     manifest["comparison_contract"]["evidence_policy"]["promoter_weight_id"] = weights_id
     manifest["chunk_universe_ids"] = chunk_ids
     manifest["config_hash"] = digest(cfg)
+    manifest["policy_hash"] = policy_digest(cfg)
     manifest["input_hashes"] = {
         name: file_hash(path) for name, path in cfg["inputs"].items() if path
     }
@@ -571,4 +572,8 @@ def global_checks(cfg: dict) -> None:
     ):
         raise PaceError(
             "Observed contact mode needs contact observations or an explicitly allowed prior fallback"
+        )
+    if cfg["contact"]["reliability"] == "per_pair" and not cfg["inputs"].get("observed_contacts"):
+        raise PaceError(
+            "per_pair shrinkage requires raw observed_contacts, including when reusing resolved contacts"
         )
