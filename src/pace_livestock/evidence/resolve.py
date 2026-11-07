@@ -217,11 +217,21 @@ def prior_policy(prior_asset, *, element_level=False):
     )
 
 
-def run_kappa(observed_contacts, units, promoters, prior_asset, *, resolution, boundaries=None):
+def run_kappa(
+    observed_contacts,
+    units,
+    promoters,
+    prior_asset,
+    *,
+    resolution,
+    boundaries=None,
+    near_diagonal_bp=0,
+):
     """Gamma-Poisson concentration from the run's unique callable bin pairs.
 
     observed_contacts may be any iterable of contact rows (a whole-genome file can be
-    streamed); units and promoters map element_id/promoter_id to their rows.
+    streamed); units and promoters map element_id/promoter_id to their rows. Same-bin pairs
+    and pairs within near_diagonal_bp are excluded, as they are not shrunk.
     """
     if boundaries is None:
         boundaries = load_boundaries(prior_asset)
@@ -244,6 +254,9 @@ def run_kappa(observed_contacts, units, promoters, prior_asset, *, resolution, b
             "tss0": promoters[row["promoter_id"]]["tss0"],
         }
         for row in observed_contacts
+        # Pairs closer than near_diagonal_bp take the prior and are never shrunk.
+        if abs(units[row["element_id"]]["anchor0"] - promoters[row["promoter_id"]]["tss0"])
+        >= near_diagonal_bp
     )
     fitting = unique_count_pairs(rows, resolution=resolution, boundaries=boundaries)
     beta = prior_asset.get("beta", 0)
@@ -333,6 +346,7 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 prior_asset,
                 resolution=measurement["resolution"],
                 boundaries=boundaries,
+                near_diagonal_bp=cfg["contact"]["near_diagonal_bp"],
             )
             kappa_source = "run_unique_bin_pairs"
             if kappa is None:
@@ -473,6 +487,12 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                     reason = "unavailable_bin_prior"
                 else:
                     value, source, weight = math.nan, "observed", math.nan
+            elif mode == "shrinkage" and not math.isfinite(obs):
+                # No usable measurement: the same fallback rule as per-pair shrinkage.
+                if cfg["contact"]["allow_prior_fallback"]:
+                    value, source, weight = prior, "contact_prior", 0.0
+                else:
+                    value, source, weight = math.nan, "observed", math.nan
             elif mode == "shrinkage":
                 value, source, weight = shrink(obs, prior, w), "fused", w
             elif math.isfinite(obs):
@@ -537,8 +557,17 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 old = imported[key]
                 for field in ("resolved_value", "reliability", "kappa", "prior_value"):
                     expected = row[field] * (row_factor if field == "resolved_value" else 1.0)
-                    if not math.isclose(
-                        number(old.get(field), field), expected, rel_tol=1e-10, abs_tol=1e-12
+                    recorded = old.get(field)
+                    recorded = (
+                        math.nan
+                        if recorded is None
+                        or (isinstance(recorded, float) and math.isnan(recorded))
+                        else number(recorded, field)
+                    )
+                    # A pair that could not be resolved is NA in both the record and the rerun.
+                    if not (
+                        (math.isnan(recorded) and math.isnan(expected))
+                        or math.isclose(recorded, expected, rel_tol=1e-10, abs_tol=1e-12)
                     ):
                         raise PaceError(
                             "Imported per-pair posterior differs from raw-data recomputation"

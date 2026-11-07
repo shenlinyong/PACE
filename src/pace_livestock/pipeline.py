@@ -323,13 +323,14 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
             "contact_mode": cfg["contact"]["mode"],
             "contact_reliability": cfg["contact"]["reliability"],
             "contact_reliability_source": cfg["contact"]["reliability_source"],
-            "contact_kappa": cfg["contact"]["kappa"],
+            "contact_kappa": used_kappa(resolved_c, cfg),
             "allow_prior_fallback": cfg["contact"]["allow_prior_fallback"],
             "within_bin_distance": cfg["contact"]["within_bin_distance"],
             "pseudocount": cfg["contact"]["pseudocount"],
             "pseudocount_distance_bp": cfg["contact"]["pseudocount_distance_bp"],
             "pseudocount_strength": cfg["contact"]["pseudocount_strength"],
             "minimum_callable_fraction": cfg["activity"]["minimum_callable_fraction"],
+            "uncovered_bases": cfg["activity"]["uncovered_bases"],
             "asset_hashes": {k: a["manifest_sha256"] for k, a in assets.items()},
         },
     }
@@ -374,6 +375,24 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
         "manifest": manifest,
         "eta_calibration": allocation,
     }
+
+
+def used_kappa(resolved_contacts, cfg):
+    """The shrinkage concentration actually applied, not how it was requested.
+
+    Runs that differ only in how kappa was obtained (fitted in one pass, fitted over all
+    chromosomes, or frozen in the configuration) are the same measurement when the value
+    is the same; "auto" would make them look different.
+    """
+    values = {
+        float(f"{float(r['kappa']):.12g}")
+        for r in resolved_contacts
+        if r.get("kappa") is not None and r.get("kappa_source") != "not_needed"
+    }
+    if len(values) == 1:
+        return values.pop()
+    configured = cfg["contact"]["kappa"]
+    return None if configured == "auto" else configured
 
 
 def run(config_path, out):

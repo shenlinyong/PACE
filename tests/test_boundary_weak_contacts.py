@@ -3,6 +3,7 @@
 import copy
 import json
 import math
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -684,3 +685,51 @@ def test_benchmark_keeps_frozen_contact_and_varies_eta(configured, tmp_path):
         metrics["PACE_eta1"]["average_precision"] == metrics["PACE_eqtl_weak"]["average_precision"]
     )
     assert metrics["PACE_eta0"]["average_precision"] < metrics["PACE_eta1"]["average_precision"]
+
+
+@pytest.mark.parametrize("fallback", [True, False])
+def test_fixed_weight_shrinkage_follows_the_prior_fallback_switch(configured, fallback):
+    rows = read_table(configured["inputs"]["observed_contacts"])
+    rows[1].update(contact_value=None, measurement_status="unmappable", count_to_contact=None)
+    write_table(configured["inputs"]["observed_contacts"], rows)
+    configured["contact"].update(
+        reliability=0.5, reliability_source="manual", allow_prior_fallback=fallback
+    )
+    result = compute(configured)
+    masked = {(r["element_id"], r["promoter_id"]): r for r in result["resolved_contacts"]}[
+        "E2", "P1"
+    ]
+    if fallback:
+        assert masked["evidence_type"] == "contact_prior" and math.isfinite(
+            masked["resolved_value"]
+        )
+    else:
+        assert math.isnan(masked["resolved_value"])
+
+
+def test_kappa_ignores_pixels_that_take_the_prior_because_of_near_diagonal_bp(configured):
+    # Every pair is closer than near_diagonal_bp, so none is shrunk and none informs kappa.
+    prior = json.loads(Path(configured["contact"]["prior_path"]).read_text())
+    prior.pop("kappa", None)
+    write_json(configured["contact"]["prior_path"], prior)
+    configured["contact"]["near_diagonal_bp"] = 10**9
+    result = compute(configured)
+    sources = {r["kappa_source"] for r in result["resolved_contacts"]}
+    assert sources == {"not_needed"}
+    assert {r["evidence_type"] for r in result["resolved_contacts"]} == {"contact_prior"}
+
+
+def test_resolved_contacts_with_unresolved_pairs_can_be_imported_again(configured, tmp_path):
+    rows = read_table(configured["inputs"]["observed_contacts"])
+    rows[1].update(contact_value=None, measurement_status="unmappable", count_to_contact=None)
+    write_table(configured["inputs"]["observed_contacts"], rows)
+    configured["contact"]["allow_prior_fallback"] = False
+    original = run(configured, tmp_path / "original")
+    assert any(r["resolution_status"] == "unresolved" for r in original["resolved_contacts"])
+    configured["inputs"]["resolved_contacts"] = str(tmp_path / "original/resolved_contacts.tsv")
+    configured["inputs"]["evidence"] = str(tmp_path / "original/evidence.tsv")
+    configured["inputs"]["sources"] = str(tmp_path / "original/sources.tsv")
+    repeated = compute(configured)
+    assert [r["pace_score"] for r in repeated["scores"]] == pytest.approx(
+        [r["pace_score"] for r in original["scores"]], nan_ok=True
+    )

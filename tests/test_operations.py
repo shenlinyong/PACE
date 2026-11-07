@@ -279,3 +279,18 @@ def test_benchmark_reports_coverage_when_no_label_maps_to_an_element(tmp_path):
     assert math.isnan(row["auroc"]) and math.isnan(row["average_precision"])
     manifest = json.loads((tmp_path / "benchmark" / "benchmark_manifest.json").read_text())
     assert manifest["n_positive_unmapped"] == 3
+
+
+def test_benchmark_rejects_run_inputs_changed_after_the_run(tmp_path):
+    p, run_config = benchmark_inputs(tmp_path)
+    assert main(["run", "--config", str(run_config), "--out", str(tmp_path / "run")]) == 0
+    cfg = yaml.safe_load(p.read_text())
+    cfg["run_config"] = str(tmp_path / "run" / "resolved_config.yaml")
+    p.write_text(yaml.safe_dump(cfg))
+    assert benchmark_command(p, tmp_path / "ok")
+    activity = run_config.parent / "observed_activity.tsv"
+    rows = read_table(activity)
+    rows[0]["signal"] = 99
+    write_table(activity, rows)
+    with pytest.raises(PaceError, match="differs from the hash"):
+        benchmark_command(p, tmp_path / "changed")

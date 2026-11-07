@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.8
+
+- `pace compare` compares how bigWig bases without data were handled (`activity.uncovered_bases`, set by `pace predict --missing-as-zero` or `pace run --uncovered-bases`) and the coverage threshold; runs that differ need `--allow-evidence-difference` and give conditional differences only.
+- `pace compare` compares the shrinkage $\kappa$ that was applied, so a run scored in chromosome chunks and the same run scored whole are compatible.
+- `pace benchmark` checks the run's input files against the hashes in `run_manifest.json` before it recomputes the baselines.
+- Fixed-weight shrinkage follows `contact.allow_prior_fallback` for pairs without a usable measurement, as per-pair shrinkage does.
+- The automatic $\kappa$ leaves out pairs that take the prior because of `near_diagonal_bp`, not only same-bin pairs.
+- Resolved contacts that contain unresolved (NA) pairs can be imported again with their evidence tables.
+- Documentation: the memory bound applies to the scoring stage; candidate generation and merging read whole tables.
+
 ## 0.12.7
 
 - `pace benchmark`: a label that names its `source_id` is looked up as (`source_id`, region) and is unmapped when that source lacks the region; it no longer takes the element of another source.

@@ -169,7 +169,7 @@ Contact is estimated from distance alone, $\widetilde C(E,t)=1/\max(d,\,5\,\math
 | `--gene-types` | all | Keep only these biotypes, e.g. `protein_coding` (Ensembl) or `mRNA` (NCBI) |
 | `--skip-unlisted-chroms` | off | Ignore peaks and genes on contigs missing from the chromosome sizes |
 | `--min-callable-fraction` | 0 | Elements with less bigWig coverage become NA; 0.8 is a common choice |
-| `--missing-as-zero` | off | Read bases absent from the bigWig as measured zero signal |
+| `--missing-as-zero` | off | Read bases absent from the bigWig as measured zero signal; recorded as `activity.uncovered_bases` and compared by `pace compare` |
 | `--tss-weights` | `usage` | TSS weights: promoter activity share or `equal` (`pace run` also accepts `provided`) |
 | `--no-boundaries` | off | Fit the distance decay only, even with CTCF data |
 | `--no-shrinkage` | off | With `--hic`: use measured contacts plus the distance pseudocount, without per-pair shrinkage |
@@ -322,7 +322,7 @@ pace compare --left results/pig1 --right results/pig2 -o results/pig2_vs_pig1
 
 `pace compare` rescores both runs over their common candidates and reports right minus left. Both runs need the same species, assembly and tissue label; runs of different tissues are not compared. Runs that differ in the contact method (for example `--bin-level-contacts`) need `--allow-evidence-difference` and give conditional differences only. Runs with their own Hi-C each have their own contact model and need `--allow-evidence-difference`, which gives conditional differences only. Interpret a difference through activity, contact and the gene total, not `pace_score` alone.
 
-**Whole genomes.** Every term is computed within a chromosome, so `pace predict` scores chromosomes separately (`--by-chromosome` in `pace run`) and in parallel (`-t`) with identical results. Memory is set by the largest chromosome; a smaller `--radius` reduces it.
+**Whole genomes.** Every term is computed within a chromosome, so `pace predict` scores chromosomes separately (`--by-chromosome` in `pace run`) and in parallel (`-t`) with identical results. The memory of the scoring stage is set by the largest chromosome, and a smaller `--radius` reduces it. Building the candidate pairs and merging the chunk results read whole tables, so the peak memory of a full run also grows with the total number of candidate pairs.
 
 ## RNA-seq, methylation and other data
 
@@ -423,7 +423,7 @@ Scores from different runs are comparable only when candidates, assays, normaliz
 
 **`Output already exists`** — choose a new `-o` folder, or `--force` to replace it after a backup.
 
-**Out of memory** — fewer `--threads`, a smaller `--radius`, or chunked scoring (default in `predict`, `--by-chromosome` in `run`).
+**Out of memory** — fewer `--threads`, a smaller `--radius` (it also reduces the number of candidate pairs), or chunked scoring (default in `predict`, `--by-chromosome` in `run`). Chunking bounds the scoring stage only; for a very large candidate set, run chromosomes or regions separately.
 
 **Only one animal?** — supported (`--target-level individual`).
 

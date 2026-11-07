@@ -867,3 +867,30 @@ def test_hic_run_with_two_shrinkable_pairs_explains_the_kappa_limit(inputs, tmp_
     code = call(*args, "--no-shrinkage", "--pseudocount", "none", "-o", tmp_path / "plain")
     capsys.readouterr()
     assert code == 0
+
+
+def test_compare_flags_a_difference_in_uncovered_base_handling(inputs, tmp_path, capsys):
+    assert predict_hic(inputs, tmp_path / "ignored") == 0
+    assert predict_hic(inputs, tmp_path / "zeroed", "--missing-as-zero") == 0
+    capsys.readouterr()
+    left, right = tmp_path / "ignored", tmp_path / "zeroed"
+    assert call("compare", "--left", left, "--right", right, "-o", tmp_path / "c1") == 2
+    assert "evidence_policy" in capsys.readouterr().err
+
+
+def test_compare_accepts_runs_that_differ_only_in_how_kappa_was_obtained(inputs, tmp_path, capsys):
+    assert predict_hic(inputs, tmp_path / "chunked") == 0
+    assert predict_hic(inputs, tmp_path / "whole", "--chunk-pairs", 0) == 0
+    capsys.readouterr()
+    code = call(
+        "compare",
+        "--left",
+        tmp_path / "chunked",
+        "--right",
+        tmp_path / "whole",
+        "-o",
+        tmp_path / "c",
+    )
+    assert code == 0, capsys.readouterr().err
+    rows = read_table(tmp_path / "c" / "comparison.tsv")
+    assert rows and all(r["reason"] == "complete" for r in rows if r["full_delta_pace"] != "")

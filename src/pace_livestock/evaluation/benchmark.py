@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import copy
+import json
 import math
 from collections import defaultdict
+from pathlib import Path
 
 from ..catalog import map_labels
 from ..config import load_config, operation_base, operation_config, strict_keys
@@ -13,7 +15,7 @@ from ..errors import PaceError
 from ..io.tables import number, read_table, write_table
 from ..labels import classify_label
 from ..pipeline import compute
-from ..provenance import output_directory, write_json
+from ..provenance import file_hash, output_directory, write_json
 from .compare import load_run
 from .metrics import binary_metrics
 
@@ -48,6 +50,25 @@ def predict_ml_command(path, out):
     return predictions
 
 
+def verify_run_inputs(config_path, run_cfg):
+    """Stop when an input of the scored run changed after the run wrote its manifest.
+
+    The baselines are recomputed from the run's input tables, so a modified table would
+    give scores that no longer belong to the reported run.
+    """
+    manifest_path = Path(config_path).resolve().parent / "run_manifest.json"
+    if not manifest_path.is_file():
+        return
+    recorded = json.loads(manifest_path.read_text(encoding="utf-8")).get("input_hashes", {})
+    for name, path in run_cfg["inputs"].items():
+        if path and name in recorded and file_hash(path) != recorded[name]:
+            raise PaceError(
+                f"Run input {name} ({path}) differs from the hash in run_manifest.json; the "
+                "baselines would not describe the reported run. Rerun the analysis or restore "
+                "the file"
+            )
+
+
 def benchmark_command(path, out):
     cfg = operation_config(
         path,
@@ -63,6 +84,7 @@ def benchmark_command(path, out):
         paths=["run_config", "labels", "region_membership"],
     )
     run_cfg = load_config(cfg["run_config"])
+    verify_run_inputs(cfg["run_config"], run_cfg)
     labels = read_table(
         cfg["labels"],
         required=[

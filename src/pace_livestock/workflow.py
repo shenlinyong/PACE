@@ -340,7 +340,11 @@ def predict(args):
                     "chrom_sizes_path": str(catalog_dir / "chrom_sizes.tsv"),
                     "candidate_radius_bp": args.radius,
                 },
-                "activity": {"panel": sorted({assay for assay, _ in tracks})},
+                "activity": {
+                    "panel": sorted({assay for assay, _ in tracks}),
+                    "minimum_callable_fraction": args.min_callable_fraction,
+                    "uncovered_bases": "zero_signal" if args.missing_as_zero else "ignored",
+                },
                 "contact": contact,
                 "scoring": {"partial_policy": args.partial_policy},
                 "promoters": {"weights": args.tss_weights},
@@ -412,6 +416,7 @@ def genome_kappa(cfg):
         promoters,
         prior,
         resolution=integer(first["resolution"], "resolution", minimum=1),
+        near_diagonal_bp=cfg["contact"]["near_diagonal_bp"],
     )
     # None: every measured pair is in the TSS's own bin and takes the prior; no pair is shrunk.
     return 1.0 if kappa is None else kappa

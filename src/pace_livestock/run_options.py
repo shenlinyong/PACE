@@ -57,6 +57,7 @@ VALUE_OPTIONS = {
     "minimum_tss_weight": ("promoters", "minimum_weight"),
     "tss_weights": ("promoters", "weights"),
     "min_callable_fraction": ("activity", "minimum_callable_fraction"),
+    "uncovered_bases": ("activity", "uncovered_bases"),
     "missing_tss_policy": ("promoters", "missing_policy"),
     "minimum_retained_tss_weight": ("promoters", "minimum_retained_weight"),
     "prior_preset": ("contact", "prior_preset"),
@@ -200,6 +201,12 @@ def add_run_options(
         type=float,
         metavar="F",
         help="Activity rows with a smaller bigWig-covered fraction are treated as missing",
+    )
+    model.add_argument(
+        "--uncovered-bases",
+        choices=["ignored", "zero_signal"],
+        help="How the prepared activity treated bigWig bases without data (`pace activity "
+        "--missing-as-zero` is zero_signal); recorded so that runs are compared like with like",
     )
     model.add_argument(
         "--activity-pseudocount",

@@ -353,7 +353,12 @@ def validate_tables(t: dict, cfg: dict) -> None:
             sample = row["observation_sample_id"]
             if sample and sample not in samples:
                 raise PaceError(f"{name}: unknown observation_sample_id")
-            if row["evidence_type"] == "observed" and not sample:
+            # An unresolved row (a value that could not be computed) has no sample to cite.
+            if (
+                row["evidence_type"] == "observed"
+                and row["resolution_status"] == "resolved"
+                and not sample
+            ):
                 raise PaceError("Observed evidence requires a real sample")
             if row["evidence_type"] == "regularized" and not (
                 sample or row.get("parent_evidence_ids")
