@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27,<2"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pace-livestock"
+name = "PACE"
 version = "1.0.0"
 description = "PACE (Prior-Anchored Contact Estimation): enhancer-gene prediction from low-depth, low-resolution and surrogate-tissue Hi-C"
 readme = "README.md"
@@ -20,7 +20,6 @@ dev = ["pytest>=8,<10", "pytest-cov>=6,<8", "build>=1.2,<2", "ruff>=0.11,<1", "p
 
 [project.scripts]
 pace = "pace_livestock.cli:main"
-pace-livestock = "pace_livestock.cli:main"
 
 [project.urls]
 Repository = "https://github.com/shenlinyong/PACE"

@@ -31,7 +31,7 @@ def iter_contacts(
     try:
         import cooler
     except ImportError as exc:
-        raise PaceError("cool/mcool support requires pip install 'pace-livestock[io]'") from exc
+        raise PaceError("cool/mcool support requires pip install 'PACE[io]'") from exc
     c = cooler.Cooler(str(uri))
     if c.binsize != resolution:
         raise PaceError(f"cooler resolution {c.binsize} does not match requested {resolution}")

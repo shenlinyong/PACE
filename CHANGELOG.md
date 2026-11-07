@@ -2,6 +2,7 @@
 
 ## 1.0.0
 
+- The distribution is named PACE (`pip install PACE`; the wheel is `pace-1.0.0`). The Python module stays `pace_livestock` and the command `pace`; the `pace-livestock` command is removed.
 - `pace benchmark` checks that the run uses the same set of input tables and setting files (`prior_path`, calibrators, models) as recorded in `run_manifest.json`; a file added or removed, such as a cleared `prior_path`, is rejected. The manifest records the hash of each setting file in `setting_files`.
 - The built-in distance prior goes through the same scoring-asset check as a fitted prior, including eQTL weak calibration: a changed calibrator file is rejected in both cases.
 - `pace benchmark` also rejects a result folder whose scoring settings (for example `partial_policy`) changed after the run: the manifest records a path-independent `policy_hash`, so moving the folder does not affect the check.

@@ -77,9 +77,7 @@ def test_label_regions_not_duplicated():
 
 
 def test_real_bigwig_missing_and_negative(tmp_path):
-    bw = pytest.importorskip(
-        "pyBigWig", reason="install pace-livestock[io] to test real bigWig files"
-    )
+    bw = pytest.importorskip("pyBigWig", reason="install PACE[io] to test real bigWig files")
     p = tmp_path / "a.bw"
     with bw.open(str(p), "w") as w:
         w.addHeader([("chr1", 1000)])
@@ -99,7 +97,7 @@ def test_real_bigwig_missing_and_negative(tmp_path):
 
 
 def test_real_cooler_sparse_shared_bin(tmp_path):
-    cooler = pytest.importorskip("cooler", reason="install pace-livestock[io] to test cooler")
+    cooler = pytest.importorskip("cooler", reason="install PACE[io] to test cooler")
     pd = pytest.importorskip("pandas", reason="cooler dataframe dependency")
     p = tmp_path / "a.cool"
     bins = pd.DataFrame(

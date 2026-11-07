@@ -508,7 +508,6 @@ def test_console_entries_do_not_collide_on_case_insensitive_filesystems():
     scripts = metadata["project"]["scripts"]
     assert scripts == {
         "pace": "pace_livestock.cli:main",
-        "pace-livestock": "pace_livestock.cli:main",
     }
     assert len({name.casefold() for name in scripts}) == len(scripts)
 
