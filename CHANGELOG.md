@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0
 
 - `pace benchmark` checks that the run uses the same set of input tables and setting files (`prior_path`, calibrators, models) as recorded in `run_manifest.json`; a file added or removed, such as a cleared `prior_path`, is rejected. The manifest records the hash of each setting file in `setting_files`.
 - The built-in distance prior goes through the same scoring-asset check as a fitted prior, including eQTL weak calibration: a changed calibrator file is rejected in both cases.
@@ -66,7 +66,7 @@
 - `--bin-level-contacts` no longer changes the value of pairs filled by the prior alone (same bin, masked bin, no reads); they stay at their exact distance.
 - `pace predict --tss-weights` accepts `usage` and `equal`; `provided` is available in `pace run`, where `promoters.tsv` is an input.
 - Command summaries and `report.md` report `n_primary_scores`, the pairs with a primary score, next to `n_scoreable`.
-- Small-sample quick-test assets are marked `is_test_data` (was `is_synthetic`) and `--test-data` (was `--synthetic`); perturbation type `synthetic_inhibition` is now `test_inhibition`.
+- Small-sample quick-test assets are marked `is_test_data` and `--test-data`; the matching perturbation type is `test_inhibition`. Asset files written by earlier versions need their manifest field renamed.
 - Documentation: `--aliases` applies to the BED, GTF and chromosome sizes files; `pace compare` needs the same tissue label in both runs; README opens with the method name and the Hi-C conditions it is designed for.
 
 ## 0.12.3
