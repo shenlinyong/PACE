@@ -399,7 +399,7 @@ def fit_cooler_command(args):
         **fitted,
         "model_id": args.model_id,
         "kind": "contact_prior",
-        "is_synthetic": args.synthetic,
+        "is_test_data": args.test_data,
         "species": args.species,
         "assembly": args.assembly,
         "context_id": args.tissue,

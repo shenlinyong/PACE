@@ -34,7 +34,7 @@ def test_direct_modes_without_yaml(tmp_path, mode, regime):
         "--catalog-dir",
         root,
         "--species",
-        "synthetic",
+        "test",
         "--assembly",
         "toy_assembly",
         "--tissue",

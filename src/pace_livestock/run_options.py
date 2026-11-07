@@ -128,7 +128,7 @@ def add_run_options(
     context.add_argument(
         "--profile",
         choices=["research", "validated", "demonstration"],
-        help="Default: research; synthetic assets require demonstration",
+        help="Default: research; test-data assets require demonstration",
     )
     context.add_argument("--seed", type=int)
     files = parser.add_argument_group("canonical input tables and genomic assets")

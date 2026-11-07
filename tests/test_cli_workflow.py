@@ -631,7 +631,7 @@ def test_boundaries_on_other_chromosome_names_stop_the_fit(inputs, tmp_path, mon
         no_boundaries=False,
         ctcf="peaks",
         genome="fasta",
-        synthetic=False,
+        test_data=False,
         species="pig",
         assembly="toy",
         tissue="liver",

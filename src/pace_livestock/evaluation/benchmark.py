@@ -342,7 +342,7 @@ def benchmark_command(path, out):
                 "n_excluded": len(rejected),
                 "input_profile": run_cfg["execution_profile"],
                 "eta_calibration": calibration,
-                "biological_validation_claim": "none_for_synthetic_data"
+                "biological_validation_claim": "none_for_test_data"
                 if run_cfg["execution_profile"] == "demonstration"
                 else "task_and_dataset_specific_only",
             },

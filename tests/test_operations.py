@@ -17,11 +17,11 @@ from pace_livestock.operations import fit_contact_command, prepare_command
 def metadata():
     return dict(
         model_id="test",
-        species="synthetic",
+        species="test",
         assembly="toy",
         context_id="tissue",
         target_level="individual",
-        is_synthetic=True,
+        is_test_data=True,
     )
 
 
@@ -88,7 +88,7 @@ def test_benchmark_four_explicit_baselines(tmp_path):
             label_id=f"L{i}",
             assayed_region_id=e,
             gene_id=g,
-            species="synthetic",
+            species="test",
             assembly="toy_assembly",
             context_id="toy_tissue",
             effect_direction="down" if i % 2 else "none",
@@ -137,7 +137,7 @@ def benchmark_inputs(tmp_path, **label_fields):
             label_id=f"L{i}",
             assayed_region_id=e,
             gene_id=g,
-            species="synthetic",
+            species="test",
             assembly="toy_assembly",
             context_id="toy_tissue",
             effect_direction="down" if i % 2 else "none",

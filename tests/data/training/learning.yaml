@@ -1,8 +1,8 @@
-model_id: synthetic_classifier
+model_id: test_classifier
 data: learning.tsv
-is_synthetic: true
+is_test_data: true
 context:
-  species: synthetic
+  species: test
   assembly: toy_assembly
   context_id: toy_tissue
 extra_features:

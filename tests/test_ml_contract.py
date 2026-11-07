@@ -21,7 +21,7 @@ from pace_livestock.learning.model import (
 )
 from pace_livestock.pipeline import compute, run
 
-CONTEXT = dict(species="synthetic", assembly="toy", context_id="liver")
+CONTEXT = dict(species="test", assembly="toy", context_id="liver")
 CONTRACT = {
     "target_level": "individual",
     "estimand": "bulk_proxy",
@@ -73,7 +73,7 @@ def fixture_data(tmp_path):
     config = dict(
         data="labels.tsv",
         model_id="contract_test",
-        is_synthetic=True,
+        is_test_data=True,
         context=CONTEXT,
         feature_contract=CONTRACT,
         extra_features=["RNA:TPM"],
@@ -206,7 +206,7 @@ def test_new_loci_with_same_contract_are_allowed(trained):
     assert prediction["ml_status"] == "resolved"
     assert math.isfinite(prediction["pace_ml_score"])
     assert math.isfinite(prediction["pace_ml_probability"])
-    assert prediction["ml_probability_scope"] == "synthetic_demonstration_only"
+    assert prediction["ml_probability_scope"] == "test_data_only"
 
 
 def test_contract_panel_order_is_irrelevant():
@@ -228,7 +228,7 @@ def test_legacy_research_model_cannot_silently_claim_scope(trained, tmp_path):
     model, _, rows = trained
     asset = json.loads((model / "model.json").read_text())
     asset.pop("feature_contract")
-    asset["is_synthetic"] = False
+    asset["is_test_data"] = False
     legacy = tmp_path / "legacy.json"
     legacy.write_text(json.dumps(asset))
     predictions = predict_score_rows(
@@ -247,7 +247,7 @@ def test_legacy_research_model_cannot_silently_claim_scope(trained, tmp_path):
 def test_research_training_requires_declared_contract(tmp_path):
     path, config, _ = fixture_data(tmp_path)
     config.pop("feature_contract")
-    config["is_synthetic"] = False
+    config["is_test_data"] = False
     path.write_text(yaml.safe_dump(config))
     with pytest.raises(PaceError, match="explicit feature_contract"):
         train_classifier(path, tmp_path / "model")
@@ -353,10 +353,7 @@ def test_training_config_and_both_inference_paths(tmp_path):
     cfg["multiomics"] = {"mode": "ml", "model_path": str(tmp_path / "model")}
     integrated = compute(cfg)
     assert all(row["ml_status"] == "resolved" for row in integrated["scores"])
-    assert all(
-        row["ml_probability_scope"] == "synthetic_demonstration_only"
-        for row in integrated["scores"]
-    )
+    assert all(row["ml_probability_scope"] == "test_data_only" for row in integrated["scores"])
     probabilities = {r["element_id"]: r["pace_ml_probability"] for r in integrated["scores"]}
     assert probabilities["E1"] < probabilities["E2"] < probabilities["E3"]
     assert [r["pace_score"] for r in integrated["scores"]] == [

@@ -13,7 +13,7 @@ def create_example(destination, regime="measured"):
         raise ValueError("PACE demonstrations require measured activity")
     dest = Path(destination)
     dest.mkdir(parents=True, exist_ok=True)
-    context = {"species": "synthetic", "assembly": "toy_assembly", "context_id": "toy_tissue"}
+    context = {"species": "test", "assembly": "toy_assembly", "context_id": "toy_tissue"}
     units = [
         {
             "element_id": f"E{i + 1}",
@@ -34,7 +34,7 @@ def create_example(destination, regime="measured"):
             "tss0": tss,
             "strand": "+",
             "pi": 1,
-            "pi_source": "synthetic_equal",
+            "pi_source": "test_equal",
         }
         for gene, p, tss in [("G1", "P1", 10000), ("G2", "P2", 14000)]
     ]
@@ -52,12 +52,12 @@ def create_example(destination, regime="measured"):
     write_table(dest / "candidates.tsv", candidates)
     source = dict(
         source_id="toy_source",
-        path_or_accession="generated:PACE-synthetic-fixture",
-        source_type="synthetic",
+        path_or_accession="generated:PACE-test-fixture",
+        source_type="test",
         assembly="toy_assembly",
         processing_method="deterministic_fixture",
         normalization_id="toy_mean",
-        checksum="synthetic_recipe",
+        checksum="test_recipe",
     )
     write_table(dest / "sources.tsv", [source])
     write_table(dest / "evidence.tsv", [], fields=SCHEMAS["evidence"].split())

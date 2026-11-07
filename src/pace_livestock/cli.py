@@ -516,7 +516,7 @@ def add_asset_options(p, *, measurement=True, measurement_required=True):
     add_context(p, required=False)
     p.add_argument("--model-id", default="contact_prior", help="Name of the prior")
     p.add_argument(
-        "--synthetic", action="store_true", help="Mark the asset as synthetic (demonstration)"
+        "--test-data", action="store_true", help="Mark the asset as small-sample quick-test data"
     )
     if measurement:
         m = p.add_argument_group("contact measurement definition")
@@ -572,7 +572,7 @@ def prior_parsers(command):
         help="Fit the distance decay only, without the CTCF domain-boundary term",
     )
     p.add_argument(
-        "--synthetic", action="store_true", help="Label a toy cooler asset for demonstration only"
+        "--test-data", action="store_true", help="Mark a small-sample quick-test cooler asset"
     )
     add_out(p)
     add_legacy_config(p)
@@ -712,7 +712,7 @@ def analysis_parsers(command):
     p.add_argument("--model-id", default="pace_classifier")
     for flag in ("species", "assembly", "tissue"):
         p.add_argument("--" + flag)
-    p.add_argument("--synthetic", action="store_true", help="Synthetic training data")
+    p.add_argument("--test-data", action="store_true", help="Small-sample quick-test training data")
     p.add_argument("--feature-contract", help="ml_feature_contract.json of the run")
     p.add_argument("--extra-features", nargs="+", help="Additional feature names")
     p.add_argument(
@@ -864,7 +864,7 @@ def asset_options(args):
         "context_id": args.tissue,
         "target_level": args.target_level,
         "model_id": args.model_id,
-        "is_synthetic": bool(args.synthetic),
+        "is_test_data": bool(args.test_data),
         "scale": args.scale,
         "resolution": args.resolution,
         "normalization_id": args.normalization_id,
@@ -1184,7 +1184,7 @@ def train_options(args):
     return {
         "data": args.data,
         "model_id": args.model_id,
-        "is_synthetic": bool(args.synthetic),
+        "is_test_data": bool(args.test_data),
         "context": context,
         "feature_contract": contract,
         "extra_features": args.extra_features,

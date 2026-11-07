@@ -44,8 +44,8 @@ def asset():
     return dict(
         model_id="toy_boundary",
         kind="contact_prior",
-        is_synthetic=True,
-        species="synthetic",
+        is_test_data=True,
+        species="test",
         assembly="toy_assembly",
         context_id="toy_tissue",
         target_level="individual",
@@ -496,7 +496,7 @@ def test_all_five_cli_commands_and_main_run(configured, tmp_path):
         if k
         in {
             "model_id",
-            "is_synthetic",
+            "is_test_data",
             "species",
             "assembly",
             "context_id",
@@ -647,7 +647,7 @@ def test_benchmark_keeps_frozen_contact_and_varies_eta(configured, tmp_path):
             label_id=f"L{i}",
             assayed_region_id=e,
             gene_id=g,
-            species="synthetic",
+            species="test",
             assembly="toy_assembly",
             context_id="toy_tissue",
             effect_direction="down" if positive else "none",

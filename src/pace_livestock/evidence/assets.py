@@ -17,7 +17,7 @@ def builtin_contact_prior(cfg):
     m = {
         "model_id": "distance_only_gamma_1",
         "kind": "contact_prior",
-        "is_synthetic": False,
+        "is_test_data": False,
         **cfg["context"],
         "target_level": cfg["target_level"],
         "prior_source": "distance_only",
@@ -52,7 +52,7 @@ def load_asset(path, cfg: dict, *, kind: str) -> dict:
     required = {
         "model_id",
         "kind",
-        "is_synthetic",
+        "is_test_data",
         "species",
         "assembly",
         "context_id",
@@ -65,14 +65,14 @@ def load_asset(path, cfg: dict, *, kind: str) -> dict:
     missing = required - set(m)
     if missing:
         raise PaceError(f"{kind} manifest lacks {sorted(missing)}")
-    if m["kind"] != kind or type(m["is_synthetic"]) is not bool:
-        raise PaceError(f"Invalid kind or is_synthetic in {manifest_path}")
-    if cfg["execution_profile"] != "demonstration" and m["is_synthetic"]:
+    if m["kind"] != kind or type(m["is_test_data"]) is not bool:
+        raise PaceError(f"Invalid kind or is_test_data in {manifest_path}")
+    if cfg["execution_profile"] != "demonstration" and m["is_test_data"]:
         raise PaceError(
-            f"Synthetic {kind} weights cannot be used in {cfg['execution_profile']} profile"
+            f"Test-data {kind} weights cannot be used in {cfg['execution_profile']} profile"
         )
-    if cfg["execution_profile"] == "demonstration" and not m["is_synthetic"]:
-        raise PaceError("demonstration requires explicitly synthetic assets")
+    if cfg["execution_profile"] == "demonstration" and not m["is_test_data"]:
+        raise PaceError("demonstration requires explicitly marked test-data assets")
     transferred = m["context_id"] != cfg["context"]["context_id"]
     for field, expected in {**cfg["context"], "target_level": cfg["target_level"]}.items():
         if m[field] != expected:
@@ -140,8 +140,8 @@ def capabilities(cfg: dict) -> dict:
             assets[kind] = {
                 "weights_status": "transferred"
                 if m.get("transfer_status")
-                else "synthetic"
-                if m["is_synthetic"]
+                else "test_data"
+                if m["is_test_data"]
                 else "real",
                 "model_id": m["model_id"],
                 "task_validation_status": m["validation"],

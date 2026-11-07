@@ -22,7 +22,7 @@ LABEL_FIELDS = (
     "label_id element_id gene_id species assembly context_id target_level "
     "perturbation_type effect_direction label_status split group_id assay_id source_id"
 ).split()
-PERTURBATIONS = {"CRISPRi", "deletion", "enhancer_inhibition", "synthetic_inhibition"}
+PERTURBATIONS = {"CRISPRi", "deletion", "enhancer_inhibition", "test_inhibition"}
 METHOD = "gene_balanced_pairwise_logistic_v1"
 VALIDATED_METHOD = "grouped_ap_one_se_pairwise_v2"
 SHRINKAGE_GRID = tuple(i / 20 for i in range(21))
@@ -159,10 +159,10 @@ def _eligible_labels(rows: list[dict], cfg: dict) -> tuple[list[dict], list[dict
         elif row["perturbation_type"] not in PERTURBATIONS:
             reason = "unsupported_perturbation"
         elif (
-            row["perturbation_type"] == "synthetic_inhibition"
+            row["perturbation_type"] == "test_inhibition"
             and cfg["execution_profile"] != "demonstration"
         ):
-            raise PaceError("Synthetic eta labels require execution_profile=demonstration")
+            raise PaceError("Test-data eta labels require execution_profile=demonstration")
         elif classify_label(row)[0] is None:
             reason = classify_label(row)[1]
         if reason:
@@ -440,7 +440,7 @@ def resolve_eta(edges: list[dict], cfg: dict, scope: dict) -> dict:
         "kind": "allocation_calibrator",
         "scope": scope,
         "scope_sha256": digest(scope),
-        "is_synthetic": cfg["execution_profile"] == "demonstration",
+        "is_test_data": cfg["execution_profile"] == "demonstration",
         "requested": requested,
     }
     if requested != "auto":
@@ -466,8 +466,8 @@ def resolve_eta(edges: list[dict], cfg: dict, scope: dict) -> dict:
             "scope_sha256"
         ) != digest(scope):
             raise PaceError("Eta calibrator scope differs from this run's scientific contract")
-        if fitted.get("is_synthetic") is not False and cfg["execution_profile"] != "demonstration":
-            raise PaceError("Synthetic or unspecified eta calibration cannot enter a research run")
+        if fitted.get("is_test_data") is not False and cfg["execution_profile"] != "demonstration":
+            raise PaceError("Test-data or unspecified eta calibration cannot enter a research run")
         eta = number(fitted.get("eta"), "calibrated eta", minimum=0, maximum=1)
         if eta > 0 and (
             fitted["status"] != "fitted"

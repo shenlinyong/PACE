@@ -273,16 +273,16 @@ def train_classifier(config_path, out):
             "seed",
             "model_id",
             "calibrate",
-            "is_synthetic",
+            "is_test_data",
             "context",
             "feature_contract",
         },
-        required=["data", "model_id", "is_synthetic", "context"],
+        required=["data", "model_id", "is_test_data", "context"],
         paths=["data"],
     )
     feature_contract = canonical_feature_contract(cfg.get("feature_contract"))
-    if not isinstance(cfg["is_synthetic"], bool):
-        raise PaceError("is_synthetic must be a boolean")
+    if not isinstance(cfg["is_test_data"], bool):
+        raise PaceError("is_test_data must be a boolean")
     if not isinstance(cfg.get("calibrate", False), bool):
         raise PaceError("calibrate must be a boolean")
     if not isinstance(cfg["context"], dict) or any(
@@ -290,7 +290,7 @@ def train_classifier(config_path, out):
         for k in ("species", "assembly", "context_id")
     ):
         raise PaceError("Classifier context requires species, assembly and context_id")
-    if feature_contract is None and not cfg["is_synthetic"]:
+    if feature_contract is None and not cfg["is_test_data"]:
         raise PaceError("Research classifier training requires an explicit feature_contract")
     rows = read_table(
         cfg["data"],
@@ -478,7 +478,7 @@ def train_classifier(config_path, out):
     asset = {
         "model_id": cfg["model_id"],
         "kind": "classifier",
-        "is_synthetic": cfg["is_synthetic"],
+        "is_test_data": cfg["is_test_data"],
         "context": cfg["context"],
         "feature_names": names,
         "preprocessing": preprocessing,
@@ -492,8 +492,8 @@ def train_classifier(config_path, out):
         "training_data_sha256": file_hash(cfg["data"]),
         "validation": {},
         "probability_scope": (
-            "synthetic_demonstration_only"
-            if cfg["is_synthetic"]
+            "test_data_only"
+            if cfg["is_test_data"]
             else "recorded_perturbation_and_candidate_sampling_distribution"
         )
         if calibrator and feature_contract is not None
@@ -520,7 +520,7 @@ def train_classifier(config_path, out):
         "probability_scope": None,
     }
     test_rows = [rows[i] for i in test]
-    profile = "demonstration" if cfg["is_synthetic"] else "research"
+    profile = "demonstration" if cfg["is_test_data"] else "research"
     tested = _evaluate_deployed(test_rows, asset, profile, cfg["context"], feature_contract)
     base_tested = _evaluate_deployed(
         test_rows, base_asset, profile, cfg["context"], feature_contract
@@ -608,8 +608,8 @@ def _evaluate_deployed(rows, asset, profile, context, contract):
 def _predict_from_asset(rows, features, asset, *, execution_profile, context, feature_contract):
     if asset.get("kind") != "classifier":
         raise PaceError("Expected a classifier JSON artifact")
-    if execution_profile != "demonstration" and asset.get("is_synthetic"):
-        raise PaceError("Synthetic classifier requires demonstration profile")
+    if execution_profile != "demonstration" and asset.get("is_test_data"):
+        raise PaceError("Test-data classifier requires demonstration profile")
     if context is not None and context != asset["context"]:
         raise PaceError("Classifier context mismatch")
     if execution_profile == "validated":
@@ -711,8 +711,8 @@ def _predict_from_asset(rows, features, asset, *, execution_profile, context, fe
             if asset["calibrator"] and contract_ok:
                 row["pace_ml_probability"] = float(sigmoid(decision([[z]], asset["calibrator"])[0]))
                 row["ml_probability_scope"] = (
-                    "synthetic_demonstration_only"
-                    if asset.get("is_synthetic")
+                    "test_data_only"
+                    if asset.get("is_test_data")
                     else "recorded_perturbation_and_candidate_sampling_distribution"
                 )
     return rows

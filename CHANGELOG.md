@@ -9,6 +9,7 @@
 - `--bin-level-contacts` no longer changes the value of pairs filled by the prior alone (same bin, masked bin, no reads); they stay at their exact distance.
 - `pace predict --tss-weights` accepts `usage` and `equal`; `provided` is available in `pace run`, where `promoters.tsv` is an input.
 - Command summaries and `report.md` report `n_primary_scores`, the pairs with a primary score, next to `n_scoreable`.
+- Small-sample quick-test assets are marked `is_test_data` (was `is_synthetic`) and `--test-data` (was `--synthetic`); perturbation type `synthetic_inhibition` is now `test_inhibition`.
 - Documentation: `--aliases` applies to the BED, GTF and chromosome sizes files; `pace compare` needs the same tissue label in both runs; README opens with the method name and the Hi-C conditions it is designed for.
 
 ## 0.12.3
@@ -208,6 +209,6 @@ Existing run outputs without the new measurement contracts should be rerun befor
 - Introduce the installable src package, shared measured/hybrid/genome pipeline,
   strict schemas, provenance, quantitative CNN, contact/fusion fitting, separate
   classifier, comparisons and functional benchmarks.
-- Add synthetic examples, wheel distribution, numerical tests and hosted CI.
+- Add small-sample quick-test examples, wheel distribution, numerical tests and hosted CI.
 
 Earlier implementations remain available in Git history. These release notes describe software behavior, not demonstrated biological superiority.

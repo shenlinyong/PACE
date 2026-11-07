@@ -445,7 +445,7 @@ Genes and, within a gene, positive–negative pairs have equal weight. The objec
 | `label_id` | Unique label |
 | `element_id`, `gene_id` | One canonical element–gene edge |
 | `species`, `assembly`, `context_id`, `target_level` | Match the scored context |
-| `perturbation_type` | `CRISPRi`, `deletion` or `enhancer_inhibition` (`synthetic_inhibition` in the demonstration profile) |
+| `perturbation_type` | `CRISPRi`, `deletion` or `enhancer_inhibition` (`test_inhibition` in the demonstration profile) |
 | `label_status`, `effect_direction` | `enhancing_positive` with `down`, or `powered_negative` with `none` |
 | `split` | `train`, `calibration` or `test` |
 | `group_id` | Independent locus or experimental group; no group crosses splits |

@@ -13,12 +13,12 @@ from .evidence.contact import distance_prior, fit_distance_prior
 from .io.tables import integer, number, read_table, write_table
 from .provenance import file_hash, output_directory, write_json
 
-ASSET_KEYS = {"model_id", "species", "assembly", "context_id", "target_level", "is_synthetic"}
+ASSET_KEYS = {"model_id", "species", "assembly", "context_id", "target_level", "is_test_data"}
 
 
 def asset_metadata(cfg, kind):
-    if type(cfg["is_synthetic"]) is not bool:
-        raise PaceError("is_synthetic must be an explicit YAML boolean")
+    if type(cfg["is_test_data"]) is not bool:
+        raise PaceError("is_test_data must be an explicit YAML boolean")
     return {
         **{k: cfg[k] for k in ASSET_KEYS},
         "kind": kind,

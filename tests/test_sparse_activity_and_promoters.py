@@ -157,7 +157,7 @@ def transferred_prior(cfg):
     return dict(
         model_id="other_tissue",
         kind="contact_prior",
-        is_synthetic=True,
+        is_test_data=True,
         **{**cfg["context"], "context_id": "other_tissue"},
         target_level=cfg["target_level"],
         training_sources=["toy"],
@@ -195,7 +195,7 @@ def test_other_tissue_prior_requires_opt_in_and_retains_source(tmp_path):
         with pytest.raises(PaceError, match=field + " mismatch"):
             load_asset(prior, cfg, kind="contact_prior")
     altered = transferred_prior(cfg)
-    altered["is_synthetic"] = False
+    altered["is_test_data"] = False
     prior.write_text(json.dumps(altered))
     cfg["execution_profile"] = "validated"
     with pytest.raises(PaceError, match="context_id mismatch"):
@@ -247,7 +247,7 @@ def test_coarse_cooler_prior_default_starts_at_its_resolution(tmp_path):
                 "300000",
                 "--out",
                 str(out),
-                "--synthetic",
+                "--test-data",
             ]
         )
         == 0

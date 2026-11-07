@@ -73,12 +73,12 @@ def prior_asset():
     return dict(
         model_id="toy_fitted_prior",
         kind="contact_prior",
-        is_synthetic=True,
-        species="synthetic",
+        is_test_data=True,
+        species="test",
         assembly="toy_assembly",
         context_id="toy_tissue",
         target_level="individual",
-        training_sources=["synthetic"],
+        training_sources=["test"],
         calibration_sources=[],
         test_sources=[],
         validation={},
@@ -232,7 +232,7 @@ def test_distance_only_run_retains_measured_activity(tmp_path):
             "inputs": {"observed_contacts": None},
         },
     )
-    # Synthetic input measurements exercise the research code path, not biological accuracy.
+    # Small-sample test measurements exercise the research code path, not biological accuracy.
     result = compute(cfg)
     prior = result["manifest"]["asset_manifests"]["contact_prior"]
     assert prior["prior_source"] == "distance_only" and prior["gamma"] == 1.0
@@ -402,12 +402,12 @@ def test_sparse_cooler_fit_includes_all_zero_opportunities(tmp_path):
                 str(path),
                 "--no-balanced",
                 "--species",
-                "synthetic",
+                "test",
                 "--assembly",
                 "toy",
                 "--tissue",
                 "toy",
-                "--synthetic",
+                "--test-data",
                 "--min-distance",
                 "1000",
                 "--max-distance",
@@ -530,7 +530,7 @@ def test_fine_cooler_fit_starts_at_minimum_distance(tmp_path):
     )
     out = tmp_path / "prior"
     argv = ["fit-prior", "--cooler", path, "--no-balanced", "--no-boundaries"]
-    argv += ["--species", "synthetic", "--assembly", "toy", "--tissue", "toy", "--synthetic"]
+    argv += ["--species", "test", "--assembly", "toy", "--tissue", "toy", "--test-data"]
     assert main([str(a) for a in [*argv, "--max-distance", 300_000, "-o", out]]) == 0
     prior = json.loads((out / "manifest.json").read_text())
     assert prior["fit_range"][0] == 5000

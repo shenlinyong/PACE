@@ -253,7 +253,7 @@ def predict(args):
                         no_boundaries=args.no_boundaries,
                         ctcf=args.ctcf,
                         genome=args.genome,
-                        synthetic=False,
+                        test_data=False,
                         species=args.species,
                         assembly=args.assembly,
                         tissue=args.tissue,
