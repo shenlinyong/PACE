@@ -5,14 +5,14 @@ import math
 import numpy as np
 import pytest
 
-from pace_livestock.catalog import candidate_edges, canonical_units, map_labels
-from pace_livestock.errors import PaceError
-from pace_livestock.io.bed_gtf import read_gtf
-from pace_livestock.io.bigwig import quantify_bigwig
-from pace_livestock.io.cooler import query_contacts
-from pace_livestock.io.methylation import merge_stranded_cpg
-from pace_livestock.io.reference import Reference
-from pace_livestock.io.rna import transcript_tpm_to_gene
+from pace.catalog import candidate_edges, canonical_units, map_labels
+from pace.errors import PaceError
+from pace.io.bed_gtf import read_gtf
+from pace.io.bigwig import quantify_bigwig
+from pace.io.cooler import query_contacts
+from pace.io.methylation import merge_stranded_cpg
+from pace.io.reference import Reference
+from pace.io.rna import transcript_tpm_to_gene
 
 
 def test_catalog_duplicate_regions_and_bounds():
@@ -77,9 +77,7 @@ def test_label_regions_not_duplicated():
 
 
 def test_real_bigwig_missing_and_negative(tmp_path):
-    bw = pytest.importorskip(
-        "pyBigWig", reason="install pace-livestock[io] to test real bigWig files"
-    )
+    bw = pytest.importorskip("pyBigWig", reason="install PACE[io] to test real bigWig files")
     p = tmp_path / "a.bw"
     with bw.open(str(p), "w") as w:
         w.addHeader([("chr1", 1000)])
@@ -99,7 +97,7 @@ def test_real_bigwig_missing_and_negative(tmp_path):
 
 
 def test_real_cooler_sparse_shared_bin(tmp_path):
-    cooler = pytest.importorskip("cooler", reason="install pace-livestock[io] to test cooler")
+    cooler = pytest.importorskip("cooler", reason="install PACE[io] to test cooler")
     pd = pytest.importorskip("pandas", reason="cooler dataframe dependency")
     p = tmp_path / "a.cool"
     bins = pd.DataFrame(
@@ -154,7 +152,7 @@ def test_stranded_cpg_and_transcript_rna(tmp_path):
 
 
 def test_interval_union_and_motif_orientation():
-    from pace_livestock.io.intervals import interval_features
+    from pace.io.intervals import interval_features
 
     region = dict(element_id="E", chrom="chr1", start=0, end=100)
     peaks = [

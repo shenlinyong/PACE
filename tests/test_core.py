@@ -5,9 +5,9 @@ import math
 import numpy as np
 import pytest
 
-from pace_livestock.core import activity, bulk_mean, score, tss_contact
-from pace_livestock.errors import PaceError
-from pace_livestock.io.methylation import summarize_methylation
+from pace.core import activity, bulk_mean, score, tss_contact
+from pace.errors import PaceError
+from pace.io.methylation import summarize_methylation
 
 
 def fixture_edges():

@@ -7,15 +7,15 @@ import math
 import pytest
 from fixture import create_example
 
-from pace_livestock.cli import main
-from pace_livestock.config import load_config
-from pace_livestock.core import activity, score
-from pace_livestock.errors import PaceError
-from pace_livestock.evaluation.compare import compare_runs
-from pace_livestock.evidence.assets import load_asset
-from pace_livestock.evidence.promoters import usage_weights
-from pace_livestock.io.tables import read_table, write_table
-from pace_livestock.pipeline import compute, run
+from pace.cli import main
+from pace.config import load_config
+from pace.core import activity, score
+from pace.errors import PaceError
+from pace.evaluation.compare import compare_runs
+from pace.evidence.assets import load_asset
+from pace.evidence.promoters import usage_weights
+from pace.io.tables import read_table, write_table
+from pace.pipeline import compute, run
 
 
 def setup_run(tmp_path):

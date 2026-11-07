@@ -9,14 +9,14 @@ import pytest
 import yaml
 from fixture import create_example
 
-from pace_livestock.config import load_config
-from pace_livestock.io.tables import read_table
-from pace_livestock.pipeline import compute
+from pace.config import load_config
+from pace.io.tables import read_table
+from pace.pipeline import compute
 
 
 def invoke(*args, cwd=None):
     return subprocess.run(
-        [sys.executable, "-m", "pace_livestock", *map(str, args)],
+        [sys.executable, "-m", "pace", *map(str, args)],
         text=True,
         capture_output=True,
         cwd=cwd,
@@ -84,7 +84,7 @@ def test_alias_override_paths_and_version(tmp_path):
     assert resolved["inputs"]["observed_activity"] == str(new_activity)
     assert resolved["inputs"]["units"] == str(root / "units.tsv")
     assert json.loads(result.stdout)["eta"] == 0.35
-    from pace_livestock import __version__
+    from pace import __version__
 
     assert invoke("--version").stdout.strip() == f"PACE {__version__}"
 
@@ -108,6 +108,6 @@ def test_installed_executable():
     assert executable.is_file(), "Install this revision with pip install -e . to create pace"
     result = subprocess.run([str(executable), "--version"], capture_output=True, text=True)
     assert result.returncode == 0
-    from pace_livestock import __version__
+    from pace import __version__
 
     assert result.stdout.strip() == f"PACE {__version__}"

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import yaml
 
-from pace_livestock.io.tables import write_table
-from pace_livestock.schemas import SCHEMAS
+from pace.io.tables import write_table
+from pace.schemas import SCHEMAS
 
 
 def create_example(destination, regime="measured"):

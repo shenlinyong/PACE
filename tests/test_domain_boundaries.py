@@ -6,10 +6,10 @@ import math
 import numpy as np
 import pytest
 
-from pace_livestock.boundary_prior import CTCF_PFM, BoundaryIndex, contact_prior, ctcf_boundaries
-from pace_livestock.cli import main
-from pace_livestock.errors import PaceError
-from pace_livestock.io.tables import read_table
+from pace.boundary_prior import CTCF_PFM, BoundaryIndex, contact_prior, ctcf_boundaries
+from pace.cli import main
+from pace.errors import PaceError
+from pace.io.tables import read_table
 
 RESOLUTION = 10_000
 N_BINS = 600
@@ -100,7 +100,7 @@ def test_without_ctcf_the_prior_is_distance_only(domains_cool, tmp_path):
 def test_constraint_needs_both_peaks_and_genome(domains_genome, option):
     from types import SimpleNamespace
 
-    from pace_livestock.io.prior_fit import map_boundaries
+    from pace.io.prior_fit import map_boundaries
 
     args = SimpleNamespace(ctcf=None, genome=None)
     setattr(args, option[2:], domains_genome / "x")
@@ -141,9 +141,9 @@ def test_ctcf_boundary_needs_reverse_then_forward_sites(tmp_path, left, right, b
 
 
 def test_fitted_boundary_prior_is_applied_when_scoring(domains_cool, domains_genome, tmp_path):
-    from pace_livestock.config import load_config
-    from pace_livestock.evidence.assets import load_asset
-    from pace_livestock.evidence.resolve import load_boundaries
+    from pace.config import load_config
+    from pace.evidence.assets import load_asset
+    from pace.evidence.resolve import load_boundaries
 
     out, _ = fit(domains_cool, tmp_path, *ctcf(domains_genome))
     cfg = load_config(
@@ -157,7 +157,7 @@ def test_fitted_boundary_prior_is_applied_when_scoring(domains_cool, domains_gen
 
 
 def test_reference_accepts_iupac_ambiguity_codes(tmp_path):
-    from pace_livestock.io.reference import Reference
+    from pace.io.reference import Reference
 
     (tmp_path / "g.fa").write_text(">c\nACGTRYKMNacgt\n")
     with Reference(tmp_path / "g.fa") as reference:
@@ -184,7 +184,7 @@ def boundary_cells(levels, strengths, drop, scale=1.0, n=100):
 
 
 def fit_cells(cells):
-    from pace_livestock.io.prior_fit import fit_boundary_prior
+    from pace.io.prior_fit import fit_boundary_prior
 
     return fit_boundary_prior(cells, d_ref=5000, d_min=5000)
 

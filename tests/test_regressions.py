@@ -6,15 +6,15 @@ import math
 import pytest
 from fixture import create_example
 
-from pace_livestock.boundary_prior import BoundaryIndex
-from pace_livestock.chunked import run_by_chromosome
-from pace_livestock.config import load_config
-from pace_livestock.errors import PaceError
-from pace_livestock.evaluation.metrics import binary_metrics
-from pace_livestock.evidence.resolve import resolve_contacts
-from pace_livestock.io.tables import read_table, write_table
-from pace_livestock.pipeline import compute
-from pace_livestock.schemas import load_tables
+from pace.boundary_prior import BoundaryIndex
+from pace.chunked import run_by_chromosome
+from pace.config import load_config
+from pace.errors import PaceError
+from pace.evaluation.metrics import binary_metrics
+from pace.evidence.resolve import resolve_contacts
+from pace.io.tables import read_table, write_table
+from pace.pipeline import compute
+from pace.schemas import load_tables
 
 
 @pytest.mark.parametrize("labels", [[0.2, 1], [-0.2, 1], [0, 1.9]])
@@ -98,7 +98,7 @@ def test_fitted_bin_prior_coordinates_follow_the_contact_mode(tmp_path):
     }
     for mode, reliability in (("prior_only", None), ("shrinkage", 0.5), ("observed", None)):
         cfg["contact"].update(mode=mode, reliability=reliability, reliability_source="test")
-        with patch("pace_livestock.evidence.resolve.load_boundaries", return_value=boundary):
+        with patch("pace.evidence.resolve.load_boundaries", return_value=boundary):
             rows = resolve_contacts(tables, cfg, prior_asset=prior)
         found = next(
             r
@@ -110,7 +110,7 @@ def test_fitted_bin_prior_coordinates_follow_the_contact_mode(tmp_path):
 
 
 def test_prior_without_hic_floors_distance_at_5kb():
-    from pace_livestock.boundary_prior import contact_prior
+    from pace.boundary_prior import contact_prior
 
     prior = dict(a=1.0, gamma=1.0, d_ref=5000.0, d_min=10000.0, resolution=10000)
     prior["fitting_coordinate_policy"] = "bin_centers"
@@ -124,8 +124,8 @@ def test_identities_do_not_depend_on_chunk_size(tmp_path):
     """Chunk size is an execution detail; chunked and single runs stay comparable."""
     import json
 
-    from pace_livestock.evaluation.compare import compare_runs
-    from pace_livestock.pipeline import run
+    from pace.evaluation.compare import compare_runs
+    from pace.pipeline import run
 
     cfg = two_chromosomes(tmp_path)
     run(copy.deepcopy(cfg), tmp_path / "single")
@@ -142,7 +142,7 @@ def test_identities_do_not_depend_on_chunk_size(tmp_path):
 
 
 def test_renamed_copy_of_a_pixel_is_counted_once():
-    from pace_livestock.boundary_prior import unique_count_pairs
+    from pace.boundary_prior import unique_count_pairs
 
     row = dict(
         measurement_status="observed",
@@ -169,9 +169,9 @@ def test_renamed_copy_of_a_pixel_is_counted_once():
 
 @pytest.mark.parametrize("module", ["benchmark", "training", "eta"])
 def test_one_label_rule_everywhere(module):
-    from pace_livestock.catalog import map_labels
-    from pace_livestock.labels import classify_label
-    from pace_livestock.learning.model import training_labels
+    from pace.catalog import map_labels
+    from pace.labels import classify_label
+    from pace.learning.model import training_labels
 
     negative_down = dict(label_status="powered_negative", effect_direction="down")
     typo = dict(label_status="powered_negative", effect_direction="donw")
@@ -224,7 +224,7 @@ def test_anchor_prior_is_identical_in_prior_only_and_per_pair_modes(tmp_path):
 def test_contact_pairs_are_built_one_chromosome_at_a_time(tmp_path):
     from pathlib import Path
 
-    from pace_livestock.preparation import build_pairs, pairs_by_chromosome
+    from pace.preparation import build_pairs, pairs_by_chromosome
 
     cfg = two_chromosomes(tmp_path)
     catalog = Path(cfg["inputs"]["units"]).parent

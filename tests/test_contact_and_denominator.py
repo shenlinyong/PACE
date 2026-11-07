@@ -8,16 +8,16 @@ import numpy as np
 import pytest
 from fixture import create_example
 
-from pace_livestock.cli import main
-from pace_livestock.config import load_config
-from pace_livestock.core import score
-from pace_livestock.errors import PaceError
-from pace_livestock.evidence.resolve import resolve_contacts
-from pace_livestock.io.tables import read_table, write_table
-from pace_livestock.pipeline import compute, run
-from pace_livestock.provenance import output_directory, output_policy
-from pace_livestock.reporting import regional_scores
-from pace_livestock.schemas import load_tables
+from pace.cli import main
+from pace.config import load_config
+from pace.core import score
+from pace.errors import PaceError
+from pace.evidence.resolve import resolve_contacts
+from pace.io.tables import read_table, write_table
+from pace.pipeline import compute, run
+from pace.provenance import output_directory, output_policy
+from pace.reporting import regional_scores
+from pace.schemas import load_tables
 
 
 def edges():
@@ -193,7 +193,7 @@ def test_distance_only_is_research_only(tmp_path):
     )
     cfg = load_config(overrides=overrides)
     assert cfg["contact"]["scale"] == "relative_distance_contact"
-    from pace_livestock.evidence.assets import builtin_contact_prior
+    from pace.evidence.assets import builtin_contact_prior
 
     assert builtin_contact_prior(cfg)["transfer_status"] == "distance_only"
     for profile in ("validated", "demonstration"):
@@ -315,8 +315,8 @@ def test_init_creates_short_config_without_inventing_activity(tmp_path):
     import os
     import shlex
 
-    from pace_livestock.cli import build_parser
-    from pace_livestock.run_options import config_from_args
+    from pace.cli import build_parser
+    from pace.run_options import config_from_args
 
     script = (tmp_path / "project/run.sh").read_text()
     assert "--config" not in script and not (tmp_path / "project/config.yaml").exists()
@@ -387,7 +387,7 @@ def tiny_cooler(tmp_path):
 
 def test_sparse_cooler_fit_includes_all_zero_opportunities(tmp_path):
     path = tiny_cooler(tmp_path)
-    from pace_livestock.io.prior_fit import cooler_distance_bins
+    from pace.io.prior_fit import cooler_distance_bins
 
     bins, _ = cooler_distance_bins(
         path, balanced=False, min_distance=1000, max_distance=4000, n_bins=3
@@ -431,7 +431,7 @@ def test_sparse_cooler_fit_includes_all_zero_opportunities(tmp_path):
 
 
 def test_cooler_diagonal_keeps_raw_value_and_reports_neighbor_max(tmp_path):
-    from pace_livestock.io.cooler import query_contacts
+    from pace.io.cooler import query_contacts
 
     path = tiny_cooler(tmp_path)
     rows = query_contacts(
@@ -446,7 +446,7 @@ def test_cooler_diagonal_keeps_raw_value_and_reports_neighbor_max(tmp_path):
 
 
 def test_balanced_prior_fit_excludes_invalid_bin_opportunities(tmp_path):
-    from pace_livestock.io.prior_fit import cooler_distance_bins
+    from pace.io.prior_fit import cooler_distance_bins
 
     path = tiny_cooler(tmp_path)
     h5py = pytest.importorskip("h5py")
@@ -461,8 +461,8 @@ def test_balanced_prior_fit_excludes_invalid_bin_opportunities(tmp_path):
 
 
 def test_quoted_false_cannot_silently_turn_missing_pixels_into_zero():
-    from pace_livestock.io.bigwig import quantify_bigwig
-    from pace_livestock.io.cooler import query_contacts
+    from pace.io.bigwig import quantify_bigwig
+    from pace.io.cooler import query_contacts
 
     with pytest.raises(PaceError, match="boolean"):
         quantify_bigwig("unused", [], missing_is_measured_zero="false")
@@ -480,14 +480,13 @@ def test_console_entries_do_not_collide_on_case_insensitive_filesystems():
     metadata = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
     scripts = metadata["project"]["scripts"]
     assert scripts == {
-        "pace": "pace_livestock.cli:main",
-        "pace-livestock": "pace_livestock.cli:main",
+        "pace": "pace.cli:main",
     }
     assert len({name.casefold() for name in scripts}) == len(scripts)
 
 
 def test_power_law_fit_is_poisson_and_keeps_zero_classes():
-    from pace_livestock.evidence.contact import fit_power_law
+    from pace.evidence.contact import fit_power_law
 
     x = np.log([1, 2, 4, 8, 16])
     n = np.array([500, 400, 300, 200, 100])
@@ -505,7 +504,7 @@ def test_power_law_fit_is_poisson_and_keeps_zero_classes():
 
 
 def test_fit_prior_uses_pairs_up_to_one_megabase(tmp_path):
-    from pace_livestock.cli import build_parser
+    from pace.cli import build_parser
 
     args = build_parser().parse_args(["fit-prior", "-o", str(tmp_path / "prior")])
     assert args.max_distance == 1_000_000

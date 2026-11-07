@@ -10,7 +10,7 @@ from urllib.parse import unquote
 
 import yaml
 
-from pace_livestock.config import DEFAULTS
+from pace.config import DEFAULTS
 
 RETIRED_TERMS = (
     "U(G)",

@@ -8,14 +8,14 @@ import pytest
 import yaml
 from fixture import create_example
 
-from pace_livestock.config import load_config
-from pace_livestock.core import score
-from pace_livestock.errors import PaceError
-from pace_livestock.evaluation.benchmark import benchmark_command
-from pace_livestock.io.tables import write_table
-from pace_livestock.learning.allocation import fit_eta, fit_from_labels
-from pace_livestock.pipeline import compute, run
-from pace_livestock.provenance import read_json
+from pace.config import load_config
+from pace.core import score
+from pace.errors import PaceError
+from pace.evaluation.benchmark import benchmark_command
+from pace.io.tables import write_table
+from pace.learning.allocation import fit_eta, fit_from_labels
+from pace.pipeline import compute, run
+from pace.provenance import read_json
 
 
 def edges():

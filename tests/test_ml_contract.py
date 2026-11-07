@@ -9,17 +9,17 @@ import pytest
 import yaml
 from fixture import create_example
 
-from pace_livestock.config import load_config
-from pace_livestock.errors import PaceError
-from pace_livestock.evaluation.benchmark import predict_ml_command
-from pace_livestock.io.tables import read_table, write_table
-from pace_livestock.learning.model import (
+from pace.config import load_config
+from pace.errors import PaceError
+from pace.evaluation.benchmark import predict_ml_command
+from pace.io.tables import read_table, write_table
+from pace.learning.model import (
     canonical_feature_contract,
     independent_training_components,
     predict_score_rows,
     train_classifier,
 )
-from pace_livestock.pipeline import compute, run
+from pace.pipeline import compute, run
 
 CONTEXT = dict(species="test", assembly="toy", context_id="liver")
 CONTRACT = {

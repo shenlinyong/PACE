@@ -4,7 +4,7 @@
 
 PACE ranks the candidate regulatory elements of each gene in a tissue. It keeps the Activity-by-Contact (ABC) score — an element's activity times its contact with the gene, as a share of the total over all candidates of that gene — and changes how contact is estimated. Every contact estimate is anchored to a distance-boundary prior fitted on Hi-C, which gives the method its name. The prior takes over where the Hi-C is uninformative: bin pairs with few reads, element–TSS pairs inside one coarse bin, and tissues without Hi-C. With deep, fine-resolution Hi-C the estimate follows the measured contact and the score reduces to ABC.
 
-PACE is designed for Hi-C that is shallow, binned at 10–100 kb, available only for another tissue, or absent. Domestic animals (pig, cattle, sheep, goat, chicken) are a main application, because Hi-C exists for few of their tissues and gene annotations carry many predicted TSSs. Any species with a reference genome, a gene annotation and measured chromatin data can be analysed.
+PACE is designed for Hi-C that is shallow, binned at 10–100 kb, available only for another tissue, or absent. This is typical of species and tissues outside deeply profiled human cell lines, where gene annotations also carry many predicted TSSs. Any species with a reference genome, a gene annotation and measured chromatin data can be analysed.
 
 ```bash
 pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \

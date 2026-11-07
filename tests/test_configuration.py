@@ -7,11 +7,11 @@ import pytest
 import yaml
 from fixture import create_example
 
-from pace_livestock.config import load_config
-from pace_livestock.errors import PaceError
-from pace_livestock.io.tables import read_table, write_table
-from pace_livestock.pipeline import compute
-from pace_livestock.run_options import add_run_options, config_from_args
+from pace.config import load_config
+from pace.errors import PaceError
+from pace.io.tables import read_table, write_table
+from pace.pipeline import compute
+from pace.run_options import add_run_options, config_from_args
 
 
 @pytest.mark.parametrize("offset", [500, 1000])

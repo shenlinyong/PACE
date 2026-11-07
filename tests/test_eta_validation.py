@@ -6,14 +6,14 @@ import json
 import pytest
 from fixture import create_example
 
-from pace_livestock.config import load_config
-from pace_livestock.errors import PaceError
-from pace_livestock.learning.allocation import (
+from pace.config import load_config
+from pace.errors import PaceError
+from pace.learning.allocation import (
     _independent_components,
     fit_from_labels,
     resolve_eta,
 )
-from pace_livestock.provenance import digest
+from pace.provenance import digest
 
 
 @pytest.fixture
@@ -190,7 +190,7 @@ def test_legacy_calibrator_must_be_retrained(cfg, tmp_path):
 
 
 def test_validated_frozen_nonzero_eta_can_be_reused(cfg, tmp_path):
-    from pace_livestock.io.tables import write_table
+    from pace.io.tables import write_table
 
     edges, rows = population(cfg)
     labels_path = tmp_path / "labels.tsv"
@@ -208,8 +208,8 @@ def test_validated_frozen_nonzero_eta_can_be_reused(cfg, tmp_path):
 
 
 def test_eta_scope_binds_contact_measurement_resolution(cfg):
-    from pace_livestock.learning.allocation import calibration_scope
-    from pace_livestock.schemas import load_tables
+    from pace.learning.allocation import calibration_scope
+    from pace.schemas import load_tables
 
     tables = load_tables(cfg)
     first = calibration_scope(cfg, tables, {}, [])
@@ -225,8 +225,8 @@ def test_eta_scope_binds_contact_measurement_resolution(cfg):
 
 
 def test_eta_scope_is_portable_but_binds_reference_size_contents(cfg, tmp_path):
-    from pace_livestock.learning.allocation import calibration_scope
-    from pace_livestock.schemas import load_tables
+    from pace.learning.allocation import calibration_scope
+    from pace.schemas import load_tables
 
     tables = load_tables(cfg)
     first_path = tmp_path / "first" / "chrom_sizes.tsv"
