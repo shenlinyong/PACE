@@ -369,7 +369,16 @@ def fit_cooler_command(args):
     boundaries, boundary_source, cells = [], None, []
     if not getattr(args, "no_boundaries", True):
         boundaries, boundary_source = map_boundaries(args)
+    in_fit = 0
     if boundaries:
+        known = set(cooler.Cooler(str(args.cooler)).chromnames)
+        in_fit = sum(row["chrom"] in known for row in boundaries)
+        if not in_fit:
+            raise PaceError(
+                f"None of the {len(boundaries)} CTCF boundaries lies on a Hi-C chromosome "
+                f"(boundaries use e.g. {boundaries[0]['chrom']!r}, the Hi-C file "
+                f"{sorted(known)[0]!r}); use the same chromosome names in all files"
+            )
         cells, _ = cooler_boundary_cells(
             args.cooler,
             boundaries,
@@ -390,7 +399,7 @@ def fit_cooler_command(args):
         **fitted,
         "model_id": args.model_id,
         "kind": "contact_prior",
-        "is_synthetic": args.synthetic,
+        "is_test_data": args.test_data,
         "species": args.species,
         "assembly": args.assembly,
         "context_id": args.tissue,
@@ -413,7 +422,11 @@ def fit_cooler_command(args):
         "fitting_coordinate_policy": "bin_centers",
     }
     if boundaries:
-        manifest.update(boundary_table="boundaries.tsv", boundary_source=boundary_source)
+        manifest.update(
+            boundary_table="boundaries.tsv",
+            boundary_source=boundary_source,
+            boundaries_in_fit=in_fit,
+        )
     for row in rows:
         row["predicted"] = (
             distance_prior(row["geometric_distance"], manifest)
@@ -445,6 +458,7 @@ def fit_cooler_command(args):
         "gamma": manifest["gamma"],
         "beta": manifest.get("beta", 0.0),
         "boundaries": len(boundaries),
+        "boundaries_in_fit": in_fit,
         "a": manifest["a"],
         "resolution": resolution,
     }

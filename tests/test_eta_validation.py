@@ -52,7 +52,7 @@ def population(cfg, *, n=6, prefix="train", split="train", saturated=False, harm
                     assembly=cfg["context"]["assembly"],
                     context_id=cfg["context"]["context_id"],
                     target_level=cfg["target_level"],
-                    perturbation_type="synthetic_inhibition",
+                    perturbation_type="test_inhibition",
                     effect_direction="down" if positive else "none",
                     label_status="enhancing_positive" if positive else "powered_negative",
                     split=split,
@@ -148,7 +148,7 @@ def test_frozen_unvalidated_nonzero_eta_is_rejected(cfg, tmp_path):
         kind="allocation_calibrator",
         scope=scope,
         scope_sha256=digest(scope),
-        is_synthetic=True,
+        is_test_data=True,
         status="fixed",
         eta=0.5,
     )

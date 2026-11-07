@@ -358,7 +358,7 @@ def calibrate(
         "aggregation": aggregation,
         "n_label_genes_outside_catalog": len(skipped_genes),
         "abc_gamma": abc_gamma,
-        "is_synthetic": cfg["execution_profile"] == "demonstration",
+        "is_test_data": cfg["execution_profile"] == "demonstration",
         "label_assumption": "zero PIP mass is unlabelled background; variants/signals are treated as independent only under the selected approximation",
         "test_scope": "eQTL labels held out by chromosome; source contact prior is fixed",
         "training_label_hash": digest([r for r in labels if r["chrom"] not in test_chromosomes]),

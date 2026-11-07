@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pace-livestock"
-version = "0.12.3"
-description = "Enhancer-gene prediction from measured chromatin activity and 3D contact"
+version = "0.12.4"
+description = "PACE (Prior-Anchored Contact Estimation): enhancer-gene prediction from low-depth, low-resolution and surrogate-tissue Hi-C"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"

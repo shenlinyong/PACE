@@ -110,8 +110,10 @@ def map_labels(labels, memberships):
     for row in labels:
         elements = mapping[row["assayed_region_id"]]
         label, reason = classify_label(row)
-        if len(elements) != 1:
-            reason = "ambiguous_or_unmapped_region"
+        if not elements:
+            reason = "unmapped_region"
+        elif len(elements) > 1:
+            reason = "ambiguous_region"
         if len(elements) != 1 or label is None:
             rejected.append({**row, "reason": reason})
         else:

@@ -81,7 +81,7 @@ def learning_fixture(tmp_path, *, calibrate=True):
                     )
                 )
     write_table(tmp_path / "training.tsv", rows)
-    context = dict(species="synthetic", assembly="toy", context_id="tissue")
+    context = dict(species="test", assembly="toy", context_id="tissue")
     config = dict(
         data="training.tsv",
         extra_features=["H3K4me1"],
@@ -90,7 +90,7 @@ def learning_fixture(tmp_path, *, calibrate=True):
         seed=17,
         model_id="test_classifier",
         calibrate=calibrate,
-        is_synthetic=True,
+        is_test_data=True,
         context=context,
         feature_contract={
             "target_level": "individual",
@@ -137,7 +137,7 @@ def test_train_calibrate_save_predict(tmp_path):
     # Identical core features; the actually fitted extra assay must affect inference.
     assert predictions[1]["pace_ml_score"] > predictions[0]["pace_ml_score"]
     assert all(math.isfinite(x["pace_ml_probability"]) for x in predictions)
-    with pytest.raises(PaceError, match="Synthetic"):
+    with pytest.raises(PaceError, match="Test-data"):
         predict_score_rows(
             r, features, tmp_path / "model", execution_profile="research", context=context
         )

@@ -23,9 +23,9 @@ MEASUREMENT_FIELDS = {"scale", "resolution", "normalization_id", "balancing", "w
 
 
 def metadata(cfg):
-    if type(cfg["is_synthetic"]) is not bool:
-        raise PaceError("is_synthetic must be an explicit YAML boolean")
-    for key in ASSET_KEYS - {"is_synthetic"}:
+    if type(cfg["is_test_data"]) is not bool:
+        raise PaceError("is_test_data must be an explicit YAML boolean")
+    for key in ASSET_KEYS - {"is_test_data"}:
         if not isinstance(cfg[key], str) or not cfg[key].strip():
             raise PaceError(f"{key} must be a nonempty string")
     if cfg["target_level"] not in ("individual", "population_mean"):

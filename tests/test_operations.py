@@ -1,5 +1,6 @@
 """Actual command paths for calibration, preparation, benchmarks and measured evidence."""
 
+import json
 import math
 
 import pytest
@@ -16,11 +17,11 @@ from pace_livestock.operations import fit_contact_command, prepare_command
 def metadata():
     return dict(
         model_id="test",
-        species="synthetic",
+        species="test",
         assembly="toy",
         context_id="tissue",
         target_level="individual",
-        is_synthetic=True,
+        is_test_data=True,
     )
 
 
@@ -87,7 +88,7 @@ def test_benchmark_four_explicit_baselines(tmp_path):
             label_id=f"L{i}",
             assayed_region_id=e,
             gene_id=g,
-            species="synthetic",
+            species="test",
             assembly="toy_assembly",
             context_id="toy_tissue",
             effect_direction="down" if i % 2 else "none",
@@ -136,7 +137,7 @@ def benchmark_inputs(tmp_path, **label_fields):
             label_id=f"L{i}",
             assayed_region_id=e,
             gene_id=g,
-            species="synthetic",
+            species="test",
             assembly="toy_assembly",
             context_id="toy_tissue",
             effect_direction="down" if i % 2 else "none",
@@ -230,3 +231,30 @@ def test_benchmark_compares_external_methods_on_shared_labels(tmp_path):
     assert set(shared) >= {"other", "PACE_eta0", "ABC_style_single_TSS"}
     assert {r["n_tested"] for r in shared.values()} == {3}
     assert {r["n_scored"] for r in shared.values()} == {3}
+
+
+def test_benchmark_keeps_unmapped_and_ambiguous_positives_in_the_denominator(tmp_path):
+    p, _ = benchmark_inputs(tmp_path)
+    membership = read_table(tmp_path / "membership.tsv")
+    write_table(
+        tmp_path / "membership.tsv",
+        membership + [dict(region_id="R", element_id=e) for e in ("E1", "E2")],
+    )
+    labels = read_table(tmp_path / "labels.tsv")
+    extra = [
+        {**labels[1], "label_id": "lost", "assayed_region_id": "missing"},
+        {**labels[1], "label_id": "shared", "assayed_region_id": "R"},
+    ]
+    write_table(tmp_path / "labels.tsv", labels + extra)
+    cfg = yaml.safe_load(p.read_text())
+    cfg["thresholds"] = {"PACE_eta0": dict(value=0, source_split="train", source_id="fit")}
+    p.write_text(yaml.safe_dump(cfg))
+    report = benchmark_command(p, tmp_path / "benchmark")
+    row = next(
+        r for r in report if r["method"] == "PACE_eta0" and r["scope"] == "all_tested_labels"
+    )
+    assert row["n_positive"] == 5 and row["missed_positive"] == 2
+    assert row["recall_candidate"] == 1.0
+    assert row["recall_end_to_end"] == pytest.approx(3 / 5)
+    manifest = json.loads((tmp_path / "benchmark" / "benchmark_manifest.json").read_text())
+    assert manifest["n_positive_unmapped"] == 1 and manifest["n_positive_ambiguous"] == 1

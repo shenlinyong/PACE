@@ -13,7 +13,8 @@ from .provenance import clean, output_policy
 from .run_options import add_run_options, config_from_args
 
 OVERVIEW = """\
-PACE: enhancer-gene prediction for domestic animals from chromatin activity and 3D contact.
+PACE (Prior-Anchored Contact Estimation): enhancer-gene prediction from chromatin activity and
+low-depth, low-resolution or surrogate-tissue Hi-C.
 
 One command from peaks, GTF and bigWig files:
   predict        Build candidates, quantify signal, extract Hi-C and score in one step
@@ -347,9 +348,10 @@ def predict_parser(command):
     )
     score.add_argument(
         "--tss-weights",
-        choices=["usage", "equal", "provided"],
+        choices=["usage", "equal"],
         default="usage",
-        help="Weights of the distinct TSSs of a gene: promoter activity share (default), equal, or promoters.tsv",
+        help="Weights of the distinct TSSs of a gene: promoter activity share (default) or equal. "
+        "External weights (promoters.tsv) are used with 'pace run --tss-weights provided'",
     )
 
 
@@ -410,7 +412,11 @@ def add_catalog_options(group, *, chrom_sizes_required=True):
         help="Ignore peaks and genes on chromosomes missing from the sizes file",
     )
     group.add_argument(
-        "--aliases", metavar="TSV", help="Chromosome renaming table (columns: alias, canonical)"
+        "--aliases",
+        metavar="TSV",
+        help="Chromosome renaming table (columns: alias, canonical). It renames the chromosomes of "
+        "the BED, GTF and sizes files; bigWig, Hi-C and FASTA files must already use the "
+        "canonical names",
     )
 
 
@@ -511,7 +517,7 @@ def add_asset_options(p, *, measurement=True, measurement_required=True):
     add_context(p, required=False)
     p.add_argument("--model-id", default="contact_prior", help="Name of the prior")
     p.add_argument(
-        "--synthetic", action="store_true", help="Mark the asset as synthetic (demonstration)"
+        "--test-data", action="store_true", help="Mark the asset as small-sample quick-test data"
     )
     if measurement:
         m = p.add_argument_group("contact measurement definition")
@@ -567,7 +573,7 @@ def prior_parsers(command):
         help="Fit the distance decay only, without the CTCF domain-boundary term",
     )
     p.add_argument(
-        "--synthetic", action="store_true", help="Label a toy cooler asset for demonstration only"
+        "--test-data", action="store_true", help="Mark a small-sample quick-test cooler asset"
     )
     add_out(p)
     add_legacy_config(p)
@@ -658,7 +664,7 @@ def prior_parsers(command):
 def analysis_parsers(command):
     p = command(
         "compare",
-        "Compare two runs (animals, tissues, treatments) on their common candidate set",
+        "Compare two runs (animals, treatments) of one tissue on their common candidate set",
         "example:\n  pace compare --left results/pig1 --right results/pig2 -o pig2_vs_pig1",
     )
     p.add_argument("--left", help="Reference run folder")
@@ -707,7 +713,7 @@ def analysis_parsers(command):
     p.add_argument("--model-id", default="pace_classifier")
     for flag in ("species", "assembly", "tissue"):
         p.add_argument("--" + flag)
-    p.add_argument("--synthetic", action="store_true", help="Synthetic training data")
+    p.add_argument("--test-data", action="store_true", help="Small-sample quick-test training data")
     p.add_argument("--feature-contract", help="ml_feature_contract.json of the run")
     p.add_argument("--extra-features", nargs="+", help="Additional feature names")
     p.add_argument(
@@ -859,7 +865,7 @@ def asset_options(args):
         "context_id": args.tissue,
         "target_level": args.target_level,
         "model_id": args.model_id,
-        "is_synthetic": bool(args.synthetic),
+        "is_test_data": bool(args.test_data),
         "scale": args.scale,
         "resolution": args.resolution,
         "normalization_id": args.normalization_id,
@@ -1019,6 +1025,7 @@ def run_command(args):
             "output": args.out,
             "n_candidates": result["qc"]["n_candidates"],
             "n_scoreable": result["qc"]["n_scoreable"],
+            "n_primary_scores": result["qc"]["n_primary_scores"],
             "chunks": len(result["qc"]["execution"]["chunks"]),
             "eta": result["eta_calibration"]["eta"],
             "eta_status": result["eta_calibration"]["status"],
@@ -1028,6 +1035,7 @@ def run_command(args):
         "output": args.out,
         "n_candidates": len(result["scores"]),
         "n_scoreable": result["qc"]["n_scoreable"],
+        "n_primary_scores": result["qc"]["n_primary_scores"],
         "eta": result["eta_calibration"]["eta"],
         "eta_status": result["eta_calibration"]["status"],
     }
@@ -1177,7 +1185,7 @@ def train_options(args):
     return {
         "data": args.data,
         "model_id": args.model_id,
-        "is_synthetic": bool(args.synthetic),
+        "is_test_data": bool(args.test_data),
         "context": context,
         "feature_contract": contract,
         "extra_features": args.extra_features,

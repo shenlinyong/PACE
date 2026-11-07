@@ -298,11 +298,11 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
     per_pair = w == "per_pair"
     boundaries = load_boundaries(prior_asset) if prior_asset else None
     element_level = mode == "prior_only"
-    within_bin = (
-        cfg["contact"]["within_bin_distance"]
-        and not element_level
-        and prior_policy(prior_asset) == "bin_centers"
-    )
+    # A prior fitted on bins is evaluated at bin centres. Pairs filled by the prior alone
+    # (same bin, masked bin, no reads) always sit at their exact distance; the switch
+    # contact.within_bin_distance only decides whether measured contacts are placed too.
+    place_in_bin = not element_level and prior_policy(prior_asset) == "bin_centers"
+    within_bin = cfg["contact"]["within_bin_distance"] and place_in_bin
     kappa, kappa_source = None, None
     if per_pair:
         if not t["observed_contacts"]:
@@ -377,6 +377,14 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 )
                 / prior
                 if within_bin and math.isfinite(prior) and prior > 0
+                else 1.0
+            )
+            exact_factor = (
+                contact_prior(
+                    unit["chrom"], left, right, prior_asset, boundaries, element_level=True
+                )
+                / prior
+                if place_in_bin and math.isfinite(prior) and prior > 0
                 else 1.0
             )
             posteriors = []
@@ -509,10 +517,11 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                     kappa_source=kappa_source,
                     posterior_samples=json.dumps(posteriors, sort_keys=True),
                 )
+            row_factor = exact_factor if row["evidence_type"] == "contact_prior" else factor
             if key in imported and per_pair:
                 old = imported[key]
                 for field in ("resolved_value", "reliability", "kappa", "prior_value"):
-                    expected = row[field] * (factor if field == "resolved_value" else 1.0)
+                    expected = row[field] * (row_factor if field == "resolved_value" else 1.0)
                     if not math.isclose(
                         number(old.get(field), field), expected, rel_tol=1e-10, abs_tol=1e-12
                     ):
@@ -531,7 +540,10 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 recorded_factor = number(
                     imported_row.get("within_bin_factor") or 1.0, "within_bin_factor", minimum=0
                 )
-                if not math.isclose(recorded_factor, factor, rel_tol=1e-9):
+                imported_factor = (
+                    exact_factor if imported_row["evidence_type"] == "contact_prior" else factor
+                )
+                if not math.isclose(recorded_factor, imported_factor, rel_tol=1e-9):
                     raise PaceError(
                         "Imported contacts used a different within-bin distance factor; "
                         "recompute them from observed contacts"
@@ -679,8 +691,9 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 row["pseudocount_value"] = pc
             # Imported rows other than per-pair posteriors already carry the factor.
             if key not in imported or per_pair:
-                row["resolved_value"] *= factor
-                row["within_bin_factor"] = factor
+                row_factor = exact_factor if row["evidence_type"] == "contact_prior" else factor
+                row["resolved_value"] *= row_factor
+                row["within_bin_factor"] = row_factor
             row["evidence_id"] = digest({"key": key, "resolution": row})
             output.append(row)
     return sorted(output, key=lambda r: (r["element_id"], r["promoter_id"]))

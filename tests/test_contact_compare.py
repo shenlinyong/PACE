@@ -25,13 +25,13 @@ def contact_asset(tmp_path):
         json.dumps(
             {
                 "kind": "contact_prior",
-                "model_id": "synthetic_contact",
-                "is_synthetic": True,
-                "species": "synthetic",
+                "model_id": "test_contact",
+                "is_test_data": True,
+                "species": "test",
                 "assembly": "toy_assembly",
                 "context_id": "toy_tissue",
                 "target_level": "individual",
-                "training_sources": ["synthetic"],
+                "training_sources": ["test"],
                 "calibration_sources": [],
                 "test_sources": [],
                 "validation": {},

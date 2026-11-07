@@ -1,0 +1,10 @@
+{
+  "title": "PACE: Prior-Anchored Contact Estimation",
+  "upload_type": "software",
+  "description": "PACE (Prior-Anchored Contact Estimation) predicts enhancer-gene links with the Activity-by-Contact score. Contact is estimated from low-depth, low-resolution or surrogate-tissue Hi-C through a distance-boundary prior fitted on Hi-C, alternative TSSs are weighted by promoter activity, and missing data are handled explicitly.",
+  "creators": [
+    {"name": "Shen, Linyong", "affiliation": "Northwest A&F University"}
+  ],
+  "license": "MIT",
+  "keywords": ["enhancer-gene prediction", "Activity-by-Contact", "Hi-C", "CTCF", "regulatory genomics"]
+}

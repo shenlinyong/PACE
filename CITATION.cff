@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: "If you use PACE, cite this repository and the exact Git commit used."
 type: software
-title: PACE
-version: 0.12.3
+title: "PACE: Prior-Anchored Contact Estimation"
+version: 0.12.4
 authors:
   - family-names: Shen
     given-names: Linyong
@@ -11,9 +11,10 @@ repository-code: https://github.com/shenlinyong/PACE
 url: https://github.com/shenlinyong/PACE
 license: MIT
 abstract: >-
-  Enhancer-gene prediction from measured chromatin activity and 3D contact
-  data, with multiple promoters, explicit missing-data handling, distance priors
-  and comparisons on common candidate sets.
+  Enhancer-gene prediction with the Activity-by-Contact score, with contact
+  estimated from low-depth, low-resolution or surrogate-tissue Hi-C through a
+  distance-boundary prior fitted on Hi-C, promoter-activity weighting of
+  alternative TSSs and explicit missing-data handling.
 keywords:
   - enhancer-gene regulation
   - genomics

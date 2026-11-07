@@ -1,4 +1,4 @@
 """PACE: enhancer-gene prediction from chromatin activity and 3D contact."""
 
-__version__ = "0.12.3"
+__version__ = "0.12.4"
 SCHEMA_VERSION = "pace-1"

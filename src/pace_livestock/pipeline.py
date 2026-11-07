@@ -265,6 +265,7 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
         "multiomics_roles": roles,
         "n_candidates": len(scores),
         "n_scoreable": sum(r["scoreable"] for r in scores),
+        "n_primary_scores": sum(math.isfinite(r["pace_score"]) for r in scores),
         "n_full_scores": sum(
             math.isfinite(r["pace_score"]) and r["score_scope"] == "full_candidate_set"
             for r in scores
@@ -429,7 +430,8 @@ def write_config_and_report(dest, cfg, qc, n_candidates, *, relative_to=None):
     (dest / "report.md").write_text(
         f"# PACE run: {cfg['run_id']}\n\n"
         f"Measured activity; profile: {cfg['execution_profile']}; target: {cfg['target_level']}.\n\n"
-        f"Scorable candidates: {qc['n_scoreable']} / {n_candidates}.\n\n"
+        f"Scorable candidates: {qc['n_scoreable']} / {n_candidates}; "
+        f"with a primary score: {qc['n_primary_scores']}.\n\n"
         "Each score is the element's share of its gene's activity x contact support; genes with "
         "unscored candidates have no primary score.\n",
         encoding="utf-8",

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.4
+
+- `pace benchmark`: a tested positive whose region maps to no element, or to several, stays in the evaluation as a missed positive. End-to-end recall keeps every tested positive in its denominator; `excluded_labels.tsv` separates `unmapped_region` from `ambiguous_region`, and `benchmark_manifest.json` counts the positives of each.
+- `pace predict` compares the length of every chromosome in the chromosome sizes, each bigWig and the Hi-C file and stops when they differ.
+- `pace fit-prior` and `pace predict` stop when none of the CTCF boundaries lies on a Hi-C chromosome (`chr1` vs `1`); the prior manifest records `boundaries_in_fit`.
+- `pace predict --hic` fits the decay on bin pairs up to 1 Mb whatever `--radius`; a radius equal to the bin size no longer stops the fit.
+- `--bin-level-contacts` no longer changes the value of pairs filled by the prior alone (same bin, masked bin, no reads); they stay at their exact distance.
+- `pace predict --tss-weights` accepts `usage` and `equal`; `provided` is available in `pace run`, where `promoters.tsv` is an input.
+- Command summaries and `report.md` report `n_primary_scores`, the pairs with a primary score, next to `n_scoreable`.
+- Small-sample quick-test assets are marked `is_test_data` (was `is_synthetic`) and `--test-data` (was `--synthetic`); perturbation type `synthetic_inhibition` is now `test_inhibition`.
+- Documentation: `--aliases` applies to the BED, GTF and chromosome sizes files; `pace compare` needs the same tissue label in both runs; README opens with the method name and the Hi-C conditions it is designed for.
+
 ## 0.12.3
 
 - `pace benchmark` adds a `common_labels_all_methods` scope when external methods are given: labels scored by every method, external ones included, so other software is compared on the same labels.
@@ -197,6 +209,6 @@ Existing run outputs without the new measurement contracts should be rerun befor
 - Introduce the installable src package, shared measured/hybrid/genome pipeline,
   strict schemas, provenance, quantitative CNN, contact/fusion fitting, separate
   classifier, comparisons and functional benchmarks.
-- Add synthetic examples, wheel distribution, numerical tests and hosted CI.
+- Add small-sample quick-test examples, wheel distribution, numerical tests and hosted CI.
 
 Earlier implementations remain available in Git history. These release notes describe software behavior, not demonstrated biological superiority.

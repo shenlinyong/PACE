@@ -366,7 +366,7 @@ OPTION_NAMES = {
     "track": "bigwig",
     "contact": "hic",
     "region_membership": "membership",
-    "is_synthetic": "synthetic",
+    "is_test_data": "test-data",
 }
 
 
