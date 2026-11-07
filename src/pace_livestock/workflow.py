@@ -84,19 +84,29 @@ def check_predict(args):
     return tracks
 
 
-def check_reference_lengths(reference, tracks, hic_uri=None):
+def check_reference_lengths(reference, tracks, hic_uri=None, aliases=None, fasta=None):
     """Stop when a file gives a chromosome of the reference another length.
 
     Candidate intervals are checked against chromosome ends elsewhere; a different total
     length means a different assembly, which shifts every coordinate past the difference.
     """
     from .io.bed_gtf import read_chrom_sizes
+    from .io.prior_fit import fasta_sizes
+    from .io.tables import read_table
 
-    sizes = read_chrom_sizes(reference)
+    # Names are unified first (the alias table renames the sizes file), then lengths compared.
+    renames = (
+        {r["alias"]: r["canonical"] for r in read_table(aliases, required=["alias", "canonical"])}
+        if aliases
+        else {}
+    )
+    sizes = read_chrom_sizes(reference, aliases=renames)
     others = {}
     for assay, path in tracks:
         if str(path) != str(reference):
             others[f"{assay} bigWig {path}"] = read_chrom_sizes(path)
+    if fasta:
+        others[f"FASTA {fasta}"] = fasta_sizes(fasta)
     if hic_uri:
         import cooler
 
@@ -116,10 +126,11 @@ def check_reference_lengths(reference, tracks, hic_uri=None):
 ASSAY_OPTIONS = (("atac", "ATAC"), ("dnase", "DNase"), ("h3k27ac", "H3K27ac"))
 
 
-def unique_sample_ids(tracks):
+def unique_sample_ids(tracks, reserved=()):
+    """One distinct sample ID per bigWig; `reserved` names (the Hi-C file's) are never reused."""
     from .cli import stem
 
-    ids, seen = [], set()
+    ids, seen = [], set(reserved)
     for assay, path in tracks:
         name = stem(path)
         if name in seen:
@@ -149,7 +160,11 @@ def predict(args):
     chrom_sizes = args.chrom_sizes or tracks[0][1]
     resolution = hic_resolution(args.hic, args.hic_resolution) if args.hic else None
     check_reference_lengths(
-        chrom_sizes, tracks, cooler_uri(args.hic, resolution) if args.hic else None
+        chrom_sizes,
+        tracks,
+        cooler_uri(args.hic, resolution) if args.hic else None,
+        aliases=args.aliases,
+        fasta=args.genome if args.ctcf and args.hic else None,
     )
     with output_directory(args.out) as dest:
         prepared = dest / "prepared"
@@ -174,7 +189,9 @@ def predict(args):
         )
         log(f"    {catalog['units']} elements, {catalog['candidates']} element-gene pairs")
         activity_tables, coverage = [], []
-        for (assay, path), sample in zip(tracks, unique_sample_ids(tracks), strict=True):
+        for (assay, path), sample in zip(
+            tracks, unique_sample_ids(tracks, [stem(args.hic)] if args.hic else []), strict=True
+        ):
             log(f"2/4 quantifying {assay} signal: {path}")
             out = prepared / f"activity_{sample}"
             prepare_command(

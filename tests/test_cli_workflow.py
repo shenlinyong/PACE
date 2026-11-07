@@ -630,7 +630,7 @@ def test_boundaries_on_other_chromosome_names_stop_the_fit(inputs, tmp_path, mon
         model_id="m",
         no_boundaries=False,
         ctcf="peaks",
-        genome="fasta",
+        genome=None,
         test_data=False,
         species="pig",
         assembly="toy",
@@ -638,9 +638,13 @@ def test_boundaries_on_other_chromosome_names_stop_the_fit(inputs, tmp_path, mon
         target_level="individual",
         out=tmp_path / "prior",
     )
-    with pytest.raises(PaceError, match="Hi-C chromosome"):
+    with pytest.raises(PaceError, match="inside a Hi-C chromosome"):
         prior_fit.fit_cooler_command(args)
     names[0]["chrom"] = "chr1"
+    names[0]["position0"] = 10**9  # beyond the end of chr1
+    with pytest.raises(PaceError, match="inside a Hi-C chromosome"):
+        prior_fit.fit_cooler_command(args)
+    names[0]["position0"] = 500_000
     assert prior_fit.fit_cooler_command(args)["boundaries_in_fit"] == 1
 
 
@@ -663,3 +667,101 @@ def test_predict_has_no_external_tss_weights_option(inputs, tmp_path, capsys):
         )
     assert stop.value.code == 2
     assert "invalid choice" in capsys.readouterr().err
+
+
+def test_alias_table_does_not_hide_a_chromosome_length_conflict(inputs, tmp_path, capsys):
+    sizes = tmp_path / "sizes.tsv"
+    sizes.write_text("".join(f"{c.removeprefix('chr')}\t{n}\n" for c, n in CHROMS.items()))
+    aliases = tmp_path / "aliases.tsv"
+    aliases.write_text("alias\tcanonical\n" + "".join(f"{c[3:]}\t{c}\n" for c in CHROMS))
+    other = tmp_path / "other.bw"
+    bw = pyBigWig.open(str(other), "w")
+    bw.addHeader([(c, n + (1000 if c == "chr1" else 0)) for c, n in CHROMS.items()])
+    for chrom, length in CHROMS.items():
+        bw.addEntries(chrom, 0, values=[1.0] * (length // 100), span=100, step=100)
+    bw.close()
+    code = call(
+        "predict",
+        "-b",
+        inputs / "peaks.bed",
+        "-g",
+        inputs / "genes.gtf",
+        "-c",
+        sizes,
+        "--aliases",
+        aliases,
+        "--atac",
+        other,
+        "--distance-only",
+        *context(),
+        "-o",
+        tmp_path / "out",
+    )
+    err = capsys.readouterr().err
+    assert code == 2 and "chr1" in err and "different genome assemblies" in err
+
+
+@pytest.mark.parametrize("flag", ["--no-shrinkage", "--strict-contacts"])
+def test_non_integer_contacts_run_without_shrinkage(inputs, tmp_path, capsys, flag):
+    source = cooler.Cooler(str(inputs / "hic.cool"))
+    pixels = source.pixels()[:]
+    pixels["count"] = pixels["count"].astype(float) + 0.5
+    path = tmp_path / "float.cool"
+    cooler.create_cooler(
+        str(path),
+        source.bins()[:][["chrom", "start", "end"]],
+        pixels,
+        ordered=True,
+        dtypes={"count": float},
+    )
+    with _quiet():
+        cooler.balance_cooler(cooler.Cooler(str(path)), store=True)
+    args = [
+        "predict",
+        "-b",
+        inputs / "peaks.bed",
+        "-g",
+        inputs / "genes.gtf",
+        "-c",
+        inputs / "genome.fa.fai",
+        "--atac",
+        inputs / "atac.bw",
+        "--hic",
+        path,
+        "-r",
+        1_000_000,
+        *context(),
+        "-o",
+        tmp_path / "out",
+        flag,
+    ]
+    assert call(*args) == 0
+    capsys.readouterr()
+    # Per-pair shrinkage treats counts as Poisson and still requires integers.
+    assert call(*args[:-3], "-o", tmp_path / "shrunk") == 2
+    assert "integer" in capsys.readouterr().err
+
+
+def test_bigwig_and_hic_with_the_same_file_name_get_distinct_sample_ids(inputs, tmp_path, capsys):
+    same = tmp_path / "hic.bw"
+    same.write_bytes((inputs / "atac.bw").read_bytes())
+    code = call(
+        "predict",
+        "-b",
+        inputs / "peaks.bed",
+        "-g",
+        inputs / "genes.gtf",
+        "-c",
+        inputs / "genome.fa.fai",
+        "--atac",
+        same,
+        "--hic",
+        inputs / "hic.cool",
+        "-r",
+        1_000_000,
+        *context(),
+        "-o",
+        tmp_path / "out",
+    )
+    capsys.readouterr()
+    assert code == 0

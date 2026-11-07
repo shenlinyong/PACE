@@ -293,14 +293,18 @@ def validate_tables(t: dict, cfg: dict) -> None:
                 ):
                     if row.get(field) is not None:
                         row[field] = number(row[field], field, minimum=0)
-                if row.get("raw_count") is not None and row["raw_count"] != math.floor(
-                    row["raw_count"]
-                ):
-                    raise PaceError("raw_count must contain integer counts")
+                per_pair = cfg["contact"]["reliability"] == "per_pair"
+                # Only the Gamma-Poisson path treats raw_count as a Poisson count.
                 if (
-                    cfg["contact"]["reliability"] == "per_pair"
-                    and row["measurement_status"] == "observed"
+                    per_pair
+                    and row.get("raw_count") is not None
+                    and row["raw_count"] != math.floor(row["raw_count"])
                 ):
+                    raise PaceError(
+                        "raw_count must contain integer counts for per-pair shrinkage; "
+                        "use --no-shrinkage for coolers with non-integer values"
+                    )
+                if per_pair and row["measurement_status"] == "observed":
                     if row.get("raw_count") is None or not row.get("count_to_contact"):
                         raise PaceError("per_pair requires raw_count and positive count_to_contact")
                     if not math.isclose(

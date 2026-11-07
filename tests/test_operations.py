@@ -258,3 +258,24 @@ def test_benchmark_keeps_unmapped_and_ambiguous_positives_in_the_denominator(tmp
     assert row["recall_end_to_end"] == pytest.approx(3 / 5)
     manifest = json.loads((tmp_path / "benchmark" / "benchmark_manifest.json").read_text())
     assert manifest["n_positive_unmapped"] == 1 and manifest["n_positive_ambiguous"] == 1
+
+
+def test_benchmark_reports_coverage_when_no_label_maps_to_an_element(tmp_path):
+    p, _ = benchmark_inputs(tmp_path)
+    write_table(
+        tmp_path / "membership.tsv",
+        [dict(region_id="elsewhere", element_id=e) for e in ("E1", "E2", "E3")],
+    )
+    cfg = yaml.safe_load(p.read_text())
+    cfg["thresholds"] = {"PACE_eta0": dict(value=0, source_split="train", source_id="fit")}
+    p.write_text(yaml.safe_dump(cfg))
+    report = benchmark_command(p, tmp_path / "benchmark")
+    row = next(
+        r for r in report if r["method"] == "PACE_eta0" and r["scope"] == "all_tested_labels"
+    )
+    assert row["n_tested"] == 6 and row["n_scored"] == 0 and row["coverage"] == 0
+    assert row["n_positive"] == row["missed_positive"] == 3
+    assert row["recall_end_to_end"] == 0
+    assert math.isnan(row["auroc"]) and math.isnan(row["average_precision"])
+    manifest = json.loads((tmp_path / "benchmark" / "benchmark_manifest.json").read_text())
+    assert manifest["n_positive_unmapped"] == 3

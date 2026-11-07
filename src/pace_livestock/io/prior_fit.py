@@ -121,25 +121,29 @@ def cooler_boundary_cells(
     balanced=True,
     min_distance=None,
     max_distance=5_000_000,
-    n_bins=30,
     test_chromosomes=(),
     chunksize=1_000_000,
 ):
-    """Valid bin pairs and contact sums by distance class and crossed boundary strength.
+    """Valid bin pairs and contact sums by exact bin separation and crossed boundary strength.
 
     The strength crossed by bins i < j is the summed strength of boundaries strictly
-    between their centres, as the prior applies it. Unstored pixels count as zeros.
+    between their centres, as the prior applies it. Pairs are classed by their exact
+    separation (j - i bins), so the boundary effect is estimated only between pairs at
+    the same distance. Unstored pixels count as zeros.
     """
     import cooler
 
     c = cooler.Cooler(str(uri))
     resolution = int(c.binsize)
     min_distance = resolution if min_distance is None else min_distance
+    first_step = max(1, int(np.ceil(min_distance / resolution)))
+    last_step = int(np.ceil(max_distance / resolution)) - 1
+    n_steps = max(0, last_step - first_step + 1)
+    if n_steps < 1:
+        raise PaceError("Fit distances need at least one bin separation between min and max")
     bins = c.bins()[:]
     weights = bins["weight"].to_numpy(float) if balanced else np.ones(len(bins))
     valid = np.isfinite(weights) & (weights > 0)
-    edges = np.geomspace(min_distance, max_distance, n_bins + 1)
-    edges[0], edges[-1] = min_distance, max_distance
     by_chrom = {}
     for row in boundaries:
         by_chrom.setdefault(row["chrom"], []).append(
@@ -148,8 +152,8 @@ def cooler_boundary_cells(
     below, upto = np.zeros(len(bins)), np.zeros(len(bins))
     chrom_codes = np.empty(len(bins), dtype=int)
     train = np.zeros(len(c.chromnames), dtype=bool)
-    shape = (n_bins, S_CLASSES)
-    n_pairs, contact, log_d, crossed = (np.zeros(shape) for _ in range(4))
+    shape = (n_steps, S_CLASSES)
+    n_pairs, contact, crossed = (np.zeros(shape) for _ in range(3))
     for code, chrom in enumerate(c.chromnames):
         first, last = c.extent(chrom)
         chrom_codes[first:last] = code
@@ -164,37 +168,31 @@ def cooler_boundary_cells(
             continue
         ok = valid[first:last]
         n = last - first
-        for step in range(max(1, int(np.ceil(min_distance / resolution))), n):
-            d = step * resolution
-            if d >= max_distance:
-                break
-            k = np.searchsorted(edges, d, side="right") - 1
-            if k < 0 or k >= n_bins:
-                continue
+        for step in range(first_step, min(n, last_step + 1)):
             both = ok[:-step] & ok[step:]
             s = below[first + step : last] - upto[first : last - step]
             m = _strength_class(s)
+            k = step - first_step
             n_pairs[k] += np.bincount(m[both], minlength=S_CLASSES)
             crossed[k] += np.bincount(m[both], weights=s[both], minlength=S_CLASSES)
-            log_d[k] += np.bincount(m[both], minlength=S_CLASSES) * np.log(d)
     for start in range(0, int(c.info["nnz"]), chunksize):
         pixels = c.pixels()[start : start + chunksize]
         i = pixels["bin1_id"].to_numpy(int)
         j = pixels["bin2_id"].to_numpy(int)
         values = pixels["count"].to_numpy(float)
+        step = j - i
         keep = (chrom_codes[i] == chrom_codes[j]) & valid[i] & valid[j] & train[chrom_codes[i]]
-        k = np.searchsorted(edges, (j - i) * resolution, side="right") - 1
-        keep &= (k >= 0) & (k < n_bins) & ((j - i) * resolution < max_distance)
+        keep &= (step >= first_step) & (step <= last_step)
         i, j, k, values = (
             i[keep],
             j[keep],
-            k[keep],
+            step[keep] - first_step,
             values[keep] * weights[i[keep]] * weights[j[keep]],
         )
         m = _strength_class(below[j] - upto[i])
         np.add.at(contact, (k, m), values)
     cells = []
-    for k in range(n_bins):
+    for k in range(n_steps):
         for m in range(S_CLASSES):
             if n_pairs[k, m]:
                 cells.append(
@@ -203,7 +201,7 @@ def cooler_boundary_cells(
                         strength_class=m,
                         n_pairs=int(n_pairs[k, m]),
                         contact_sum=float(contact[k, m]),
-                        geometric_distance=float(np.exp(log_d[k, m] / n_pairs[k, m])),
+                        geometric_distance=float((first_step + k) * resolution),
                         mean_strength=float(crossed[k, m] / n_pairs[k, m]),
                     )
                 )
@@ -323,6 +321,31 @@ def map_boundaries(args):
     return [], None
 
 
+def fasta_sizes(path):
+    """Chromosome lengths of a FASTA, from its .fai index when present."""
+    index = Path(str(path) + ".fai")
+    if index.is_file():
+        from .bed_gtf import read_chrom_sizes
+
+        return read_chrom_sizes(index)
+    from .reference import Reference
+
+    with Reference(path) as reference:
+        return reference.sizes
+
+
+def check_fasta_lengths(fasta, sizes, label):
+    """Stop when the FASTA gives a chromosome another length than `sizes`."""
+    if not fasta:
+        return
+    for chrom, length in fasta_sizes(fasta).items():
+        if chrom in sizes and sizes[chrom] != length:
+            raise PaceError(
+                f"Chromosome {chrom} is {length} bp in the FASTA {fasta} but {sizes[chrom]} bp "
+                f"in {label}; the files come from different genome assemblies"
+            )
+
+
 def fit_cooler_command(args):
     import cooler
 
@@ -371,13 +394,17 @@ def fit_cooler_command(args):
         boundaries, boundary_source = map_boundaries(args)
     in_fit = 0
     if boundaries:
-        known = set(cooler.Cooler(str(args.cooler)).chromnames)
-        in_fit = sum(row["chrom"] in known for row in boundaries)
+        sizes = {k: int(v) for k, v in cooler.Cooler(str(args.cooler)).chromsizes.items()}
+        check_fasta_lengths(args.genome, sizes, args.cooler)
+        in_fit = sum(
+            row["chrom"] in sizes and 0 <= int(row["position0"]) < sizes[row["chrom"]]
+            for row in boundaries
+        )
         if not in_fit:
             raise PaceError(
-                f"None of the {len(boundaries)} CTCF boundaries lies on a Hi-C chromosome "
+                f"None of the {len(boundaries)} CTCF boundaries lies inside a Hi-C chromosome "
                 f"(boundaries use e.g. {boundaries[0]['chrom']!r}, the Hi-C file "
-                f"{sorted(known)[0]!r}); use the same chromosome names in all files"
+                f"{sorted(sizes)[0]!r}); use the same chromosome names and assembly in all files"
             )
         cells, _ = cooler_boundary_cells(
             args.cooler,
@@ -385,7 +412,6 @@ def fit_cooler_command(args):
             balanced=args.balanced,
             min_distance=min_distance,
             max_distance=args.max_distance,
-            n_bins=args.distance_bins,
             test_chromosomes=args.test_chromosomes,
         )
         joint = fit_boundary_prior(cells, d_ref=args.reference_distance, d_min=d_min)

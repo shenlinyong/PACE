@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.5
+
+- Chromosome lengths are compared after names are unified: with `--aliases`, the renamed sizes file is checked against every bigWig and the Hi-C file, and the CTCF FASTA is checked against the sizes and the Hi-C file.
+- `boundaries_in_fit` counts the boundaries inside a Hi-C chromosome, not those merely named like one.
+- The boundary effect $\beta$ is estimated between pairs with the same bin separation. Grouping pairs in logarithmic distance classes let the distance decay within a class appear as a boundary effect; without same-distance controls $\beta$ is 0 (`beta_unidentifiable`).
+- Non-integer contact values run with `--no-shrinkage` and `--strict-contacts`; only per-pair shrinkage requires integer counts.
+- `pace benchmark` still reports coverage, missed positives and end-to-end recall when no label maps to an element.
+- `pace predict` gives the bigWig tracks sample IDs that differ from the Hi-C file's.
+- Documentation: the score has the ABC form, but pair placement and same-bin handling remain with deep Hi-C; `ABC_style_single_TSS` is not the original ABC implementation.
+
 ## 0.12.4
 
 - `pace benchmark`: a tested positive whose region maps to no element, or to several, stays in the evaluation as a missed positive. End-to-end recall keeps every tested positive in its denominator; `excluded_labels.tsv` separates `unmapped_region` from `ambiguous_region`, and `benchmark_manifest.json` counts the positives of each.

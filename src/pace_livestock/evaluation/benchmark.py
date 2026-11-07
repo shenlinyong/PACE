@@ -95,10 +95,6 @@ def benchmark_command(path, out):
             "onto this run's elements"
         )
     mapped, rejected = map_labels(labels, membership)
-    if not mapped:
-        raise PaceError(
-            "No evaluable unambiguous functional labels; biological benchmarking unavailable"
-        )
     keys = [(r["element_id"], r["gene_id"]) for r in mapped]
     if len(set(keys)) != len(keys):
         raise PaceError(
@@ -116,6 +112,11 @@ def benchmark_command(path, out):
                     {**row, "element_id": f"unresolved:{row['label_id']}", "label": label}
                 )
     evaluated = mapped + unresolved
+    if not evaluated:
+        raise PaceError(
+            "No usable functional labels (every label is excluded for its direction or status); "
+            "biological benchmarking unavailable"
+        )
     keys = [(r["element_id"], r["gene_id"]) for r in evaluated]
     methods = {}
     calibration = None

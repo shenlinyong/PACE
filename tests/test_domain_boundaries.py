@@ -246,3 +246,68 @@ def test_ctcf_peaks_must_share_chromosome_names_with_the_fasta(domains_genome, t
     renamed.write_text("".join(lines) + "chrUn\t100\t220\tp\t0\t.\t5.0\n")
     assert ctcf_boundaries(renamed, domains_genome / "genome.fa")
     assert "1 of 7 CTCF peaks" in capsys.readouterr().err
+
+
+def _boundary_cooler(path, effect):
+    """One 2 Mb chromosome at 5 kb with contacts exactly 1/d, damped by `effect` across 1 Mb."""
+    import cooler
+    import numpy as np
+    import pandas as pd
+
+    res, n = 5000, 400
+    bins = pd.DataFrame(
+        {"chrom": "chr1", "start": np.arange(n) * res, "end": (np.arange(n) + 1) * res}
+    )
+    i, j = np.triu_indices(n, k=1)
+    d = (j - i) * res
+    crossing = (i < n // 2) & (j >= n // 2)
+    counts = np.rint(5e8 / d * np.where(crossing, np.exp(-effect), 1.0)).astype(int)
+    pixels = pd.DataFrame({"bin1_id": i, "bin2_id": j, "count": counts})
+    cooler.create_cooler(str(path), bins, pixels[pixels["count"] > 0], ordered=True)
+
+
+@pytest.mark.parametrize("effect", [0.0, math.log(4)])
+def test_boundary_effect_is_estimated_between_pairs_at_the_same_distance(tmp_path, effect):
+    pytest.importorskip("cooler")
+    from pace_livestock.io.prior_fit import cooler_boundary_cells, fit_boundary_prior
+
+    path = tmp_path / "h.cool"
+    _boundary_cooler(path, effect)
+    boundaries = [{"chrom": "chr1", "position0": 1_000_000, "strength": 1.0}]
+    cells, _ = cooler_boundary_cells(
+        path, boundaries, balanced=False, min_distance=5000, max_distance=1_000_000
+    )
+    fit = fit_boundary_prior(cells, d_ref=5000, d_min=5000)
+    assert fit["beta"] == pytest.approx(effect, abs=0.02)
+    assert fit["gamma"] == pytest.approx(1.0, abs=0.02)
+
+
+def test_boundary_effect_is_not_identifiable_without_same_distance_controls(tmp_path):
+    pytest.importorskip("cooler")
+    import cooler
+    import numpy as np
+    import pandas as pd
+
+    from pace_livestock.io.prior_fit import cooler_boundary_cells, fit_boundary_prior
+
+    res, n = 5000, 160
+    bins = pd.DataFrame(
+        {"chrom": "chr1", "start": np.arange(n) * res, "end": (np.arange(n) + 1) * res}
+    )
+    i, j = np.triu_indices(n, k=1)
+    d = (j - i) * res
+    pixels = pd.DataFrame({"bin1_id": i, "bin2_id": j, "count": np.rint(5e8 / d).astype(int)})
+    path = tmp_path / "h.cool"
+    cooler.create_cooler(str(path), bins, pixels, ordered=True)
+    # A boundary at 20 kb: pairs longer than 140 bins all cross it, shorter ones do not
+    # all cross; only distances with both kinds of pair carry information.
+    boundaries = [{"chrom": "chr1", "position0": 20_000, "strength": 1.0}]
+    cells, _ = cooler_boundary_cells(
+        path, boundaries, balanced=False, min_distance=5000, max_distance=800_000
+    )
+    by_step = {}
+    for r in cells:
+        by_step.setdefault(r["distance_class"], set()).add(r["strength_class"])
+    assert any(len(v) == 1 for v in by_step.values())
+    fit = fit_boundary_prior(cells, d_ref=5000, d_min=5000)
+    assert fit["beta"] == pytest.approx(0.0, abs=0.02)

@@ -2,7 +2,7 @@
 
 **Enhancer–gene prediction from low-depth, low-resolution and surrogate-tissue Hi-C.**
 
-PACE ranks the candidate regulatory elements of each gene in a tissue. It keeps the Activity-by-Contact (ABC) score — an element's activity times its contact with the gene, as a share of the total over all candidates of that gene — and changes how contact is estimated. Every contact estimate is anchored to a distance-boundary prior fitted on Hi-C, which gives the method its name. The prior takes over where the Hi-C is uninformative: bin pairs with few reads, element–TSS pairs inside one coarse bin, and tissues without Hi-C. With deep, fine-resolution Hi-C the estimate follows the measured contact and the score reduces to ABC.
+PACE ranks the candidate regulatory elements of each gene in a tissue. It keeps the Activity-by-Contact (ABC) score — an element's activity times its contact with the gene, as a share of the total over all candidates of that gene — and changes how contact is estimated. Every contact estimate is anchored to a distance-boundary prior fitted on Hi-C, which gives the method its name. The prior takes over where the Hi-C is uninformative: bin pairs with few reads, element–TSS pairs inside one coarse bin, and tissues without Hi-C. With deep, fine-resolution Hi-C the measured contact dominates the estimate. The score keeps the ABC form, but the placement of each pair within its bin pair and the treatment of same-bin pairs still apply; `--bin-level-contacts` and `--strict-contacts` switch them off.
 
 PACE is designed for Hi-C that is shallow, binned at 10–100 kb, available only for another tissue, or absent. This is typical of species and tissues outside deeply profiled human cell lines, where gene annotations also carry many predicted TSSs. Any species with a reference genome, a gene annotation and measured chromatin data can be analysed.
 
@@ -143,8 +143,8 @@ pace predict -b peaks.bed -g genes.gtf --atac pig2_ATAC.bw --h3k27ac pig2_H3K27a
 `pace fit-prior`:
 
 1. **Boundaries** are placed between each reverse CTCF site and the next forward site, as CTCF loop anchors face into their own domain; strengths are scaled to 0–1.
-2. **Valid bin pairs** are grouped by distance (30 logarithmic classes from $d_{\min}$ to 1 Mb, where enhancer–promoter links lie; closer pairs lie on the flat part of the prior) and by the crossed boundary strength $S$. Pixels absent from the sparse matrix count as zeros.
-3. **$\beta$** is the drop in log contact per unit of $S$ between pairs at the same distance.
+2. **Valid bin pairs** from $d_{\min}$ to 1 Mb (where enhancer–promoter links lie; closer pairs lie on the flat part of the prior) are grouped by their exact bin separation and by the crossed boundary strength $S$. Without boundaries the decay is fitted on 30 logarithmic distance classes. Pixels absent from the sparse matrix count as zeros.
+3. **$\beta$** is the drop in log contact per unit of $S$, estimated only between pairs with the same bin separation. Pairs at different distances are never compared, so the distance decay cannot be mistaken for a boundary effect; if no separation holds pairs of different strength, $\beta$ is 0 and `beta_status` says `beta_unidentifiable`.
 4. **$a$ and $\gamma$** describe the boundary-corrected decay with distance.
 
 Both steps treat the summed contact of each class as Poisson with the number of bin pairs as exposure, so classes without contacts stay in the fit and the overall scale of the map changes only $a$. Beyond 1 Mb the prior extrapolates the fitted power law.
@@ -408,9 +408,9 @@ Scores from different runs are comparable only when candidates, assays, normaliz
 
 **Chromosome name mismatch** — BED, GTF, bigWig, Hi-C and FASTA disagree on names (`chr1` vs `1`, `chrMT` vs `MT`). Rename in one place, or give `--aliases` for the BED, GTF and chromosome sizes files (bigWig, Hi-C and FASTA files must already use the canonical names); drop unneeded contigs with `--skip-unlisted-chroms`.
 
-**"None of the CTCF boundaries lies on a Hi-C chromosome"** — the CTCF peaks and the Hi-C use different chromosome names. The fit stops when none of the boundaries is on a Hi-C chromosome, and `manifest.json` of the prior records how many are (`boundaries_in_fit`).
+**"None of the CTCF boundaries lies inside a Hi-C chromosome"** — the CTCF peaks and the Hi-C use different chromosome names. The fit stops when no boundary lies inside a Hi-C chromosome, and `manifest.json` of the prior records how many do (`boundaries_in_fit`).
 
-**"... bp in the bigWig but ... bp in the chromosome sizes"** — the files come from different genome assemblies; use tracks, Hi-C and sizes of the same assembly.
+**"... bp in the bigWig but ... bp in the chromosome sizes"** — the files come from different genome assemblies; use tracks, Hi-C, FASTA and sizes of the same assembly. The names are unified first (`--aliases` renames the sizes file), then the lengths are compared.
 
 **"needs both --ctcf peaks and --genome FASTA"** — the boundary term needs both files. The FASTA must be uncompressed (`gunzip genome.fa.gz`).
 
