@@ -12,6 +12,7 @@ from ..catalog import map_labels
 from ..config import load_config, operation_base, operation_config, strict_keys
 from ..core.scoring import log_normalize, score
 from ..errors import PaceError
+from ..evidence.assets import load_asset
 from ..io.tables import number, read_table, write_table
 from ..labels import classify_label
 from ..pipeline import compute
@@ -59,13 +60,24 @@ def verify_run_inputs(config_path, run_cfg):
     manifest_path = Path(config_path).resolve().parent / "run_manifest.json"
     if not manifest_path.is_file():
         return
-    recorded = json.loads(manifest_path.read_text(encoding="utf-8")).get("input_hashes", {})
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    recorded = manifest.get("input_hashes", {})
     for name, path in run_cfg["inputs"].items():
         if path and name in recorded and file_hash(path) != recorded[name]:
             raise PaceError(
                 f"Run input {name} ({path}) differs from the hash in run_manifest.json; the "
                 "baselines would not describe the reported run. Rerun the analysis or restore "
                 "the file"
+            )
+    # The contact prior is an input of the scores as well (its boundary table is bound to
+    # its manifest by checksum).
+    prior = run_cfg["contact"].get("prior_path")
+    if prior and "contact_prior" in manifest.get("asset_hashes", {}):
+        current = load_asset(prior, run_cfg, kind="contact_prior")["manifest_sha256"]
+        if current != manifest["asset_hashes"]["contact_prior"]:
+            raise PaceError(
+                f"The contact prior {prior} differs from the one recorded in run_manifest.json; "
+                "the baselines would not describe the reported run"
             )
 
 

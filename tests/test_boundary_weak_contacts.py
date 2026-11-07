@@ -733,3 +733,21 @@ def test_resolved_contacts_with_unresolved_pairs_can_be_imported_again(configure
     assert [r["pace_score"] for r in repeated["scores"]] == pytest.approx(
         [r["pace_score"] for r in original["scores"]], nan_ok=True
     )
+
+
+@pytest.mark.parametrize("fallback", [True, False])
+def test_fixed_weight_shrinkage_reads_back_its_own_masked_pairs(configured, tmp_path, fallback):
+    rows = read_table(configured["inputs"]["observed_contacts"])
+    rows[1].update(contact_value=None, measurement_status="unmappable", count_to_contact=None)
+    write_table(configured["inputs"]["observed_contacts"], rows)
+    configured["contact"].update(
+        reliability=0.5, reliability_source="manual", allow_prior_fallback=fallback
+    )
+    original = run(configured, tmp_path / "original")
+    configured["inputs"]["resolved_contacts"] = str(tmp_path / "original/resolved_contacts.tsv")
+    configured["inputs"]["evidence"] = str(tmp_path / "original/evidence.tsv")
+    configured["inputs"]["sources"] = str(tmp_path / "original/sources.tsv")
+    repeated = compute(configured)
+    assert [r["pace_score"] for r in repeated["scores"]] == pytest.approx(
+        [r["pace_score"] for r in original["scores"]], nan_ok=True
+    )

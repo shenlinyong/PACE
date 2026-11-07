@@ -17,7 +17,7 @@ from .evidence.resolve import contact_measurement_contract, resolve_activity, re
 from .io.tables import write_table
 from .provenance import digest, environment, file_hash, output_directory, software_hash, write_json
 from .reporting import evidence_catalog, evidence_summary, multiomics_features
-from .schemas import load_tables, universe_ids
+from .schemas import load_tables, promoter_weight_id, universe_ids
 
 
 def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
@@ -324,6 +324,7 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
             "contact_reliability": cfg["contact"]["reliability"],
             "contact_reliability_source": cfg["contact"]["reliability_source"],
             "contact_kappa": used_kappa(resolved_c, cfg),
+            "promoter_weight_id": promoter_weight_id(tables["promoters"]),
             "allow_prior_fallback": cfg["contact"]["allow_prior_fallback"],
             "within_bin_distance": cfg["contact"]["within_bin_distance"],
             "pseudocount": cfg["contact"]["pseudocount"],

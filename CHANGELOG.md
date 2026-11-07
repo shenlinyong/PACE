@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.9
+
+- `pace benchmark` also checks the contact prior against the hash in `run_manifest.json`; a prior edited after the run is rejected.
+- TSS weights are no longer part of the TSS universe identifier. They are estimated per sample and recorded as `promoter_weight_id` in the evidence policy, so samples with the same TSSs and different promoter usage compare with `--allow-evidence-difference` (conditional differences).
+- Fixed-weight shrinkage reads back its own resolved contacts, with or without the prior fallback, including unresolved pairs.
+- A bigWig without any data gives zero activity with `--missing-as-zero` (uncovered bases, `callable_fraction` 1) and NA otherwise, as a bigWig with data elsewhere does.
+
 ## 0.12.8
 
 - `pace compare` compares how bigWig bases without data were handled (`activity.uncovered_bases`, set by `pace predict --missing-as-zero` or `pace run --uncovered-bases`) and the coverage threshold; runs that differ need `--allow-evidence-difference` and give conditional differences only.

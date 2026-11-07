@@ -496,7 +496,7 @@ def global_universe_ids(cfg: dict, dest: Path) -> dict:
     do not depend on chunk size or threads (those are execution details).
     """
     from .io.tables import integer, number
-    from .schemas import universe_ids
+    from .schemas import promoter_weight_id, universe_ids
 
     units = read_table(cfg["inputs"]["units"], required=["element_id", "chrom", "start", "end"])
     for row in units:
@@ -510,7 +510,7 @@ def global_universe_ids(cfg: dict, dest: Path) -> dict:
         "candidates": read_table(cfg["inputs"]["candidates"]),
         "promoters": promoters,
     }
-    return universe_ids(tables, cfg)
+    return {**universe_ids(tables, cfg), "_promoter_weight_id": promoter_weight_id(promoters)}
 
 
 def merge_manifest(cfg: dict, results: list[dict], dest: Path) -> dict:
@@ -519,8 +519,11 @@ def merge_manifest(cfg: dict, results: list[dict], dest: Path) -> dict:
         {"chromosomes": r["chromosomes"], **r["manifest"]["universe_ids"]} for r in results
     ]
     merged_ids = global_universe_ids(cfg, dest)
+    weights_id = merged_ids.pop("_promoter_weight_id")
     manifest["universe_ids"] = merged_ids
     manifest["comparison_contract"].update(merged_ids)
+    # Weights of the whole run, as a single run records them (chunks hold their own genes).
+    manifest["comparison_contract"]["evidence_policy"]["promoter_weight_id"] = weights_id
     manifest["chunk_universe_ids"] = chunk_ids
     manifest["config_hash"] = digest(cfg)
     manifest["input_hashes"] = {
@@ -530,7 +533,12 @@ def merge_manifest(cfg: dict, results: list[dict], dest: Path) -> dict:
     reference = manifest["comparison_contract"]
     for r in results:
         for key, value in r["manifest"]["comparison_contract"].items():
-            if key not in merged_ids and value != reference.get(key):
+            if key == "evidence_policy":
+                value = {k: v for k, v in value.items() if k != "promoter_weight_id"}
+                expected = {k: v for k, v in reference[key].items() if k != "promoter_weight_id"}
+            else:
+                expected = reference.get(key)
+            if key not in merged_ids and value != expected:
                 differences.setdefault(key, []).append(r["chromosomes"])
     manifest["execution"] = {
         "mode": "by_chromosome",

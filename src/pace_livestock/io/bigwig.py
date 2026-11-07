@@ -46,6 +46,9 @@ def quantify_bigwig(path, units, *, missing_is_measured_zero=False, minimum_call
                     f"(bigWig length {sizes[chrom]}); check the genome assembly"
                 )
             values = np.asarray(bw.values(chrom, start, end, numpy=True), dtype=float)
+            if values.size != end - start:
+                # A bigWig with no data at all returns an empty array: every base is uncovered.
+                values = np.full(end - start, np.nan)
             valid = np.isfinite(values)
             if np.any(values[valid] < 0) or np.any(np.isinf(values)):
                 raise PaceError("Negative or infinite bigWig signal cannot be used as activity")

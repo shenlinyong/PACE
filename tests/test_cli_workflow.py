@@ -894,3 +894,96 @@ def test_compare_accepts_runs_that_differ_only_in_how_kappa_was_obtained(inputs,
     assert code == 0, capsys.readouterr().err
     rows = read_table(tmp_path / "c" / "comparison.tsv")
     assert rows and all(r["reason"] == "complete" for r in rows if r["full_delta_pace"] != "")
+
+
+def test_compare_allows_samples_whose_tss_weights_differ(inputs, tmp_path, capsys):
+    other = tmp_path / "other.bw"
+    rng = np.random.default_rng(99)
+    bw = pyBigWig.open(str(other), "w")
+    bw.addHeader(list(CHROMS.items()))
+    for chrom, length in CHROMS.items():
+        values = rng.gamma(0.5, 1.0, length // 100).tolist()
+        bw.addEntries(chrom, 0, values=values, span=100, step=100)
+    bw.close()
+    runs = {}
+    for name, track in (("a", inputs / "atac.bw"), ("b", other)):
+        runs[name] = tmp_path / name
+        code = call(
+            "predict",
+            "-b",
+            inputs / "peaks.bed",
+            "-g",
+            inputs / "genes.gtf",
+            "-c",
+            inputs / "genome.fa.fai",
+            "--atac",
+            track,
+            "--hic",
+            inputs / "hic.cool",
+            "-r",
+            1_000_000,
+            *context(),
+            "-o",
+            runs[name],
+        )
+        assert code == 0
+    capsys.readouterr()
+    weights = [read_table(runs[n] / "promoter_weights.tsv") for n in ("a", "b")]
+    assert [r["pi"] for r in weights[0]] != [r["pi"] for r in weights[1]]
+    out = tmp_path / "c"
+    code = call("compare", "--left", runs["a"], "--right", runs["b"], "-o", out)
+    err = capsys.readouterr().err
+    # Activity differs too, so the runs differ in evidence only through weights and kappa;
+    # the TSS universe itself is shared.
+    assert code == 2 and "evidence_policy" in err and "promoter_universe_id" not in err
+    code = call(
+        "compare",
+        "--left",
+        runs["a"],
+        "--right",
+        runs["b"],
+        "--allow-evidence-difference",
+        "-o",
+        tmp_path / "c2",
+    )
+    assert code == 0, capsys.readouterr().err
+
+
+def test_benchmark_check_detects_a_changed_contact_prior(inputs, tmp_path, capsys):
+    from pace_livestock.config import load_config
+    from pace_livestock.errors import PaceError
+    from pace_livestock.evaluation.benchmark import verify_run_inputs
+
+    assert call("fit-prior", "--cooler", inputs / "hic.cool", *context(), "-o", tmp_path / "p") == 0
+    out = tmp_path / "run"
+    code = call(
+        "predict",
+        "-b",
+        inputs / "peaks.bed",
+        "-g",
+        inputs / "genes.gtf",
+        "-c",
+        inputs / "genome.fa.fai",
+        "--atac",
+        inputs / "atac.bw",
+        "--prior",
+        tmp_path / "p",
+        "--species",
+        "pig",
+        "--assembly",
+        "toy",
+        "--tissue",
+        "muscle",
+        "-o",
+        out,
+    )
+    capsys.readouterr()
+    assert code == 0
+    config = out / "resolved_config.yaml"
+    verify_run_inputs(config, load_config(config))
+    manifest = out / "prepared" / "contact_prior" / "manifest.json"
+    prior = json.loads(manifest.read_text())
+    prior["gamma"] = 3.0
+    manifest.write_text(json.dumps(prior))
+    with pytest.raises(PaceError, match="contact prior"):
+        verify_run_inputs(config, load_config(config))

@@ -606,6 +606,12 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                     mode == "observed" and cfg["contact"]["allow_prior_fallback"]
                 ):
                     allowed_sources.add("contact_prior")
+                if mode == "shrinkage" and cfg["contact"]["allow_prior_fallback"]:
+                    # Fixed-weight shrinkage fills an unusable measurement with the prior.
+                    allowed_sources.add("contact_prior")
+                if imported_row["resolution_status"] != "resolved":
+                    # A pair that could not be resolved keeps the source it was read from.
+                    allowed_sources.add("observed")
                 if mode == "observed" and pseudocount_policy != "none" and prior_asset:
                     allowed_sources.add("regularized")
                 if imported_source not in allowed_sources:

@@ -455,8 +455,14 @@ def universe_ids(t: dict, cfg: dict) -> dict:
         ),
         "promoter_universe_id": digest(
             sorted(
-                (r["gene_id"], r["promoter_id"], r["chrom"], r["tss0"], r["strand"], r["pi"])
+                (r["gene_id"], r["promoter_id"], r["chrom"], r["tss0"], r["strand"])
                 for r in t["promoters"]
             )
         ),
     }
+
+
+def promoter_weight_id(promoters) -> str:
+    """Identifier of the TSS weights used. They are estimated per sample (promoter activity),
+    so they belong to the evidence policy, not to the TSS universe that runs share."""
+    return digest(sorted((r["promoter_id"], float(f"{float(r['pi']):.12g}")) for r in promoters))

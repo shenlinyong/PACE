@@ -207,3 +207,16 @@ def test_label_source_id_selects_the_region_of_that_source_only():
     plain = [{"region_id": "r", "element_id": "E9"}]
     usable, _ = map_labels([{**label, "assayed_region_id": "r", "source_id": "x"}], plain)
     assert [r["element_id"] for r in usable] == ["E9"]
+
+
+def test_bigwig_without_any_data_follows_the_uncovered_bases_option(tmp_path):
+    bw = pytest.importorskip("pyBigWig", reason="install PACE[io] to test real bigWig files")
+    p = tmp_path / "empty.bw"
+    with bw.open(str(p), "w") as w:
+        w.addHeader([("chr1", 1000)])
+    units = [dict(element_id="E", chrom="chr1", start=0, end=500)]
+    ignored = quantify_bigwig(p, units)[0]
+    assert math.isnan(ignored["signal"]) and ignored["callable_fraction"] == 0
+    zero = quantify_bigwig(p, units, missing_is_measured_zero=True)[0]
+    assert zero["signal"] == 0 and zero["callable_fraction"] == 1.0
+    assert zero["measurement_status"] == "observed"
