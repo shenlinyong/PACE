@@ -529,6 +529,12 @@ def test_predict_with_a_prior_from_another_tissue(inputs, tmp_path, capsys):
     manifest = json.loads((out / "run_manifest.json").read_text())
     prior = manifest["asset_manifests"]["contact_prior"]
     assert (prior["source_context_id"], prior["target_context_id"]) == ("liver", "muscle")
+    # The result folder holds its own copy of the prior and reruns without the original.
+    import shutil
+
+    shutil.rmtree(tmp_path / "p")
+    assert "prior_path: prepared/contact_prior" in (out / "resolved_config.yaml").read_text()
+    assert call("validate", "--config", out / "resolved_config.yaml") == 0
 
 
 def test_gtf_mixing_transcript_and_exon_only_records(tmp_path):
@@ -765,3 +771,47 @@ def test_bigwig_and_hic_with_the_same_file_name_get_distinct_sample_ids(inputs, 
     )
     capsys.readouterr()
     assert code == 0
+
+
+def test_hic_run_with_only_same_bin_pairs_needs_no_kappa(inputs, tmp_path, capsys):
+    (tmp_path / "peaks.bed").write_text("chr1\t1003000\t1003400\nchr1\t1007000\t1007400\n")
+    (tmp_path / "genes.gtf").write_text(
+        'chr1\tsrc\ttranscript\t1005001\t1009000\t.\t+\t.\tgene_id "G"; transcript_id "T";\n'
+    )
+    for chunk in ("1500000", "0"):
+        code = call(
+            "predict",
+            "-b",
+            tmp_path / "peaks.bed",
+            "-g",
+            tmp_path / "genes.gtf",
+            "-c",
+            inputs / "genome.fa.fai",
+            "--atac",
+            inputs / "atac.bw",
+            "--hic",
+            inputs / "hic.cool",
+            "-r",
+            5000,
+            "--chunk-pairs",
+            chunk,
+            *context(),
+            "-o",
+            tmp_path / f"out{chunk}",
+        )
+        capsys.readouterr()
+        assert code == 0
+    rows = read_table(tmp_path / "out0" / "resolved_contacts.tsv")
+    assert rows and {r["evidence_type"] for r in rows} == {"contact_prior"}
+
+
+def test_pseudocount_can_be_switched_off_without_shrinkage(inputs, tmp_path, capsys):
+    kept = {}
+    for name, extra in (("auto", []), ("none", ["--pseudocount", "none"])):
+        assert predict_hic(inputs, tmp_path / name, "--no-shrinkage", *extra) == 0
+        kept[name] = read_table(tmp_path / name / "resolved_contacts.tsv")
+    capsys.readouterr()
+    assert any(r["evidence_type"] == "regularized" for r in kept["auto"])
+    assert not any(r["evidence_type"] == "regularized" for r in kept["none"])
+    assert predict_hic(inputs, tmp_path / "bad", "--pseudocount", "none") == 2
+    assert "--pseudocount" in capsys.readouterr().err

@@ -10,10 +10,13 @@ from ..core import activity
 def usage_weights(tables, resolved_a, cfg):
     """Set each TSS weight to its share of the gene's promoter activity.
 
-    A TSS is measured by the activity of the grid cell that contains it. A TSS whose cell
-    is unmeasured or absent takes the mean activity of the gene's measured TSSs, so it
-    neither gains nor loses weight while the measured TSSs keep their information. Genes
-    without measured TSSs, or whose measured activity is all zero, use equal weights.
+    A TSS is measured by the activity of the grid cell that contains it. TSSs in the same
+    cell are one measurable promoter cluster: the cell's activity is counted once and
+    shared equally by its TSSs, so annotating more TSSs inside one cell cannot raise the
+    weight of that signal. A cluster whose cell is unmeasured or absent takes the mean
+    activity of the gene's measured clusters, so it neither gains nor loses weight while the
+    measured clusters keep their information. Genes without measured clusters, or whose
+    measured activity is all zero, use equal weights per TSS.
     """
     width, offset = cfg["catalog"]["width_bp"], cfg["catalog"]["offset_bp"]
     values = defaultdict(list)
@@ -23,11 +26,14 @@ def usage_weights(tables, resolved_a, cfg):
     for p in tables["promoters"]:
         by_gene[p["gene_id"]].append(p)
     for group in by_gene.values():
-        usage = []
+        clusters = defaultdict(list)
         for p in group:
             start, end = canonical_cell_bounds(p["tss0"], width=width, offset=offset)
-            rows = values.get(f"{p['chrom']}:{start}-{end}", [])
-            usage.append(
+            clusters[f"{p['chrom']}:{start}-{end}"].append(p)
+        usage = {}
+        for cell in clusters:
+            rows = values.get(cell, [])
+            usage[cell] = (
                 activity(
                     [r["resolved_value"] for r in rows],
                     [cfg["activity"]["pseudocounts"].get(r["assay"], 0.0) for r in rows],
@@ -35,20 +41,21 @@ def usage_weights(tables, resolved_a, cfg):
                 if rows
                 else math.nan
             )
-        known = [u for u in usage if math.isfinite(u)]
+        known = [u for u in usage.values() if math.isfinite(u)]
         mean = math.fsum(known) / len(known) if known else math.nan
-        filled = [u if math.isfinite(u) else mean for u in usage]
-        total = math.fsum(filled)
+        filled = {cell: u if math.isfinite(u) else mean for cell, u in usage.items()}
+        total = math.fsum(filled.values())
         measured = math.isfinite(total) and total > 0
-        for p, u, f in zip(group, usage, filled, strict=True):
-            p["pi"] = f / total if measured else 1 / len(group)
-            p["pi_source"] = (
-                "equal_physical_tss"
-                if not measured
-                else "promoter_activity"
-                if math.isfinite(u)
-                else "gene_mean_promoter_activity"
-            )
+        for cell, members in clusters.items():
+            for p in members:
+                p["pi"] = filled[cell] / total / len(members) if measured else 1 / len(group)
+                p["pi_source"] = (
+                    "equal_physical_tss"
+                    if not measured
+                    else "promoter_activity"
+                    if math.isfinite(usage[cell])
+                    else "gene_mean_promoter_activity"
+                )
 
 
 def resolve_promoter_weights(tables, contacts, cfg):

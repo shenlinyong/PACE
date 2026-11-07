@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.6
+
+- `pace benchmark`: a label that names its `source_id` resolves a region name shared by several BED files; without a matching source it stays ambiguous.
+- Shrinkage with Hi-C no longer stops when every measured pair is in the TSS's own bin: no pair needs $\kappa$, and `kappa_source` reads `not_needed`.
+- `pace predict --prior` copies the prior and its boundary table into `prepared/contact_prior`, so the result folder reruns without the original.
+- TSS weights count the activity of a 500 bp cell once and share it equally among the TSSs in that cell; extra annotated TSSs in one cell no longer raise the weight of that signal.
+- `pace predict --pseudocount none` (with `--no-shrinkage`) removes the distance pseudocount, so that shrinkage can be compared with the unshrunk contact alone.
+- When no contact crosses a boundary, $\beta$ is the smallest value within the 95% profile-likelihood bound instead of 0, and the distance exponent is no longer raised to absorb the missing contacts (`beta_estimate` in the prior manifest).
+
 ## 0.12.5
 
 - Chromosome lengths are compared after names are unified: with `--aliases`, the renamed sizes file is checked against every bigWig and the Hi-C file, and the CTCF FASTA is checked against the sizes and the Hi-C file.

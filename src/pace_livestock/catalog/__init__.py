@@ -103,12 +103,25 @@ def candidate_edges(units: list[dict], promoters: list[dict], *, radius: int = 5
 
 
 def map_labels(labels, memberships):
+    """Map labels to catalog elements through the membership table.
+
+    A region name shared by several BED files maps to several elements. A label that
+    names its `source_id` selects the elements of that source when this leaves exactly
+    one; otherwise the label stays ambiguous and is not scored.
+    """
     mapping = defaultdict(set)
+    by_source = defaultdict(set)
     for row in memberships:
         mapping[row["region_id"]].add(row["element_id"])
+        if row.get("source_id"):
+            by_source[row["region_id"], row["source_id"]].add(row["element_id"])
     usable, rejected = [], []
     for row in labels:
-        elements = mapping[row["assayed_region_id"]]
+        elements = mapping.get(row["assayed_region_id"], set())
+        if len(elements) > 1 and row.get("source_id"):
+            narrowed = by_source.get((row["assayed_region_id"], row["source_id"]), set())
+            if len(narrowed) == 1:
+                elements = narrowed
         label, reason = classify_label(row)
         if not elements:
             reason = "unmapped_region"

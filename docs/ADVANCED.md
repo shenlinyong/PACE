@@ -177,7 +177,7 @@ Boundary positions come from CTCF and their effect from the Hi-C. With `--ctcf p
 P(d,S)=a\left(\frac{\max(d,d_{\min})}{d_{\mathrm{ref}}}\right)^{-\gamma}e^{-\beta\min(S,1)},
 ```
 
-with $d_{\mathrm{ref}}$ = `--reference-distance` (5 kb), $d_{\min}$ the larger of the bin size and `--minimum-distance` (5 kb), and $S$ the summed boundary strength strictly between the two bin centres. $\beta$ is estimated from pairs up to 1 Mb with one free level per exact bin separation, comparing only pairs at the same separation; $a$ and $\gamma$ use the same classes. The summed contact of each distance × strength cell is modelled as Poisson with the number of bin pairs as exposure; the class levels are profiled out and $\beta \ge 0$ maximises the remaining concave likelihood. Cells without contacts stay in the fit, and the estimate does not depend on the overall scale of the map. $a$ and $\gamma$ are then fitted by the same Poisson likelihood on the boundary-corrected distance classes. `beta_status` reports the outcome: `fitted`; `no_boundary_effect` (contacts do not fall with strength, $\beta = 0$); `beta_unidentifiable` (no bin separation holds pairs of different strength, $\beta = 0$); `no_boundary_variation` (all pairs have the same strength, $\beta = 0$); `beta_unbounded` (no contact crosses a boundary, so the likelihood has no finite maximum, $\beta = 0$). `--no-boundaries` fits the distance decay only.
+with $d_{\mathrm{ref}}$ = `--reference-distance` (5 kb), $d_{\min}$ the larger of the bin size and `--minimum-distance` (5 kb), and $S$ the summed boundary strength strictly between the two bin centres. $\beta$ is estimated from pairs up to 1 Mb with one free level per exact bin separation, comparing only pairs at the same separation; $a$ and $\gamma$ use the same classes. The summed contact of each distance × strength cell is modelled as Poisson with the number of bin pairs as exposure; the class levels are profiled out and $\beta \ge 0$ maximises the remaining concave likelihood. Cells without contacts stay in the fit, and the estimate does not depend on the overall scale of the map. $a$ and $\gamma$ are then fitted by the same Poisson likelihood on the boundary-corrected distance classes. `beta_status` reports the outcome: `fitted`; `no_boundary_effect` (contacts do not fall with strength, $\beta = 0$); `beta_unidentifiable` (no bin separation holds pairs of different strength, $\beta = 0$); `no_boundary_variation` (all pairs have the same strength, $\beta = 0$); `beta_unbounded` (no contact crosses a boundary, so the likelihood has no finite maximum; $\beta$ is the smallest value within the 95% profile-likelihood bound of the supremum, `beta_estimate: profile_likelihood_lower_bound`, and 0 when the data do not exceed that bound). `--no-boundaries` fits the distance decay only.
 
 Outputs: `manifest.json`, `distance_bins.tsv`, `fit_report.json`, and with boundaries `boundaries.tsv` and `boundary_cells.tsv` (pairs and contact by distance and boundary class).
 
@@ -279,7 +279,7 @@ For each $\gamma$/$\beta$ grid point the amplitude is profiled analytically unde
 
 Nonpositive excess variation uses the upper bound. Held-out chromosomes enter neither the fit nor $\kappa$; `held_out_residuals.tsv` reports their observed and expected counts, and the report gives the correlation between log distance and boundary strength.
 
-`pace predict --hic` uses this shrinkage by default (`--no-shrinkage` turns it off); with `--chunk-pairs`, $\kappa$ is first fitted on every chromosome and then fixed for all chunks. `pace fuse` takes the options of `pace run` and sets `--contact-mode shrinkage --contact-reliability per_pair`:
+`pace predict --hic` uses this shrinkage by default (`--no-shrinkage` turns it off); with `--chunk-pairs`, $\kappa$ is first fitted on every chromosome and then fixed for all chunks. When every measured pair lies in the TSS's own bin, no pair is shrunk and $\kappa$ is not fitted (`kappa_source: not_needed`). `pace fuse` takes the options of `pace run` and sets `--contact-mode shrinkage --contact-reliability per_pair`:
 
 ```bash
 pace fuse -d prepared/catalog --activity prepared/activity/observed_activity.tsv \
@@ -449,7 +449,8 @@ Genes and, within a gene, positive–negative pairs have equal weight. The objec
 | `label_status`, `effect_direction` | `enhancing_positive` with `down`, or `powered_negative` with `none` |
 | `split` | `train`, `calibration` or `test` |
 | `group_id` | Independent locus or experimental group; no group crosses splits |
-| `assay_id`, `source_id` | Experimental assay and source |
+| `assay_id` | Experimental assay |
+| `source_id` | Experimental source; when an `assayed_region_id` is shared by several BED files, it picks the membership rows of that `source_id` and the label is scored if exactly one element remains |
 
 Genes, elements and groups cannot cross splits; duplicates, missing fields and leaking splits are errors. Context mismatches, unsupported perturbations, uncertain or repressive labels and zero or unresolved support are excluded with recorded reasons, and test rows are set aside before fitting. Each fitting gene needs an eligible positive, an eligible negative and a contrast in $\log B$ above 10⁻¹²; with fewer than `minimum_genes` (default 3, at least 2) informative genes, $\eta=0$ is returned with the reason.
 

@@ -256,6 +256,9 @@ def run_kappa(observed_contacts, units, promoters, prior_asset, *, resolution, b
         / x["count_to_contact"]
         for x in fitting
     ]
+    if not fitting:
+        # Only same-bin pairs were measured: none is shrunk, so kappa is not needed.
+        return None
     return fit_kappa([x["raw_count"] for x in fitting], expected)["kappa"]
 
 
@@ -325,6 +328,9 @@ def resolve_contacts(t, cfg, *, prior_asset=None):
                 boundaries=boundaries,
             )
             kappa_source = "run_unique_bin_pairs"
+            if kappa is None:
+                # Every measured pair lies in the TSS's own bin and takes the prior.
+                kappa, kappa_source = 1.0, "not_needed"
         kappa = number(kappa, "kappa", minimum=0)
         if kappa == 0:
             raise PaceError("kappa must be positive")

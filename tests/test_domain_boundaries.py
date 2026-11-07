@@ -217,7 +217,8 @@ def test_cells_without_contacts_count_as_blocking():
             r["contact_sum"] *= 2
     prior = fit_cells(cells)
     # No contact crosses a boundary: the likelihood has no finite maximum.
-    assert prior["beta_status"] == "beta_unbounded" and prior["beta"] == 0
+    assert prior["beta_status"] == "beta_unbounded" and prior["beta"] > 0
+    assert prior["beta_estimate"] == "profile_likelihood_lower_bound"
     assert prior["gamma"] == pytest.approx(1.0)
     for r in cells:
         if r["mean_strength"] == 1:
@@ -311,3 +312,18 @@ def test_boundary_effect_is_not_identifiable_without_same_distance_controls(tmp_
     assert any(len(v) == 1 for v in by_step.values())
     fit = fit_boundary_prior(cells, d_ref=5000, d_min=5000)
     assert fit["beta"] == pytest.approx(0.0, abs=0.02)
+
+
+def test_fully_blocked_boundary_does_not_inflate_the_decay_exponent(tmp_path):
+    pytest.importorskip("cooler")
+    from pace_livestock.io.prior_fit import cooler_boundary_cells, fit_boundary_prior
+
+    path = tmp_path / "h.cool"
+    _boundary_cooler(path, 60.0)  # no contact crosses the boundary
+    boundaries = [{"chrom": "chr1", "position0": 1_000_000, "strength": 1.0}]
+    cells, _ = cooler_boundary_cells(
+        path, boundaries, balanced=False, min_distance=5000, max_distance=1_000_000
+    )
+    fit = fit_boundary_prior(cells, d_ref=5000, d_min=5000)
+    assert fit["beta_status"] == "beta_unbounded" and fit["beta"] > 1
+    assert fit["gamma"] == pytest.approx(1.0, abs=0.05)

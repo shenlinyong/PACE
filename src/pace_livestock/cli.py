@@ -307,6 +307,13 @@ def predict_parser(command):
         "with non-integer counts)",
     )
     contact.add_argument(
+        "--pseudocount",
+        choices=["auto", "none"],
+        default="auto",
+        help="With --hic --no-shrinkage: add the distance pseudocount P(5 kb) to measured "
+        "contacts (auto, default) or none, so that a measured zero stays zero",
+    )
+    contact.add_argument(
         "--bin-level-contacts",
         action="store_true",
         help="With --hic: give every element-TSS pair the contact of its Hi-C bin pair, "

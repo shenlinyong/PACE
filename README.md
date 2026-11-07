@@ -38,7 +38,7 @@ PACE keeps the ABC score and changes how its terms are estimated where Hi-C and 
 
 *Problem:* gene annotations outside the best-studied genomes are largely computational. A gene often carries several TSSs, few supported by CAGE or other TSS data, so the annotation does not say which promoter a tissue uses. ABC assigns each gene a single TSS; if it is the wrong one, the distance and Hi-C contact of every candidate element are measured from the wrong position.
 
-*PACE:* keeps every distinct TSS of a gene (transcripts starting at the same base are merged) and weights each by its promoter activity in the same tissue, $\pi_t = A_t / \sum_{t'} A_{t'}$, where $A_t$ is the ATAC/H3K27ac activity of the 500 bp cell containing the TSS. The element–gene contact is the weighted mean, $\overline C(E,G) = \sum_t \pi_t\,\widetilde C(E,t)$: the promoter that is open and acetylated in this tissue dominates, and predicted but inactive TSSs contribute little.
+*PACE:* keeps every distinct TSS of a gene (transcripts starting at the same base are merged) and weights each by its promoter activity in the same tissue, $\pi_t = A_t / \sum_{t'} A_{t'}$, where $A_t$ is the ATAC/H3K27ac activity of the 500 bp cell containing the TSS. TSSs in the same cell share that cell's activity equally, so annotating more TSSs inside one cell does not raise the weight of one signal. The element–gene contact is the weighted mean, $\overline C(E,G) = \sum_t \pi_t\,\widetilde C(E,t)$: the promoter that is open and acetylated in this tissue dominates, and predicted but inactive TSSs contribute little.
 
 **5. One or a few animals.**
 
@@ -172,11 +172,12 @@ Contact is estimated from distance alone, $\widetilde C(E,t)=1/\max(d,\,5\,\math
 | `--missing-as-zero` | off | Read bases absent from the bigWig as measured zero signal |
 | `--tss-weights` | `usage` | TSS weights: promoter activity share or `equal` (`pace run` also accepts `provided`) |
 | `--no-boundaries` | off | Fit the distance decay only, even with CTCF data |
-| `--no-shrinkage` | off | With `--hic`: use measured contacts as they are, without per-pair shrinkage |
+| `--no-shrinkage` | off | With `--hic`: use measured contacts plus the distance pseudocount, without per-pair shrinkage |
+| `--pseudocount` | `auto` | With `--hic --no-shrinkage`: `none` leaves a measured zero at zero. Use it when comparing with and without shrinkage, so that only the shrinkage differs |
 | `--partial-policy` | `withhold` | Genes with unscored candidates: `withhold` or `conditional` |
 | `-t/--threads` | 1 | Chromosomes scored in parallel; memory grows with each thread |
 
-The output folder is self-contained: scores, every intermediate table (`prepared/`) and `resolved_config.yaml`, which records every setting with paths relative to the folder. `pace validate` checks the inputs without writing results. `-o` must be a new folder; `--force` replaces a PACE result after keeping the old one as a backup.
+The output folder is self-contained: scores, every intermediate table (`prepared/`), a copy of the contact prior used (`prepared/contact_prior`) and `resolved_config.yaml`, which records every setting with paths relative to the folder. `pace validate` checks the inputs without writing results. `-o` must be a new folder; `--force` replaces a PACE result after keeping the old one as a backup.
 
 ## Reading the results
 
@@ -227,7 +228,7 @@ How to read them:
 An enhancer regulates a gene when it is active in the tissue and chromatin folding brings it to the gene's promoter. The product of activity and contact is the element's *support* for the gene, and the score is its share of the gene's total support, so the scores of one gene sum to 1.
 
 - **Activity $A_\star(E)$:** the geometric mean of the assays $\mathcal M$ used, e.g. $\sqrt{\text{ATAC}\times\text{H3K27ac}}$, where $x_m(E)$ is the replicate-averaged signal of assay $m$. The same assays are used for every element of a run. A constant scale factor of a track (library size, normalization) cancels in the share.
-- **Contact $\overline C(E,G)$:** the weighted mean of the contacts with the gene's distinct TSSs $\mathcal T(G)$; transcripts that start at the same position count once. $\pi(t\mid G)$ is the TSS's share of the gene's promoter activity (the activity of the 500 bp cell containing it). A TSS whose cell is unmeasured takes the mean activity of the gene's measured TSSs (`pi_source: gene_mean_promoter_activity`); genes without measured TSSs, or with all-zero promoter activity, use equal weights. `pace predict --tss-weights equal` changes this; `pace run --tss-weights provided` uses the `pi` column of `promoters.tsv`, e.g. from CAGE with `pace promoter-weights`.
+- **Contact $\overline C(E,G)$:** the weighted mean of the contacts with the gene's distinct TSSs $\mathcal T(G)$; transcripts that start at the same position count once. $\pi(t\mid G)$ is the TSS's share of the gene's promoter activity (the activity of the 500 bp cell containing it, counted once per cell and shared equally by the TSSs in it). A TSS whose cell is unmeasured takes the mean activity of the gene's measured cells (`pi_source: gene_mean_promoter_activity`); genes without measured TSSs, or with all-zero promoter activity, use equal weights. `pace predict --tss-weights equal` changes this; `pace run --tss-weights provided` uses the `pi` column of `promoters.tsv`, e.g. from CAGE with `pace promoter-weights`.
 - **TSS contact $\widetilde C(E,t)$:** from Hi-C and the distance–boundary prior, depending on the case (above and below).
 - **Denominator:** all candidates $\mathcal E(G)$ within the radius of the gene's TSSs, including promoters of the gene and its neighbours. A gene with one strong enhancer gives it a large share; a gene with many shares the credit.
 

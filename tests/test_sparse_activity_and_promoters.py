@@ -289,3 +289,26 @@ def test_usage_weights_follow_promoter_activity():
     sources = {p["promoter_id"]: p["pi_source"] for p in promoters}
     assert sources["k"] == "gene_mean_promoter_activity" and sources["i"] == "promoter_activity"
     assert sources["c"] == "equal_physical_tss"
+
+
+def test_tss_in_one_cell_share_that_cells_weight():
+    from pace_livestock.evidence.promoters import usage_weights
+
+    cfg = {"catalog": {"width_bp": 500, "offset_bp": 0}, "activity": {"pseudocounts": {}}}
+    activity = [
+        {"element_id": cell, "assay": "ATAC", "resolved_value": 4.0}
+        for cell in ("chr1:0-500", "chr1:500-1000")
+    ]
+
+    def weights(positions):
+        promoters = [
+            {"gene_id": "G", "promoter_id": f"P{t}", "chrom": "chr1", "tss0": t} for t in positions
+        ]
+        usage_weights({"promoters": promoters}, activity, cfg)
+        return {p["tss0"]: p["pi"] for p in promoters}
+
+    assert weights([100, 700]) == pytest.approx({100: 0.5, 700: 0.5})
+    # Three more annotated TSSs inside the first cell leave the cell's total weight at 1/2.
+    crowded = weights([100, 150, 200, 250, 700])
+    assert crowded[700] == pytest.approx(0.5)
+    assert sum(crowded[t] for t in (100, 150, 200, 250)) == pytest.approx(0.5)

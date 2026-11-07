@@ -177,3 +177,20 @@ def test_interval_union_and_motif_orientation():
             feature_prefix="CTCF",
             motif_strands=True,
         )
+
+
+def test_label_source_id_resolves_a_region_name_shared_by_two_beds():
+    membership = [
+        {"region_id": "shared", "element_id": "E1", "source_id": "assayA"},
+        {"region_id": "shared", "element_id": "E2", "source_id": "assayB"},
+    ]
+    label = dict(
+        assayed_region_id="shared",
+        gene_id="G",
+        label_status="enhancing_positive",
+        effect_direction="down",
+    )
+    usable, rejected = map_labels([{**label, "source_id": "assayA"}], membership)
+    assert [r["element_id"] for r in usable] == ["E1"] and not rejected
+    usable, rejected = map_labels([label, {**label, "source_id": "other"}], membership)
+    assert not usable and [r["reason"] for r in rejected] == ["ambiguous_region"] * 2

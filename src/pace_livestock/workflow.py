@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import itertools
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -75,6 +76,8 @@ def check_predict(args):
         raise PaceError("--bin-level-contacts applies to --hic input only")
     if args.no_shrinkage and not args.hic:
         raise PaceError("--no-shrinkage applies to --hic input only")
+    if args.pseudocount != "auto" and not (args.hic and args.no_shrinkage):
+        raise PaceError("--pseudocount applies to --hic with --no-shrinkage only")
     for _, path in tracks:
         if not Path(path).is_file():
             raise PaceError(f"bigWig not found: {path}")
@@ -281,6 +284,10 @@ def predict(args):
                 prior = prepared / "contact_prior"
         else:
             log("3/4 no Hi-C: contact from the distance-decay prior")
+        if args.prior:
+            # The result folder keeps its own copy, so it can be rerun without the original.
+            shutil.copytree(args.prior, prepared / "contact_prior")
+            prior = prepared / "contact_prior"
         # Hi-C contacts are shrunk pair by pair toward the distance prior (Gamma-Poisson),
         # so bin pairs supported by few reads follow the prior and well-sampled ones the data.
         shrink = bool(contacts) and not (args.no_shrinkage or args.strict_contacts)
@@ -288,6 +295,8 @@ def predict(args):
         if shrink:
             contact.update(reliability="per_pair", reliability_source="gamma_poisson")
         contact["within_bin_distance"] = not args.bin_level_contacts
+        if args.pseudocount != "auto":
+            contact["pseudocount"] = args.pseudocount
         if args.strict_contacts:
             # Measured bin-pair contacts only: no pseudocount, and same-bin or masked pairs stay NA.
             contact.update(
@@ -397,13 +406,15 @@ def genome_kappa(cfg):
     first = next(rows, None)
     if first is None:
         raise PaceError("No Hi-C contacts to fit the shrinkage kappa")
-    return run_kappa(
+    kappa = run_kappa(
         itertools.chain([first], rows),
         units,
         promoters,
         prior,
         resolution=integer(first["resolution"], "resolution", minimum=1),
     )
+    # None: every measured pair is in the TSS's own bin and takes the prior; no pair is shrunk.
+    return 1.0 if kappa is None else kappa
 
 
 def sparse_track_summary(table, missing_as_zero, *, assay, sample_id):

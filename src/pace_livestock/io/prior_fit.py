@@ -153,7 +153,7 @@ def cooler_boundary_cells(
     chrom_codes = np.empty(len(bins), dtype=int)
     train = np.zeros(len(c.chromnames), dtype=bool)
     shape = (n_steps, S_CLASSES)
-    n_pairs, contact, crossed = (np.zeros(shape) for _ in range(3))
+    n_pairs, contact, crossed, counts = (np.zeros(shape) for _ in range(4))
     for code, chrom in enumerate(c.chromnames):
         first, last = c.extent(chrom)
         chrom_codes[first:last] = code
@@ -183,6 +183,7 @@ def cooler_boundary_cells(
         step = j - i
         keep = (chrom_codes[i] == chrom_codes[j]) & valid[i] & valid[j] & train[chrom_codes[i]]
         keep &= (step >= first_step) & (step <= last_step)
+        raw = values[keep]
         i, j, k, values = (
             i[keep],
             j[keep],
@@ -191,6 +192,7 @@ def cooler_boundary_cells(
         )
         m = _strength_class(below[j] - upto[i])
         np.add.at(contact, (k, m), values)
+        np.add.at(counts, (k, m), raw)
     cells = []
     for k in range(n_steps):
         for m in range(S_CLASSES):
@@ -201,6 +203,7 @@ def cooler_boundary_cells(
                         strength_class=m,
                         n_pairs=int(n_pairs[k, m]),
                         contact_sum=float(contact[k, m]),
+                        count_sum=float(counts[k, m]),
                         geometric_distance=float((first_step + k) * resolution),
                         mean_strength=float(crossed[k, m] / n_pairs[k, m]),
                     )
@@ -214,29 +217,53 @@ FIT_MAX_DISTANCE = 1_000_000
 BETA_MAX_DISTANCE = FIT_MAX_DISTANCE
 
 
+# Profile-likelihood drop (half the chi-square quantile, 1 degree of freedom, 95% one-sided).
+BETA_BOUND_DROP = 1.92
+
+
 def _boundary_beta(groups):
     """Poisson maximum-likelihood beta with one free level per distance class.
 
-    groups: per distance class, arrays (summed contact c, pairs n, capped strength s).
-    Each cell is c ~ Poisson(n alpha_k exp(-beta s)); profiling out alpha_k leaves
+    groups: per distance class, arrays (summed contact c, pairs n, capped strength s) and
+    optionally the read counts behind c. Each cell is c ~ Poisson(n alpha_k exp(-beta s));
+    profiling out alpha_k leaves
     l(beta) = -beta sum(c s) - sum_k C_k log sum_i n_i exp(-beta s_i), which is concave,
     so beta is the root of its derivative. Zero-contact cells keep their pairs in the
     expected count, and scaling every contact by one factor leaves beta unchanged.
     If every contact lies at the lowest strength of its class, the likelihood rises without
-    bound; beta then has no finite estimate and the prior falls back to the distance decay.
+    bound and has no finite maximum. beta is then the smallest value whose likelihood is
+    within the 95% profile bound of the supremum (beta_unbounded), a conservative estimate
+    instead of 0, which would hand the missing contact to the distance decay.
     """
 
     def slope(beta):
         total = 0.0
-        for c, n, s in groups:
+        for c, n, s, _ in groups:
             weight = n * np.exp(-beta * (s - s.min()))
             total += c.sum() * (weight * s).sum() / weight.sum() - (c * s).sum()
         return total
 
     if slope(0.0) <= 0:
         return 0.0, "no_boundary_effect"
-    if all(c[s > s.min()].sum() == 0 for c, _, s in groups):
-        return 0.0, "beta_unbounded"
+    if all(c[s > s.min()].sum() == 0 for c, _, s, _ in groups):
+
+        def drop(beta):
+            total = 0.0
+            for _, n, s, counts in groups:
+                lowest = s == s.min()
+                ratio = (n * np.exp(-beta * (s - s.min())))[~lowest].sum() / n[lowest].sum()
+                total += counts.sum() * math.log1p(ratio)
+            return total
+
+        if drop(0.0) <= BETA_BOUND_DROP:
+            return 0.0, "beta_unbounded"
+        low, high = 0.0, 1.0
+        while drop(high) > BETA_BOUND_DROP:
+            low, high = high, 2 * high
+        for _ in range(100):
+            mid = (low + high) / 2
+            low, high = (mid, high) if drop(mid) > BETA_BOUND_DROP else (low, mid)
+        return (low + high) / 2, "beta_unbounded"
     low, high = 0.0, 1.0
     while slope(high) > 0:
         low, high = high, 2 * high
@@ -256,10 +283,11 @@ def fit_boundary_prior(
     beta_max_distance, where enhancer-promoter links lie and the boundary effect is not
     yet saturated. It is the Poisson (quasi-)likelihood estimate on summed contacts, so
     cells without contacts count as evidence of blocking. beta is identifiable only when
-    some distance class with contacts holds pairs of different strength, and finite only
-    when some contact crosses a boundary; otherwise it is 0 (beta_unidentifiable,
-    beta_unbounded) and the prior is the distance decay. gamma and a then come
-    from the boundary-corrected distance levels.
+    some distance class with contacts holds pairs of different strength (otherwise it is 0,
+    beta_unidentifiable). It is finite only when some contact crosses a boundary; when none
+    does (beta_unbounded) the reported beta is the smallest value within the 95% profile
+    likelihood bound of the supremum, and 0 when the data do not exceed that bound. gamma
+    and a then come from the boundary-corrected distance levels.
     """
     for r in cells:
         r["capped_strength"] = min(r["mean_strength"], cap)
@@ -272,7 +300,8 @@ def fit_boundary_prior(
         c = np.array([r["contact_sum"] for r in rows], dtype=float)
         s = np.array([r["capped_strength"] for r in rows], dtype=float)
         if c.sum() > 0 and np.ptp(s) > 0:
-            groups.append((c, np.array([r["n_pairs"] for r in rows], dtype=float), s))
+            counts = np.array([r.get("count_sum", r["contact_sum"]) for r in rows], dtype=float)
+            groups.append((c, np.array([r["n_pairs"] for r in rows], dtype=float), s, counts))
     strengths = [r["capped_strength"] for rows in near.values() for r in rows]
     if groups:
         beta, status = _boundary_beta(groups)
@@ -299,6 +328,9 @@ def fit_boundary_prior(
         "gamma": gamma,
         "beta": beta,
         "beta_status": status,
+        "beta_estimate": "profile_likelihood_lower_bound"
+        if status == "beta_unbounded"
+        else "maximum_likelihood",
         "boundary_cap": cap,
         "beta_fit_max_distance": beta_max_distance,
         "d_ref": d_ref,
