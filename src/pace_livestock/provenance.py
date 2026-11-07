@@ -155,7 +155,7 @@ def output_directory(path: str | Path) -> Iterator[Path]:
 
 def environment() -> dict:
     names = [
-        "PACE",
+        "pace-livestock",
         "numpy",
         "PyYAML",
         "torch",

@@ -6,8 +6,8 @@ import math
 import numpy as np
 import pytest
 
-from pace.cli import main
-from pace.io.tables import read_table
+from pace_livestock.cli import main
+from pace_livestock.io.tables import read_table
 
 pyBigWig = pytest.importorskip("pyBigWig")
 cooler = pytest.importorskip("cooler")
@@ -215,7 +215,7 @@ def test_measured_contacts_without_shrinkage(inputs, tmp_path, capsys, option):
 
 
 def test_pairs_are_placed_within_their_bin_pair(inputs, tmp_path, capsys):
-    from pace.boundary_prior import contact_prior
+    from pace_livestock.boundary_prior import contact_prior
 
     assert predict_hic(inputs, tmp_path / "placed") == 0
     rows = read_table(tmp_path / "placed" / "resolved_contacts.tsv")
@@ -532,7 +532,7 @@ def test_predict_with_a_prior_from_another_tissue(inputs, tmp_path, capsys):
 
 
 def test_gtf_mixing_transcript_and_exon_only_records(tmp_path):
-    from pace.io.bed_gtf import read_gtf
+    from pace_livestock.io.bed_gtf import read_gtf
 
     gtf = tmp_path / "mixed.gtf"
     gtf.write_text(
@@ -611,8 +611,8 @@ def test_candidate_radius_does_not_limit_the_decay_fit(inputs, tmp_path, capsys)
 def test_boundaries_on_other_chromosome_names_stop_the_fit(inputs, tmp_path, monkeypatch):
     from types import SimpleNamespace
 
-    from pace.errors import PaceError
-    from pace.io import prior_fit
+    from pace_livestock.errors import PaceError
+    from pace_livestock.io import prior_fit
 
     names = [{"chrom": "1", "position0": 500_000, "strength": 1.0, "evidence_type": "x"}]
     monkeypatch.setattr(prior_fit, "map_boundaries", lambda args: (names, "ctcf_chip_motif"))

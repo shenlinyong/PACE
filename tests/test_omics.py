@@ -6,19 +6,19 @@ import pytest
 import yaml
 from fixture import create_example
 
-from pace.config import load_config
-from pace.errors import PaceError
-from pace.io.bed_gtf import read_bed
-from pace.io.intervals import interval_features
-from pace.io.methylation import (
+from pace_livestock.config import load_config
+from pace_livestock.errors import PaceError
+from pace_livestock.io.bed_gtf import read_bed
+from pace_livestock.io.intervals import interval_features
+from pace_livestock.io.methylation import (
     load_reference_cpg,
     promoter_methylation_regions,
     summarize_methylation,
 )
-from pace.io.rna import transcript_tpm_to_gene
-from pace.io.tables import read_table, write_table
-from pace.operations import prepare_command
-from pace.pipeline import compute
+from pace_livestock.io.rna import transcript_tpm_to_gene
+from pace_livestock.io.tables import read_table, write_table
+from pace_livestock.operations import prepare_command
+from pace_livestock.pipeline import compute
 
 
 def omics_config(tmp_path):

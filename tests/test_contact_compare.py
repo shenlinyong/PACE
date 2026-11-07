@@ -8,15 +8,15 @@ import pytest
 import yaml
 from fixture import create_example
 
-from pace.config import load_config
-from pace.errors import PaceError
-from pace.evaluation.compare import compare_runs, load_run
-from pace.evidence.assets import load_asset
-from pace.evidence.resolve import contact_measurement_contract, resolve_contacts
-from pace.io.tables import read_table, write_table
-from pace.operations import prepare_command
-from pace.pipeline import compute, run
-from pace.schemas import load_tables, universe_ids
+from pace_livestock.config import load_config
+from pace_livestock.errors import PaceError
+from pace_livestock.evaluation.compare import compare_runs, load_run
+from pace_livestock.evidence.assets import load_asset
+from pace_livestock.evidence.resolve import contact_measurement_contract, resolve_contacts
+from pace_livestock.io.tables import read_table, write_table
+from pace_livestock.operations import prepare_command
+from pace_livestock.pipeline import compute, run
+from pace_livestock.schemas import load_tables, universe_ids
 
 
 def contact_asset(tmp_path):
@@ -207,7 +207,7 @@ def test_imported_contacts_cannot_override_configured_evidence_policy(tmp_path):
     prior["normalization_id"] = "toy_mean"
     tables = load_tables(cfg)
     imported = resolve_contacts(tables, cfg)
-    from pace.boundary_prior import contact_prior
+    from pace_livestock.boundary_prior import contact_prior
 
     units = {u["element_id"]: u for u in tables["units"]}
     tss = {p["promoter_id"]: p["tss0"] for p in tables["promoters"]}

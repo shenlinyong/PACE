@@ -7,9 +7,9 @@ import numpy as np
 import pytest
 import yaml
 
-from pace.errors import PaceError
-from pace.io.tables import write_table
-from pace.learning.model import (
+from pace_livestock.errors import PaceError
+from pace_livestock.io.tables import write_table
+from pace_livestock.learning.model import (
     fit_elastic_net,
     fit_preprocessor,
     predict_score_rows,

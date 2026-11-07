@@ -9,7 +9,7 @@ import pytest
 import yaml
 from fixture import create_example
 
-from pace.boundary_prior import (
+from pace_livestock.boundary_prior import (
     BoundaryIndex,
     contact_prior,
     fit_contact_grid,
@@ -20,19 +20,19 @@ from pace.boundary_prior import (
     scan_motifs,
     unique_count_pairs,
 )
-from pace.cli import main
-from pace.config import load_config
-from pace.core import score
-from pace.errors import PaceError
-from pace.evidence.assets import load_asset
-from pace.evidence.contact import distance_prior
-from pace.evidence.resolve import resolve_contacts
-from pace.io.cooler import query_contacts
-from pace.io.tables import read_table, write_table
-from pace.pipeline import compute, run
-from pace.provenance import file_hash, write_json
-from pace.schemas import load_tables
-from pace.weak_labels import (
+from pace_livestock.cli import main
+from pace_livestock.config import load_config
+from pace_livestock.core import score
+from pace_livestock.errors import PaceError
+from pace_livestock.evidence.assets import load_asset
+from pace_livestock.evidence.contact import distance_prior
+from pace_livestock.evidence.resolve import resolve_contacts
+from pace_livestock.io.cooler import query_contacts
+from pace_livestock.io.tables import read_table, write_table
+from pace_livestock.pipeline import compute, run
+from pace_livestock.provenance import file_hash, write_json
+from pace_livestock.schemas import load_tables
+from pace_livestock.weak_labels import (
     calibrate,
     fit_chromosome_grid,
     map_weak_labels,
@@ -626,7 +626,7 @@ def test_resolved_per_pair_reuse_verifies_raw_provenance(configured, tmp_path):
 
 
 def test_benchmark_keeps_frozen_contact_and_varies_eta(configured, tmp_path):
-    from pace.evaluation.benchmark import benchmark_command
+    from pace_livestock.evaluation.benchmark import benchmark_command
 
     variants = four_chromosomes(configured)
     model, _ = calibrate(

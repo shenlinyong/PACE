@@ -29,7 +29,7 @@ def hic_resolution(path: str, requested: int | None) -> int:
     try:
         import cooler
     except ImportError as exc:
-        raise PaceError("Hi-C input requires pip install 'PACE[io]'") from exc
+        raise PaceError("Hi-C input requires pip install 'pace-livestock[io]'") from exc
     if "::" not in path and path.endswith(".mcool"):
         stored = sorted(int(Path(u).name) for u in cooler.fileops.list_coolers(path))
         raise PaceError(

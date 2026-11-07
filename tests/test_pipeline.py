@@ -8,14 +8,14 @@ import pytest
 import yaml
 from fixture import create_example
 
-from pace.config import load_config, load_yaml
-from pace.errors import PaceError
-from pace.evaluation.compare import compare_rows, compare_runs
-from pace.evaluation.metrics import binary_metrics
-from pace.io.tables import read_table, write_table
-from pace.pipeline import compute, run
-from pace.provenance import output_directory
-from pace.schemas import load_tables
+from pace_livestock.config import load_config, load_yaml
+from pace_livestock.errors import PaceError
+from pace_livestock.evaluation.compare import compare_rows, compare_runs
+from pace_livestock.evaluation.metrics import binary_metrics
+from pace_livestock.io.tables import read_table, write_table
+from pace_livestock.pipeline import compute, run
+from pace_livestock.provenance import output_directory
+from pace_livestock.schemas import load_tables
 
 
 @pytest.fixture
@@ -170,7 +170,7 @@ def test_transaction_and_compare(measured, tmp_path):
 
 
 def test_common_denominator_counterexample():
-    from pace.core import score
+    from pace_livestock.core import score
 
     a, _ = score(
         [dict(element_id=f"E{i}", gene_id="G", A_used=s, Cbar=1) for i, s in enumerate([1, 1, 2])]
@@ -191,7 +191,7 @@ def test_common_denominator_counterexample():
 
 
 def test_composition_change_is_not_activity_change():
-    from pace.core import score
+    from pace_livestock.core import score
 
     a, _ = score(
         [dict(element_id=e, gene_id="G", A_used=s, Cbar=1) for e, s in [("E1", 1), ("E2", 1)]]

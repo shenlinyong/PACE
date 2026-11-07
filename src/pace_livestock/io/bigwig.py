@@ -13,7 +13,7 @@ def quantify_bigwig(path, units, *, missing_is_measured_zero=False, minimum_call
     try:
         import pyBigWig
     except ImportError as exc:
-        raise PaceError("bigWig support requires pip install 'PACE[io]'") from exc
+        raise PaceError("bigWig support requires pip install 'pace-livestock[io]'") from exc
     if not 0 <= minimum_callable_fraction <= 1:
         raise PaceError("minimum_callable_fraction must be in [0,1]")
     rows = []

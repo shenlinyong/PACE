@@ -547,11 +547,11 @@ A protocol for measuring how PACE performs as data become sparse:
 3. **Degradation.** Predeclared Hi-C depths (e.g. 100, 50, 25, 10, 5%) by binomial thinning of raw pairs, with the map rebuilt, rebalanced and the prior refitted at each depth; removal of one activity assay; fewer donors; the candidate universe fixed.
 4. **Methods.** The original ABC implementation (exported with `--external`), `ABC_style_single_TSS`, PACE with $\eta=0$, without pseudocount, without near-diagonal correction, prior-only, with prior fallback, single versus multiple TSSs, equal versus activity-weighted TSSs, and allocation versus `contact_power_2`.
 5. **Metrics.** Average precision on a common evaluable set together with coverage of all tested pairs, recall at a fixed precision, and paired bootstrap over gene or region groups; results stratified by distance, promoter count, gene density and chromosome.
-6. **Non-human species.** Species- and tissue-matched fine-mapped eQTL (e.g. FarmGTEx), with controls matched for distance, allele frequency, LD, expression and candidate density, and perturbation experiments in chicken, pig or cattle where available.
+6. **Livestock.** Species- and tissue-matched fine-mapped eQTL (e.g. FarmGTEx), with controls matched for distance, allele frequency, LD, expression and candidate density, and perturbation experiments in chicken, pig or cattle where available.
 
 ## Complete configuration defaults
 
-These defaults match `pace.config.DEFAULTS`; the same structure is written to `resolved_config.yaml` in every result folder (`null` means not provided).
+These defaults match `pace_livestock.config.DEFAULTS`; the same structure is written to `resolved_config.yaml` in every result folder (`null` means not provided).
 
 <!-- configuration-defaults:start -->
 ```yaml

@@ -13,8 +13,7 @@ from .provenance import clean, output_policy
 from .run_options import add_run_options, config_from_args
 
 OVERVIEW = """\
-PACE (Prior-Anchored Contact Estimation): enhancer-gene prediction from chromatin activity and
-low-depth, low-resolution or surrogate-tissue Hi-C.
+PACE: enhancer-gene prediction for domestic animals from chromatin activity and 3D contact.
 
 One command from peaks, GTF and bigWig files:
   predict        Build candidates, quantify signal, extract Hi-C and score in one step
@@ -664,7 +663,7 @@ def prior_parsers(command):
 def analysis_parsers(command):
     p = command(
         "compare",
-        "Compare two runs (animals, treatments) of one tissue on their common candidate set",
+        "Compare two runs (animals, tissues, treatments) on their common candidate set",
         "example:\n  pace compare --left results/pig1 --right results/pig2 -o pig2_vs_pig1",
     )
     p.add_argument("--left", help="Reference run folder")

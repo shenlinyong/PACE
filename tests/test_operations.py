@@ -7,11 +7,11 @@ import pytest
 import yaml
 from fixture import create_example
 
-from pace.cli import main
-from pace.errors import PaceError
-from pace.evaluation.benchmark import benchmark_command
-from pace.io.tables import read_table, write_table
-from pace.operations import fit_contact_command, prepare_command
+from pace_livestock.cli import main
+from pace_livestock.errors import PaceError
+from pace_livestock.evaluation.benchmark import benchmark_command
+from pace_livestock.io.tables import read_table, write_table
+from pace_livestock.operations import fit_contact_command, prepare_command
 
 
 def metadata():
@@ -193,7 +193,7 @@ def test_benchmark_rejects_membership_of_another_catalog(tmp_path):
 
 
 def test_single_class_metrics_keep_the_defined_average_precision():
-    from pace.evaluation.metrics import binary_metrics
+    from pace_livestock.evaluation.metrics import binary_metrics
 
     positives = binary_metrics([1, 1], [0.2, 0.5])
     assert positives["average_precision"] == 1 and math.isnan(positives["auroc"])
@@ -203,7 +203,7 @@ def test_single_class_metrics_keep_the_defined_average_precision():
 
 @pytest.mark.parametrize("scale", [1e-200, 1.0, 1e200])
 def test_contact_power_is_computed_in_log_space(scale):
-    from pace.core.scoring import score
+    from pace_livestock.core.scoring import score
 
     edges = [
         dict(element_id=e, gene_id="G", A_used=a, Cbar=c * scale)

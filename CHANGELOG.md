@@ -10,7 +10,6 @@
 - `pace predict --tss-weights` accepts `usage` and `equal`; `provided` is available in `pace run`, where `promoters.tsv` is an input.
 - Command summaries and `report.md` report `n_primary_scores`, the pairs with a primary score, next to `n_scoreable`.
 - Small-sample quick-test assets are marked `is_test_data` (was `is_synthetic`) and `--test-data` (was `--synthetic`); perturbation type `synthetic_inhibition` is now `test_inhibition`.
-- The package is named PACE and imported as `pace` (was `pace-livestock` / `pace_livestock`); the `pace-livestock` command is removed.
 - Documentation: `--aliases` applies to the BED, GTF and chromosome sizes files; `pace compare` needs the same tissue label in both runs; README opens with the method name and the Hi-C conditions it is designed for.
 
 ## 0.12.3
@@ -75,7 +74,7 @@
 - The prior asset alone decides whether it is evaluated at genomic anchors or bin centres, in every contact mode; `per_pair` shrinkage no longer switches coordinates. Priors from `pace fit-prior` declare bin centres, the coordinates they were fitted on.
 - Chunked runs report the same catalog, candidate and promoter identities as a single run, independent of chunk size and threads; chromosomes without candidate pairs are kept in the merged tables.
 - Hi-C count fitting identifies a measurement by sample, chromosome, resolution and bin coordinates, so a renamed copy of a pixel is counted once and conflicting copies are rejected.
-- One functional-label rule (`pace.labels.classify_label`) for benchmarks, classifier training and eta calibration: positives need `down`, powered negatives need `none`, and unknown directions are errors.
+- One functional-label rule (`pace_livestock.labels.classify_label`) for benchmarks, classifier training and eta calibration: positives need `down`, powered negatives need `none`, and unknown directions are errors.
 
 ## 0.8.1
 
@@ -122,7 +121,7 @@
 - Allow explicit same-species, same-assembly contact-prior transfer between tissues; record source and target contexts.
 - Start cooler prior fits at the matrix resolution by default, including 10–25 kb maps.
 - Present activity × contact normalization as the main formula; document allocation as experimental.
-- Add documentation updates and citation metadata.
+- Add the lowercase `pace-livestock` alias, remove a case-only duplicate documentation filename and update citation metadata.
 - Report incomplete genes as partial even when all measured supports are zero.
 - Remove review-draft documents and update the bilingual method and workflow documentation.
 

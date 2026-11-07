@@ -8,14 +8,14 @@ import pytest
 from fixture import create_example
 from test_learning import learning_fixture
 
-from pace.cli import main
-from pace.config import load_config
-from pace.errors import PaceError
-from pace.evidence.resolve import resolve_contacts
-from pace.io.tables import read_table, write_table
-from pace.learning.model import train_classifier
-from pace.pipeline import compute, run
-from pace.schemas import load_tables, validate_tables
+from pace_livestock.cli import main
+from pace_livestock.config import load_config
+from pace_livestock.errors import PaceError
+from pace_livestock.evidence.resolve import resolve_contacts
+from pace_livestock.io.tables import read_table, write_table
+from pace_livestock.learning.model import train_classifier
+from pace_livestock.pipeline import compute, run
+from pace_livestock.schemas import load_tables, validate_tables
 
 
 @pytest.mark.parametrize("mode", ["hybrid", "genome", "genome_only"])
@@ -175,8 +175,8 @@ def test_ml_report_evaluates_scope_and_final_calibration(tmp_path):
 
 def test_retired_modules_and_dependencies_are_absent():
     root = Path(__file__).resolve().parents[1]
-    for relative in ("src/pace/io/variants.py", "src/pace/evidence/fusion.py"):
+    for relative in ("src/pace_livestock/io/variants.py", "src/pace_livestock/evidence/fusion.py"):
         assert not (root / relative).exists()
-    assert not list((root / "src/pace/sequence").glob("*.py"))
+    assert not list((root / "src/pace_livestock/sequence").glob("*.py"))
     metadata = (root / "pyproject.toml").read_text()
     assert all(package not in metadata for package in ("torch", "safetensors", "pysam"))
