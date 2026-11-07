@@ -21,6 +21,7 @@ from .provenance import (
     file_hash,
     output_directory,
     policy_digest,
+    setting_files,
     software_hash,
     write_json,
 )
@@ -362,6 +363,7 @@ def compute(cfg: dict, *, contact_prior_override=None, chunk=False):
         },
         "config_hash": digest(cfg),
         "policy_hash": policy_digest(cfg),
+        "setting_files": setting_files(cfg),
         "allocation": allocation,
         "ml_feature_contract": ml_contract,
     }

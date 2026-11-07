@@ -16,7 +16,14 @@ from ..evidence.assets import load_asset
 from ..io.tables import number, read_table, write_table
 from ..labels import classify_label
 from ..pipeline import compute
-from ..provenance import file_hash, output_directory, policy_digest, read_json, write_json
+from ..provenance import (
+    file_hash,
+    output_directory,
+    policy_digest,
+    read_json,
+    setting_files,
+    write_json,
+)
 from .compare import load_run
 from .metrics import binary_metrics
 
@@ -64,47 +71,92 @@ def verify_run_inputs(config_path, run_cfg):
     if not manifest_path.is_file():
         return
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    stale = (
+        "the baselines would not describe the reported run. Rerun the analysis or restore "
+        "the run's files and resolved_config.yaml"
+    )
     recorded = manifest.get("input_hashes", {})
-    for name, path in run_cfg["inputs"].items():
-        if path and name in recorded and file_hash(path) != recorded[name]:
+    used = {name for name, path in run_cfg["inputs"].items() if path}
+    if used != set(recorded):
+        changes = sorted(f"+{n}" for n in used - set(recorded)) + sorted(
+            f"-{n}" for n in set(recorded) - used
+        )
+        raise PaceError(
+            f"Run inputs differ from the ones recorded in run_manifest.json ({', '.join(changes)}); "
+            + stale
+        )
+    for name in sorted(used):
+        path = run_cfg["inputs"][name]
+        if file_hash(path) != recorded[name]:
             raise PaceError(
-                f"Run input {name} ({path}) differs from the hash in run_manifest.json; the "
-                "baselines would not describe the reported run. Rerun the analysis or restore "
-                "the file"
+                f"Run input {name} ({path}) differs from the hash in run_manifest.json; " + stale
             )
     # The scoring settings are part of the run: a changed partial_policy, eta or contact rule
     # gives other scores from unchanged tables.
     if manifest.get("policy_hash") and policy_digest(run_cfg) != manifest["policy_hash"]:
         raise PaceError(
-            "The scoring settings differ from the ones recorded in run_manifest.json; the "
-            "baselines would not describe the reported run. Restore resolved_config.yaml or "
-            "rerun the analysis"
+            "The scoring settings differ from the ones recorded in run_manifest.json; " + stale
         )
-    # The contact prior is an input of the scores as well (its boundary table is bound to
-    # its manifest by checksum). Scores of an eQTL-calibrated run use the derived prior, so
-    # the source prior and the calibrator file are verified separately and the derived
-    # prior is rebuilt from them.
-    prior = run_cfg["contact"].get("prior_path")
-    recorded_prior = manifest.get("asset_hashes", {}).get("contact_prior")
-    if prior and recorded_prior:
-        source = load_asset(prior, run_cfg, kind="contact_prior")
-        expected = source["manifest_sha256"]
-        weak = run_cfg["allocation"].get("weak_model_path")
-        if weak:
-            if file_hash(weak) != manifest.get("allocation", {}).get("artifact_sha256"):
+    # Files named by settings (prior, calibrators, models): none may be added or removed,
+    # and each file must be unchanged.
+    if "setting_files" in manifest:
+        current = setting_files(run_cfg)
+        for name in sorted(set(current) | set(manifest["setting_files"])):
+            before, now = manifest["setting_files"].get(name), current.get(name)
+            if (before is None) != (now is None):
+                change = "removed" if now is None else "added"
+                raise PaceError(f"{name} was {change} after the run; " + stale)
+            if before != now:
                 raise PaceError(
-                    f"The weak calibrator {weak} differs from the one recorded in "
-                    "run_manifest.json; the baselines would not describe the reported run"
+                    f"{name} differs from the file recorded in run_manifest.json; " + stale
                 )
+    verify_scoring_assets(manifest, run_cfg, stale)
+
+
+def verify_scoring_assets(manifest, run_cfg, stale):
+    """Rebuild the scoring assets the way the run did and compare them with the manifest.
+
+    The contact prior is a fitted asset (prior_path) or the built-in distance prior
+    (prior_preset). An eQTL weak calibrator replaces its gamma and beta, so the calibrator
+    file is checked first and the derived prior is rebuilt from the source prior.
+    """
+    from ..evidence.assets import builtin_contact_prior
+
+    prior = None
+    if run_cfg["contact"].get("prior_path"):
+        prior = load_asset(run_cfg["contact"]["prior_path"], run_cfg, kind="contact_prior")
+    elif run_cfg["contact"].get("prior_preset"):
+        prior = builtin_contact_prior(run_cfg)
+    weak = run_cfg["allocation"].get("weak_model_path")
+    recorded_weak = (manifest.get("allocation") or {}).get("artifact_sha256")
+    if bool(weak) != bool(recorded_weak):
+        raise PaceError(
+            "The eQTL weak calibrator was "
+            + ("added" if weak else "removed")
+            + " after the run; "
+            + stale
+        )
+    if weak:
+        if file_hash(weak) != recorded_weak:
+            raise PaceError(
+                f"The weak calibrator {weak} differs from the one recorded in "
+                "run_manifest.json; " + stale
+            )
+        if prior is not None:
             from ..weak_labels import weak_calibrated_prior, weak_parameters
 
-            parameters = weak_parameters(read_json(weak))
-            expected = weak_calibrated_prior(source, parameters, weak)["manifest_sha256"]
-        if expected != recorded_prior:
-            raise PaceError(
-                f"The contact prior {prior} differs from the one recorded in run_manifest.json; "
-                "the baselines would not describe the reported run"
-            )
+            prior = weak_calibrated_prior(prior, weak_parameters(read_json(weak)), weak)
+    recorded = manifest.get("asset_hashes", {}).get("contact_prior")
+    expected = prior["manifest_sha256"] if prior is not None else None
+    if expected != recorded:
+        what = (
+            "was removed"
+            if expected is None
+            else "was added"
+            if recorded is None
+            else "differs from the one recorded in run_manifest.json"
+        )
+        raise PaceError(f"The contact prior {what}; " + stale)
 
 
 def benchmark_command(path, out):

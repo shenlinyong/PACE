@@ -83,6 +83,29 @@ def policy_digest(cfg: dict) -> str:
     return digest(strip(cfg))
 
 
+def setting_files(cfg: dict) -> dict:
+    """Hash of every file named by a *_path setting outside the input tables.
+
+    Unset settings are recorded as None and directories (contact prior assets, verified
+    through their own manifest) as "directory", so a removed or added file is detected.
+    """
+    found = {}
+    for section, values in sorted(cfg.items()):
+        if section == "inputs" or not isinstance(values, dict):
+            continue
+        for key, value in sorted(values.items()):
+            if not key.endswith("_path"):
+                continue
+            name = f"{section}.{key}"
+            if not value:
+                found[name] = None
+            elif Path(value).is_dir():
+                found[name] = "directory"
+            else:
+                found[name] = file_hash(value)
+    return found
+
+
 def digest_rows(rows) -> str:
     """Order-sensitive SHA-256 of many records without building one large JSON string."""
     h = hashlib.sha256()

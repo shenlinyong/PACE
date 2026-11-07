@@ -22,7 +22,14 @@ from pathlib import Path
 
 from .errors import PaceError
 from .io.tables import read_table, write_table
-from .provenance import digest, file_hash, output_directory, policy_digest, write_json
+from .provenance import (
+    digest,
+    file_hash,
+    output_directory,
+    policy_digest,
+    setting_files,
+    write_json,
+)
 
 # Tables read once and passed unchanged to every chunk.
 GLOBAL_TABLES = ("samples", "sources", "evidence")
@@ -527,6 +534,7 @@ def merge_manifest(cfg: dict, results: list[dict], dest: Path) -> dict:
     manifest["chunk_universe_ids"] = chunk_ids
     manifest["config_hash"] = digest(cfg)
     manifest["policy_hash"] = policy_digest(cfg)
+    manifest["setting_files"] = setting_files(cfg)
     manifest["input_hashes"] = {
         name: file_hash(path) for name, path in cfg["inputs"].items() if path
     }

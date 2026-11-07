@@ -502,7 +502,57 @@ def test_benchmark_check_accepts_weak_calibrated_run_and_rejects_changed_policy(
     changed["scoring"]["partial_policy"] = "conditional"
     with pytest.raises(PaceError, match="scoring settings"):
         verify_run_inputs(folder, changed)
+    cleared = load_config(folder)
+    cleared["contact"]["prior_path"] = None
+    with pytest.raises(PaceError, match="prior_path was removed"):
+        verify_run_inputs(folder, cleared)
     write_json(path, {**model, "selected": {**model["selected"], "gamma": 2.0}})
+    with pytest.raises(PaceError, match="weak_model_path differs"):
+        verify_run_inputs(folder, load_config(folder))
+    # Manifests written before setting_files was recorded still check the calibrator.
+    manifest = json.loads((folder / "run_manifest.json").read_text())
+    manifest.pop("setting_files")
+    (folder / "run_manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(PaceError, match="weak calibrator"):
+        verify_run_inputs(folder, load_config(folder))
+
+
+def test_benchmark_check_covers_weak_calibration_of_the_builtin_prior(configured, tmp_path):
+    from pace_livestock.evaluation.benchmark import verify_run_inputs
+
+    variants = four_chromosomes(configured)
+    configured["execution_profile"] = "research"
+    configured["contact"].update(
+        prior_path=None,
+        prior_preset="abc_human",
+        scale="relative_distance_contact",
+        resolution=5000,
+        normalization_id="distance_only",
+        balancing="not_applicable",
+        window_id="bin_pair",
+    )
+    model, _ = calibrate(
+        configured,
+        variants,
+        gamma_grid=[1, 2],
+        beta_grid=[0],
+        eta_grid=[0, 1],
+        test_chromosomes=["c4"],
+        aggregation="independent_signals",
+    )
+    path = tmp_path / "weak_model.json"
+    write_json(path, model)
+    configured["allocation"]["weak_model_path"] = str(path)
+    folder = tmp_path / "weak_run"
+    run(configured, folder)
+    verify_run_inputs(folder, load_config(folder))
+    gamma = 2.0 if model["selected"]["gamma"] == 1 else 1.0
+    write_json(path, {**model, "selected": {**model["selected"], "gamma": gamma}})
+    with pytest.raises(PaceError, match="weak_model_path differs"):
+        verify_run_inputs(folder, load_config(folder))
+    manifest = json.loads((folder / "run_manifest.json").read_text())
+    manifest.pop("setting_files")
+    (folder / "run_manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(PaceError, match="weak calibrator"):
         verify_run_inputs(folder, load_config(folder))
 
