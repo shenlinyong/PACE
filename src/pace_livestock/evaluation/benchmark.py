@@ -11,6 +11,7 @@ from ..config import load_config, operation_base, operation_config, strict_keys
 from ..core.scoring import log_normalize, score
 from ..errors import PaceError
 from ..io.tables import number, read_table, write_table
+from ..labels import classify_label
 from ..pipeline import compute
 from ..provenance import output_directory, write_json
 from .compare import load_run
@@ -103,6 +104,19 @@ def benchmark_command(path, out):
         raise PaceError(
             "Repeated functional assays for one edge need a predeclared label aggregation"
         )
+    # Labels whose region maps to no element, or to several, cannot be scored, but a tested
+    # positive that is not found is a missed positive: it stays in the evaluation with a
+    # missing score, so end-to-end recall keeps every tested positive in its denominator.
+    unresolved = []
+    for row in rejected:
+        if row["reason"] in ("unmapped_region", "ambiguous_region"):
+            label, _ = classify_label(row)
+            if label is not None:
+                unresolved.append(
+                    {**row, "element_id": f"unresolved:{row['label_id']}", "label": label}
+                )
+    evaluated = mapped + unresolved
+    keys = [(r["element_id"], r["gene_id"]) for r in evaluated]
     methods = {}
     calibration = None
     if run_cfg["allocation"].get("weak_model_path"):
@@ -189,7 +203,7 @@ def benchmark_command(path, out):
             common_scores[name].update(
                 {(e, gene): float(s) for e, s in zip(elements, scores, strict=True)}
             )
-    y = [r["label"] for r in mapped]
+    y = [r["label"] for r in evaluated]
     scores_by_method = {
         name: {key: r["pace_score"] for key, r in rows.items()} for name, rows in lookup.items()
     }
@@ -243,7 +257,7 @@ def benchmark_command(path, out):
     report = []
     strata = cfg.get("stratify", [])
     for field in strata:
-        if any(field not in r for r in mapped):
+        if any(field not in r for r in evaluated):
             raise PaceError(f"Unknown label stratification field: {field}")
     for method, predictions in scores_by_method.items():
         threshold = cfg.get("thresholds", {}).get(method)
@@ -285,8 +299,8 @@ def benchmark_command(path, out):
             common = binary_metrics(y, [common_scores[method].get(k, math.nan) for k in keys])
             report.append({"method": method, "scope": "common_normalization", **common})
         for field in strata:
-            for level in sorted({r[field] for r in mapped}, key=str):
-                indices = [i for i, r in enumerate(mapped) if r[field] == level]
+            for level in sorted({r[field] for r in evaluated}, key=str):
+                indices = [i for i, r in enumerate(evaluated) if r[field] == level]
                 report.append(
                     {
                         "method": method,
@@ -313,7 +327,14 @@ def benchmark_command(path, out):
                 "average_precision_definition": "sum(recall increments * precision), grouped by score ties; not trapezoidal PR area",
                 "external_methods": external_status,
                 "thresholds": cfg.get("thresholds", {}),
-                "n_labels": len(mapped),
+                "n_labels": len(evaluated),
+                "n_labels_mapped": len(mapped),
+                "n_positive_unmapped": sum(
+                    r["label"] == 1 and r["reason"] == "unmapped_region" for r in unresolved
+                ),
+                "n_positive_ambiguous": sum(
+                    r["label"] == 1 and r["reason"] == "ambiguous_region" for r in unresolved
+                ),
                 "n_common_labels": len(common_labels),
                 "n_common_labels_all_methods": len(all_common),
                 "n_membership_elements_outside_catalog": len(outside),

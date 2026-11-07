@@ -347,9 +347,10 @@ def predict_parser(command):
     )
     score.add_argument(
         "--tss-weights",
-        choices=["usage", "equal", "provided"],
+        choices=["usage", "equal"],
         default="usage",
-        help="Weights of the distinct TSSs of a gene: promoter activity share (default), equal, or promoters.tsv",
+        help="Weights of the distinct TSSs of a gene: promoter activity share (default) or equal. "
+        "External weights (promoters.tsv) are used with 'pace run --tss-weights provided'",
     )
 
 
@@ -410,7 +411,11 @@ def add_catalog_options(group, *, chrom_sizes_required=True):
         help="Ignore peaks and genes on chromosomes missing from the sizes file",
     )
     group.add_argument(
-        "--aliases", metavar="TSV", help="Chromosome renaming table (columns: alias, canonical)"
+        "--aliases",
+        metavar="TSV",
+        help="Chromosome renaming table (columns: alias, canonical). It renames the chromosomes of "
+        "the BED, GTF and sizes files; bigWig, Hi-C and FASTA files must already use the "
+        "canonical names",
     )
 
 
@@ -1019,6 +1024,7 @@ def run_command(args):
             "output": args.out,
             "n_candidates": result["qc"]["n_candidates"],
             "n_scoreable": result["qc"]["n_scoreable"],
+            "n_primary_scores": result["qc"]["n_primary_scores"],
             "chunks": len(result["qc"]["execution"]["chunks"]),
             "eta": result["eta_calibration"]["eta"],
             "eta_status": result["eta_calibration"]["status"],
@@ -1028,6 +1034,7 @@ def run_command(args):
         "output": args.out,
         "n_candidates": len(result["scores"]),
         "n_scoreable": result["qc"]["n_scoreable"],
+        "n_primary_scores": result["qc"]["n_primary_scores"],
         "eta": result["eta_calibration"]["eta"],
         "eta_status": result["eta_calibration"]["status"],
     }

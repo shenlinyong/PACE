@@ -73,7 +73,7 @@ def test_label_regions_not_duplicated():
         )
     ]
     usable, rejected = map_labels(labels, membership)
-    assert not usable and rejected[0]["reason"] == "ambiguous_or_unmapped_region"
+    assert not usable and rejected[0]["reason"] == "ambiguous_region"
 
 
 def test_real_bigwig_missing_and_negative(tmp_path):

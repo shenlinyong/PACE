@@ -1,8 +1,10 @@
-# PACE
+# PACE: Prior-Anchored Contact Estimation
 
-**Enhancer–gene prediction for domestic animals from chromatin activity and 3D contact.**
+**Enhancer–gene prediction from low-depth, low-resolution and surrogate-tissue Hi-C.**
 
-PACE ranks the candidate regulatory elements of each gene in a tissue. It uses the Activity-by-Contact (ABC) score — an element's activity times its contact with the gene, as a share of the total over all candidates of that gene — and changes how activity and contact are estimated for the data that pig, cattle, sheep, goat and chicken projects usually have. Any species with a reference genome, a gene annotation and measured chromatin data can be analysed.
+PACE ranks the candidate regulatory elements of each gene in a tissue. It keeps the Activity-by-Contact (ABC) score — an element's activity times its contact with the gene, as a share of the total over all candidates of that gene — and changes how contact is estimated. Every contact estimate is anchored to a distance-boundary prior fitted on Hi-C, which gives the method its name. The prior takes over where the Hi-C is uninformative: bin pairs with few reads, element–TSS pairs inside one coarse bin, and tissues without Hi-C. With deep, fine-resolution Hi-C the estimate follows the measured contact and the score reduces to ABC.
+
+PACE is designed for Hi-C that is shallow, binned at 10–100 kb, available only for another tissue, or absent. Domestic animals (pig, cattle, sheep, goat, chicken) are a main application, because Hi-C exists for few of their tissues and gene annotations carry many predicted TSSs. Any species with a reference genome, a gene annotation and measured chromatin data can be analysed.
 
 ```bash
 pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \
@@ -12,33 +14,35 @@ pace predict -b peaks.bed -g genes.gtf --atac atac.bw --h3k27ac h3k27ac.bw \
 
 ## What PACE improves
 
-PACE keeps the ABC score and changes how its terms are estimated where domestic-animal data differ from human data.
+PACE keeps the ABC score and changes how its terms are estimated where Hi-C and annotation are of lower quality than in deeply profiled human cell lines.
 
-**1. Sparse Hi-C.**
+**1. Shallow Hi-C.**
 
-*Problem:* human cell lines have deeply sequenced, kilobase-resolution Hi-C for many cell types; in domestic animals Hi-C exists for few tissues, mostly at 10–40 kb and low depth, and most tissues have none.
+*Problem:* in a shallow map most enhancer–promoter bin pairs receive few or no reads, so the measured contact is dominated by sampling noise, and a fixed pseudocount cannot tell an informative zero from an uninformative one.
 
-*PACE:*
+*PACE:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = w\,C_{\mathrm{obs}} + (1-w)\,P(d)$ with $w = \frac{P(d)/f}{P(d)/f+\kappa}$, so bin pairs expected to receive few reads ($P(d)/f$ small relative to $\kappa$: shallow maps, long distances) are drawn toward the distance expectation (default with `--hic`). The weight follows the expected count, not the observed one: at the same expectation, 0 and 100 reads get the same $w$ and different posterior means. An observed zero stays an observation.
 
-- *Low depth:* each element–TSS contact is the Gamma–Poisson posterior mean $\widetilde C = w\,C_{\mathrm{obs}} + (1-w)\,P(d)$ with $w = \frac{P(d)/f}{P(d)/f+\kappa}$, so bin pairs expected to receive few reads ($P(d)/f$ small relative to $\kappa$: shallow maps, long distances) are drawn toward the distance expectation (default with `--hic`). The weight follows the expected count, not the observed one: at the same expectation, 0 and 100 reads get the same $w$ and different posterior means.
-- *Coarse bins:* one bin pair holds element–TSS pairs at very different distances; each is placed within it by $P(d)/P(d_{\mathrm{bin}})$, the prior at its exact distance over the prior at the bin centres. An element in the TSS's own bin, whose diagonal value is dominated by self-ligation, takes $P(d)$ fitted on the same map; masked bins also take $P(d)$.
-- *Hi-C only from another tissue:* $P(d)$ is fitted on it (Case B). *No Hi-C:* $\widetilde C = 1/\max(d,\,5\,\mathrm{kb})$ (Case C).
+**2. Coarse bins.**
 
-**2. Predicted TSSs and alternative promoters.**
+*Problem:* one bin pair holds element–TSS pairs at very different distances, so all of them receive the same contact; at 25–100 kb this blurs near and distant pairs.
 
-*Problem:* gene annotations of domestic-animal genomes (Ensembl, NCBI RefSeq) are largely computational predictions. Many genes carry several TSSs or alternative promoters, few of them supported by CAGE or other TSS data, so the annotation does not say which promoter a tissue uses. ABC assigns each gene a single TSS; if it is the wrong one, the distance and Hi-C contact of every candidate element are measured from the wrong position.
+*PACE:* each pair is placed within its bin pair by $P(d)/P(d_{\mathrm{bin}})$, the prior at its exact distance over the prior at the bin centres. An element in the TSS's own bin, whose diagonal value is dominated by self-ligation, takes $P(d)$ fitted on the same map; masked bins also take $P(d)$.
+
+**3. Hi-C from another tissue, or none; domain boundaries.**
+
+*Problem:* many tissues have no Hi-C. ABC then uses a power law fitted on human data and has no term for CTCF-anchored domain boundaries, so an element beyond a boundary counts as much as one at the same distance inside the gene's domain.
+
+*PACE:* $P(d)$ is multiplied by $e^{-\beta\min(S,1)}$, where $S$ is the strength of the boundaries between element and TSS. Boundaries lie between a reverse and the next forward CTCF site; sites are CTCF ChIP-seq, CUT&RUN or CUT&Tag peaks of the tissue, oriented by the built-in CTCF motif (`--ctcf peaks.bed --genome genome.fa`). $\gamma$ and $\beta$ are fitted on Hi-C by comparing pairs at the same distance. Hi-C of another tissue of the same species supplies the prior (Case B); without any Hi-C the contact is $1/\max(d,\,5\,\mathrm{kb})$ (Case C).
+
+**4. Predicted TSSs and alternative promoters.**
+
+*Problem:* gene annotations outside the best-studied genomes are largely computational. A gene often carries several TSSs, few supported by CAGE or other TSS data, so the annotation does not say which promoter a tissue uses. ABC assigns each gene a single TSS; if it is the wrong one, the distance and Hi-C contact of every candidate element are measured from the wrong position.
 
 *PACE:* keeps every distinct TSS of a gene (transcripts starting at the same base are merged) and weights each by its promoter activity in the same tissue, $\pi_t = A_t / \sum_{t'} A_{t'}$, where $A_t$ is the ATAC/H3K27ac activity of the 500 bp cell containing the TSS. The element–gene contact is the weighted mean, $\overline C(E,G) = \sum_t \pi_t\,\widetilde C(E,t)$: the promoter that is open and acetylated in this tissue dominates, and predicted but inactive TSSs contribute little.
 
-**3. Domain boundaries.**
+**5. One or a few animals.**
 
-*Problem:* enhancer–promoter contact drops across CTCF-anchored domain boundaries, but domestic animals lack the boundary maps available for human cell types, and ABC has no boundary term: with distance-based contact, an element beyond a boundary counts as much as one at the same distance inside the gene's domain.
-
-*PACE:* multiplies $P(d)$ by $e^{-\beta\min(S,1)}$, where $S$ is the strength of the boundaries between element and TSS. Boundaries lie between a reverse and the next forward CTCF site; sites are CTCF ChIP-seq or CUT&Tag peaks of the tissue, oriented by the built-in CTCF motif (`--ctcf peaks.bed --genome genome.fa`). $\beta$ is fitted on the Hi-C (Cases A and B) by comparing pairs at the same distance.
-
-**4. One or a few animals.**
-
-*Problem:* a tissue is usually profiled in one or a few animals, often with several libraries or technical replicates per animal.
+*Problem:* a tissue is often profiled in one or a few individuals, with several libraries or technical replicates per individual.
 
 *PACE:* averages technical replicates, then biological replicates, then animals, with equal weight per animal, so repeated sequencing of one animal is not counted as several animals.
 
@@ -77,7 +81,7 @@ The `io` extra (pyBigWig, cooler, pandas) is needed to read bigWig and Hi-C file
 
 ## Input data
 
-PACE starts from processed files. All files must use the **same genome assembly and the same chromosome names** (`chr1` and `1` do not match; see `--aliases`).
+PACE starts from processed files. All files must use the **same genome assembly and the same chromosome names** (`chr1` and `1` do not match; see `--aliases`). A chromosome must also have the same length in every file that lists it (chromosome sizes, bigWig, Hi-C); a different length means a different assembly, and `pace predict` stops.
 
 | Data | Needed | Format | Option | Used for |
 |---|---|---|---|---|
@@ -121,7 +125,7 @@ pace predict -b peaks.bed -g genes.gtf --atac pig1_ATAC.bw --h3k27ac pig1_H3K27a
   --species pig --assembly Sscrofa11.1 --tissue liver -o results/pig1
 ```
 
-$\widetilde C(E,t)$ is the Gamma–Poisson posterior mean of the contact between the bins of element and TSS, with prior $P(d)$ fitted on the same map ([Contact from sparse Hi-C](#contact-from-sparse-hi-c)): bin pairs expected to receive many reads keep close to their measured value, those expected to receive few move toward $P(d)$, so low-depth maps add information instead of noise. A bin pair holds many element–TSS pairs at different distances; each is placed within it by the prior's ratio $P(d)/P(d_{\mathrm{bin}})$ between the exact distance (floored at 5 kb) and the distance of the bin centres, so the bin's measured level is kept and spread by distance (`within_bin_factor` in `resolved_contacts.tsv`; `--bin-level-contacts` turns this off). This matters most for coarse maps, where one 50–100 kb bin pair holds near and distant pairs alike. An element in the TSS's own bin, and a pair in a masked bin, takes $P(d)$; such pairs are marked in `resolved_contacts.tsv`. `--no-shrinkage` uses the balanced contact plus $P(\max(d,5\,\mathrm{kb}))$ instead (needed for coolers with non-integer counts), and `--strict-contacts` uses measured bin-pair contacts only, without pseudocount or prior, and leaves same-bin and masked pairs NA. `--hic-resolution` selects the bin size in an `.mcool`. This is the most direct case: loops between distal enhancers and promoters are measured.
+$\widetilde C(E,t)$ is the Gamma–Poisson posterior mean of the contact between the bins of element and TSS, with prior $P(d)$ fitted on the same map ([Contact from sparse Hi-C](#contact-from-sparse-hi-c)): bin pairs expected to receive many reads keep close to their measured value, those expected to receive few move toward $P(d)$, so low-depth maps add information instead of noise. A bin pair holds many element–TSS pairs at different distances; each is placed within it by the prior's ratio $P(d)/P(d_{\mathrm{bin}})$ between the exact distance (floored at 5 kb) and the distance of the bin centres, so the bin's measured level is kept and spread by distance (`within_bin_factor` in `resolved_contacts.tsv`; `--bin-level-contacts` turns this off for measured contacts). This matters most for coarse maps, where one 50–100 kb bin pair holds near and distant pairs alike. An element in the TSS's own bin, and a pair in a masked bin, takes $P(d)$ at its exact distance, with or without `--bin-level-contacts`; such pairs are marked in `resolved_contacts.tsv`. `--no-shrinkage` uses the balanced contact plus $P(\max(d,5\,\mathrm{kb}))$ instead (needed for coolers with non-integer counts), and `--strict-contacts` uses measured bin-pair contacts only, without pseudocount or prior, and leaves same-bin and masked pairs NA. Every gene with such a pair then has no primary score under the default `--partial-policy withhold`; the command summary reports `n_primary_scores`, and `--partial-policy conditional` scores the measured pairs of those genes. `--hic-resolution` selects the bin size in an `.mcool`. This is the most direct case: loops between distal enhancers and promoters are measured.
 
 ### Case B: Hi-C of another tissue of the same species
 
@@ -161,12 +165,12 @@ Contact is estimated from distance alone, $\widetilde C(E,t)=1/\max(d,\,5\,\math
 | Option | Default | Meaning |
 |---|---|---|
 | `-w/--width` | 500 | Element width on a fixed genome grid (bp) |
-| `-r/--radius` | 5000000 | Pair each gene with elements up to this distance from its TSSs; 5 Mb matches ABC |
+| `-r/--radius` | 5000000 | Pair each gene with elements up to this distance from its TSSs; 5 Mb matches ABC. The decay fit on Hi-C always uses bin pairs up to 1 Mb, whatever the radius |
 | `--gene-types` | all | Keep only these biotypes, e.g. `protein_coding` (Ensembl) or `mRNA` (NCBI) |
 | `--skip-unlisted-chroms` | off | Ignore peaks and genes on contigs missing from the chromosome sizes |
 | `--min-callable-fraction` | 0 | Elements with less bigWig coverage become NA; 0.8 is a common choice |
 | `--missing-as-zero` | off | Read bases absent from the bigWig as measured zero signal |
-| `--tss-weights` | `usage` | TSS weights: promoter activity share, `equal`, or `provided` (`promoters.tsv`) |
+| `--tss-weights` | `usage` | TSS weights: promoter activity share or `equal` (`pace run` also accepts `provided`) |
 | `--no-boundaries` | off | Fit the distance decay only, even with CTCF data |
 | `--no-shrinkage` | off | With `--hic`: use measured contacts as they are, without per-pair shrinkage |
 | `--partial-policy` | `withhold` | Genes with unscored candidates: `withhold` or `conditional` |
@@ -223,7 +227,7 @@ How to read them:
 An enhancer regulates a gene when it is active in the tissue and chromatin folding brings it to the gene's promoter. The product of activity and contact is the element's *support* for the gene, and the score is its share of the gene's total support, so the scores of one gene sum to 1.
 
 - **Activity $A_\star(E)$:** the geometric mean of the assays $\mathcal M$ used, e.g. $\sqrt{\text{ATAC}\times\text{H3K27ac}}$, where $x_m(E)$ is the replicate-averaged signal of assay $m$. The same assays are used for every element of a run. A constant scale factor of a track (library size, normalization) cancels in the share.
-- **Contact $\overline C(E,G)$:** the weighted mean of the contacts with the gene's distinct TSSs $\mathcal T(G)$; transcripts that start at the same position count once. $\pi(t\mid G)$ is the TSS's share of the gene's promoter activity (the activity of the 500 bp cell containing it). A TSS whose cell is unmeasured takes the mean activity of the gene's measured TSSs (`pi_source: gene_mean_promoter_activity`); genes without measured TSSs, or with all-zero promoter activity, use equal weights. `--tss-weights equal` or `provided` (the `pi` column of `promoters.tsv`, e.g. from CAGE with `pace promoter-weights`) change this.
+- **Contact $\overline C(E,G)$:** the weighted mean of the contacts with the gene's distinct TSSs $\mathcal T(G)$; transcripts that start at the same position count once. $\pi(t\mid G)$ is the TSS's share of the gene's promoter activity (the activity of the 500 bp cell containing it). A TSS whose cell is unmeasured takes the mean activity of the gene's measured TSSs (`pi_source: gene_mean_promoter_activity`); genes without measured TSSs, or with all-zero promoter activity, use equal weights. `pace predict --tss-weights equal` changes this; `pace run --tss-weights provided` uses the `pi` column of `promoters.tsv`, e.g. from CAGE with `pace promoter-weights`.
 - **TSS contact $\widetilde C(E,t)$:** from Hi-C and the distance–boundary prior, depending on the case (above and below).
 - **Denominator:** all candidates $\mathcal E(G)$ within the radius of the gene's TSSs, including promoters of the gene and its neighbours. A gene with one strong enhancer gives it a large share; a gene with many shares the credit.
 
@@ -309,13 +313,13 @@ pace run -d prepared/catalog --activity prepared/all_activity.tsv --contacts pre
 
 Technical replicates are averaged within each biological replicate, biological replicates within each animal, and every animal has equal weight. `species`, `assembly` and `context_id` must match the command line.
 
-**Comparing animals, tissues or treatments.** Scores are shares, so a change in one element shifts the others of the same gene; do not subtract two score tables. Score both runs on the same candidates (the same peak files, e.g. the union of both animals' peaks, GTF, width, radius and assays) and the same contact prior, then:
+**Comparing animals or treatments.** Scores are shares, so a change in one element shifts the others of the same gene; do not subtract two score tables. Score both runs on the same candidates (the same peak files, e.g. the union of both animals' peaks, GTF, width, radius and assays) and the same contact prior, then:
 
 ```bash
 pace compare --left results/pig1 --right results/pig2 -o results/pig2_vs_pig1
 ```
 
-`pace compare` rescores both runs over their common candidates and reports right minus left. Runs with their own Hi-C each have their own contact model and need `--allow-evidence-difference`, which gives conditional differences only. Interpret a difference through activity, contact and the gene total, not `pace_score` alone.
+`pace compare` rescores both runs over their common candidates and reports right minus left. Both runs need the same species, assembly and tissue label; runs of different tissues are not compared. Runs with their own Hi-C each have their own contact model and need `--allow-evidence-difference`, which gives conditional differences only. Interpret a difference through activity, contact and the gene total, not `pace_score` alone.
 
 **Whole genomes.** Every term is computed within a chromosome, so `pace predict` scores chromosomes separately (`--by-chromosome` in `pace run`) and in parallel (`-t`) with identical results. Memory is set by the largest chromosome; a smaller `--radius` reduces it.
 
@@ -402,7 +406,11 @@ Scores from different runs are comparable only when candidates, assays, normaliz
 
 **`pace: command not found`** — activate the environment (`conda activate pace` or `source .venv/bin/activate`).
 
-**Chromosome name mismatch** — BED, GTF, bigWig, Hi-C and FASTA disagree on names (`chr1` vs `1`, `chrMT` vs `MT`). Rename in one place or give `--aliases`; drop unneeded contigs with `--skip-unlisted-chroms`.
+**Chromosome name mismatch** — BED, GTF, bigWig, Hi-C and FASTA disagree on names (`chr1` vs `1`, `chrMT` vs `MT`). Rename in one place, or give `--aliases` for the BED, GTF and chromosome sizes files (bigWig, Hi-C and FASTA files must already use the canonical names); drop unneeded contigs with `--skip-unlisted-chroms`.
+
+**"None of the CTCF boundaries lies on a Hi-C chromosome"** — the CTCF peaks and the Hi-C use different chromosome names. The fit stops when none of the boundaries is on a Hi-C chromosome, and `manifest.json` of the prior records how many are (`boundaries_in_fit`).
+
+**"... bp in the bigWig but ... bp in the chromosome sizes"** — the files come from different genome assemblies; use tracks, Hi-C and sizes of the same assembly.
 
 **"needs both --ctcf peaks and --genome FASTA"** — the boundary term needs both files. The FASTA must be uncompressed (`gunzip genome.fa.gz`).
 
@@ -422,7 +430,7 @@ Still stuck? Open an [issue](https://github.com/shenlinyong/PACE/issues) with `p
 
 ## Citation
 
-PACE is not yet published. Please cite this repository with the commit used (`git rev-parse HEAD`) and the ABC papers it builds on:
+Please cite this repository with the commit used (`git rev-parse HEAD`) and the ABC papers it builds on:
 
 > Fulco CP, Nasser J, Jones TR, et al. Activity-by-contact model of enhancer–promoter regulation from thousands of CRISPR perturbations. *Nature Genetics* 51, 1664–1669 (2019).
 >

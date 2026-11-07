@@ -247,7 +247,20 @@ def test_pairs_are_placed_within_their_bin_pair(inputs, tmp_path, capsys):
     capsys.readouterr()
     assert predict_hic(inputs, tmp_path / "binned", "--bin-level-contacts") == 0
     binned = read_table(tmp_path / "binned" / "resolved_contacts.tsv")
-    assert {float(r["within_bin_factor"]) for r in binned} == {1.0}
+    # Measured contacts keep the bin-level value; pairs filled by the prior alone stay at
+    # their exact distance, so the switch does not change the fallback.
+    assert {
+        float(r["within_bin_factor"]) for r in binned if r["evidence_type"] != "contact_prior"
+    } == {1.0}
+    placed_prior = {
+        (r["element_id"], r["promoter_id"]): r["resolved_value"]
+        for r in rows
+        if r["evidence_type"] == "contact_prior"
+    }
+    assert placed_prior
+    for r in binned:
+        if r["evidence_type"] == "contact_prior":
+            assert r["resolved_value"] == placed_prior[r["element_id"], r["promoter_id"]]
 
 
 def test_strict_contacts_takes_no_prior(inputs, tmp_path, capsys):
@@ -541,3 +554,112 @@ def test_ctcf_is_rejected_where_it_would_be_ignored(inputs, tmp_path, capsys, ex
         inputs, tmp_path / "out", "--ctcf", inputs / "peaks.bed", "--genome", fasta, *extra
     )
     assert code == 2 and "--ctcf" in capsys.readouterr().err
+
+
+def test_chromosome_length_conflict_between_files_is_an_error(inputs, tmp_path, capsys):
+    other = tmp_path / "other.bw"
+    bw = pyBigWig.open(str(other), "w")
+    bw.addHeader([(c, n + (1000 if c == "chr1" else 0)) for c, n in CHROMS.items()])
+    for chrom, length in CHROMS.items():
+        bw.addEntries(chrom, 0, values=[1.0] * (length // 100), span=100, step=100)
+    bw.close()
+    code = call(
+        "predict",
+        "-b",
+        inputs / "peaks.bed",
+        "-g",
+        inputs / "genes.gtf",
+        "-c",
+        inputs / "genome.fa.fai",
+        "--atac",
+        other,
+        "--distance-only",
+        *context(),
+        "-o",
+        tmp_path / "out",
+    )
+    err = capsys.readouterr().err
+    assert code == 2 and "chr1" in err and "different genome assemblies" in err
+
+
+def test_candidate_radius_does_not_limit_the_decay_fit(inputs, tmp_path, capsys):
+    out = tmp_path / "narrow"
+    code = call(
+        "predict",
+        "-b",
+        inputs / "peaks.bed",
+        "-g",
+        inputs / "genes.gtf",
+        "-c",
+        inputs / "genome.fa.fai",
+        "--atac",
+        inputs / "atac.bw",
+        "--hic",
+        inputs / "hic.cool",
+        "-r",
+        RESOLUTION,
+        *context(),
+        "-o",
+        out,
+    )
+    capsys.readouterr()
+    assert code == 0
+    prior = json.loads((out / "prepared" / "contact_prior" / "manifest.json").read_text())
+    assert prior["fit_range"][1] == 1_000_000
+
+
+def test_boundaries_on_other_chromosome_names_stop_the_fit(inputs, tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from pace_livestock.errors import PaceError
+    from pace_livestock.io import prior_fit
+
+    names = [{"chrom": "1", "position0": 500_000, "strength": 1.0, "evidence_type": "x"}]
+    monkeypatch.setattr(prior_fit, "map_boundaries", lambda args: (names, "ctcf_chip_motif"))
+    args = SimpleNamespace(
+        cooler=str(inputs / "hic.cool"),
+        balanced=True,
+        min_distance=None,
+        max_distance=1_000_000,
+        distance_bins=30,
+        reference_distance=5000,
+        minimum_distance=5000,
+        test_chromosomes=[],
+        scale="balanced_contact",
+        normalization_id="cooler_weight",
+        model_id="m",
+        no_boundaries=False,
+        ctcf="peaks",
+        genome="fasta",
+        synthetic=False,
+        species="pig",
+        assembly="toy",
+        tissue="liver",
+        target_level="individual",
+        out=tmp_path / "prior",
+    )
+    with pytest.raises(PaceError, match="Hi-C chromosome"):
+        prior_fit.fit_cooler_command(args)
+    names[0]["chrom"] = "chr1"
+    assert prior_fit.fit_cooler_command(args)["boundaries_in_fit"] == 1
+
+
+def test_predict_has_no_external_tss_weights_option(inputs, tmp_path, capsys):
+    with pytest.raises(SystemExit) as stop:
+        call(
+            "predict",
+            "-b",
+            inputs / "peaks.bed",
+            "-g",
+            inputs / "genes.gtf",
+            "--atac",
+            inputs / "atac.bw",
+            "--distance-only",
+            "--tss-weights",
+            "provided",
+            *context(),
+            "-o",
+            tmp_path / "out",
+        )
+    assert stop.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err

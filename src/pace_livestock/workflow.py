@@ -84,6 +84,35 @@ def check_predict(args):
     return tracks
 
 
+def check_reference_lengths(reference, tracks, hic_uri=None):
+    """Stop when a file gives a chromosome of the reference another length.
+
+    Candidate intervals are checked against chromosome ends elsewhere; a different total
+    length means a different assembly, which shifts every coordinate past the difference.
+    """
+    from .io.bed_gtf import read_chrom_sizes
+
+    sizes = read_chrom_sizes(reference)
+    others = {}
+    for assay, path in tracks:
+        if str(path) != str(reference):
+            others[f"{assay} bigWig {path}"] = read_chrom_sizes(path)
+    if hic_uri:
+        import cooler
+
+        others[f"Hi-C {str(hic_uri).split('::')[0]}"] = {
+            k: int(v) for k, v in cooler.Cooler(str(hic_uri)).chromsizes.items()
+        }
+    for label, other in others.items():
+        for chrom in sorted(set(sizes) & set(other)):
+            if sizes[chrom] != other[chrom]:
+                raise PaceError(
+                    f"Chromosome {chrom} is {other[chrom]} bp in the {label} but "
+                    f"{sizes[chrom]} bp in the chromosome sizes ({reference}); the files come "
+                    "from different genome assemblies"
+                )
+
+
 ASSAY_OPTIONS = (("atac", "ATAC"), ("dnase", "DNase"), ("h3k27ac", "H3K27ac"))
 
 
@@ -119,6 +148,9 @@ def predict(args):
     prior = args.prior
     chrom_sizes = args.chrom_sizes or tracks[0][1]
     resolution = hic_resolution(args.hic, args.hic_resolution) if args.hic else None
+    check_reference_lengths(
+        chrom_sizes, tracks, cooler_uri(args.hic, resolution) if args.hic else None
+    )
     with output_directory(args.out) as dest:
         prepared = dest / "prepared"
         prepared.mkdir()
@@ -210,7 +242,7 @@ def predict(args):
                         cooler=cooler_uri(args.hic, resolution),
                         balanced=balanced,
                         min_distance=None,
-                        max_distance=min(args.radius, FIT_MAX_DISTANCE),
+                        max_distance=FIT_MAX_DISTANCE,
                         distance_bins=30,
                         reference_distance=5000,
                         minimum_distance=5000,
@@ -320,6 +352,7 @@ def predict(args):
         "scores": str(Path(args.out) / "scores.tsv.gz"),
         "n_candidates": qc["n_candidates"],
         "n_scoreable": qc["n_scoreable"],
+        "n_primary_scores": qc["n_primary_scores"],
         "genes_by_status": status,
         "contact_mode": cfg["contact"]["mode"],
         "activity_panel": cfg["activity"]["panel"],
